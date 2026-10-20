@@ -1,9 +1,10 @@
 const pool = require('../../config/db');
 const TABLE = 'rh_planilla_aguinaldos';
 const notificationService = require('../../services/notification.service');
-const { httpError, validateEmployeeBatch, assertQuincena25Editable } = require('../../services/rhPayroll/rhIntegrity.service');
+const calculationService = require('../../services/rhPayroll/rhAguinaldosCalculation.service');
 
 const savePlanilla = async (req, res) => {
+    await calculationService.ensureAguinaldosSchema();
     const connection = await pool.getConnection();
     await connection.beginTransaction();
     try {
@@ -13,12 +14,13 @@ const savePlanilla = async (req, res) => {
         }
 
         for (const item of items) {
+            const procuraduria = parseFloat(item.procuraduria || 0);
             await connection.query(
                 `INSERT INTO ${TABLE} 
                  (company_id, empleado_id, departamento_personal_id, filtro_departamento_id, periodo_año, periodo_mes,
                   sueldo_base, fecha_ingreso, fecha_base, dias_antiguedad, dias_segun_tabla,
-                  aguinaldo_calculado, excedente, renta, monto_recibir)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  aguinaldo_calculado, excedente, renta, procuraduria, monto_recibir)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON DUPLICATE KEY UPDATE
                   departamento_personal_id = VALUES(departamento_personal_id),
                   filtro_departamento_id = VALUES(filtro_departamento_id),
@@ -30,13 +32,14 @@ const savePlanilla = async (req, res) => {
                   aguinaldo_calculado = VALUES(aguinaldo_calculado),
                   excedente = VALUES(excedente),
                   renta = VALUES(renta),
+                  procuraduria = VALUES(procuraduria),
                   monto_recibir = VALUES(monto_recibir)`,
                 [req.company_id, item.empleado_id, item.departamento_personal_id || null,
                  filtro_departamento_id || null,
                  parseInt(año), parseInt(mes) || 12,
                  item.sueldo_base, item.fecha_ingreso, item.fecha_base,
                  item.dias_antiguedad, item.dias_segun_tabla,
-                 item.aguinaldo_calculado, item.excedente, item.renta, item.monto_recibir]
+                 item.aguinaldo_calculado, item.excedente, item.renta, procuraduria, item.monto_recibir]
             );
         }
 

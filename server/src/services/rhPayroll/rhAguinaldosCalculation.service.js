@@ -1,133 +1,188 @@
 const pool = require('../../config/db');
 
+let schemaChecked = false;
+const ensureAguinaldosSchema = async () => {
+    if (schemaChecked) return;
+    try {
+        const [cols] = await pool.query(`SHOW COLUMNS FROM rh_planilla_aguinaldos LIKE 'procuraduria'`);
+        if (cols.length === 0) {
+            await pool.query(
+                `ALTER TABLE rh_planilla_aguinaldos ADD COLUMN procuraduria DECIMAL(12,2) NOT NULL DEFAULT 0.00 AFTER renta`
+            );
+        }
+        schemaChecked = true;
+    } catch (_) {
+        // Ignore if table not ready
+    }
+};
+
+const isProcuraduriaDiscount = (row) => {
+    const text = `${row.desc_codigo || ''} ${row.desc_nombre || ''} ${row.cuenta_codigo || ''} ${row.cuenta_nombre || ''}`
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase();
+    return text.includes('PROCURADUR') || /\bPGR\b/.test(text);
+};
+
+const getActivePgrEmployeeIds = async (companyId) => {
+    const [pgrRows] = await pool.query(
+        `SELECT ed.empleado_id, dp.codigo as desc_codigo, dp.descripcion as desc_nombre,
+                cp.codigo as cuenta_codigo, cp.descripcion as cuenta_nombre
+         FROM rh_empleado_descuentos ed
+         JOIN rh_descuentos_programados dp ON ed.descuento_id = dp.id
+         LEFT JOIN rh_cuentas_planillas cp ON dp.cuenta_id = cp.id
+         WHERE ed.company_id = ? AND ed.activo = 1 AND (ed.cuotas_restantes IS NULL OR ed.cuotas_restantes > 0)`,
+        [companyId]
+    );
+    const pgrEmployeeIds = new Set();
+    for (const row of pgrRows) {
+        if (isProcuraduriaDiscount(row)) {
+            pgrEmployeeIds.add(Number(row.empleado_id));
+        }
+    }
+    return pgrEmployeeIds;
+};
+
 const calculate = async (filters, companyId) => {
-        const { año, mes, departamento_id } = filters;
-        if (!año) throw Object.assign(new Error('año requerido'), { status: 400 });
+    await ensureAguinaldosSchema();
 
-        const anio = parseInt(año);
-        const mesNum = parseInt(mes) || 12;
-        const periodStart = `${anio - 1}-12-12`;
-        const periodEnd = `${anio}-12-12`;
+    const { año, mes, departamento_id } = filters;
+    if (!año) throw Object.assign(new Error('año requerido'), { status: 400 });
 
-        // Get active aguinaldo config
-        const today = new Date().toISOString().split('T')[0];
-        const [configRows] = await pool.query(
-            `SELECT ac.id FROM rh_aguinaldo_config ac
-             WHERE ac.company_id = ? AND ac.fecha_desde <= ? AND (ac.fecha_hasta IS NULL OR ac.fecha_hasta >= ?)
-             ORDER BY ac.fecha_desde DESC LIMIT 1`,
-            [companyId, today, today]
+    const anio = parseInt(año);
+    const mesNum = parseInt(mes) || 12;
+    const periodStart = `${anio - 1}-12-12`;
+    const periodEnd = `${anio}-12-12`;
+
+    // Get active aguinaldo config
+    const today = new Date().toISOString().split('T')[0];
+    const [configRows] = await pool.query(
+        `SELECT ac.id FROM rh_aguinaldo_config ac
+         WHERE ac.company_id = ? AND ac.fecha_desde <= ? AND (ac.fecha_hasta IS NULL OR ac.fecha_hasta >= ?)
+         ORDER BY ac.fecha_desde DESC LIMIT 1`,
+        [companyId, today, today]
+    );
+
+    let detalles = [];
+    if (configRows.length > 0) {
+        const [detRows] = await pool.query(
+            `SELECT anios_desde, anios_hasta, dias_aguinaldo FROM rh_aguinaldo_config_detalle
+             WHERE aguinaldo_config_id = ? ORDER BY anios_desde ASC`,
+            [configRows[0].id]
         );
+        detalles = detRows;
+    }
 
-        let detalles = [];
-        if (configRows.length > 0) {
-            const [detRows] = await pool.query(
-                `SELECT anios_desde, anios_hasta, dias_aguinaldo FROM rh_aguinaldo_config_detalle
-                 WHERE aguinaldo_config_id = ? ORDER BY anios_desde ASC`,
-                [configRows[0].id]
-            );
-            detalles = detRows;
-        }
+    // Active Procuraduría (PGR) discounts in this company (30% s/ Aguinaldo - Decreto Legislativo N° 140)
+    const pgrEmployeeIds = await getActivePgrEmployeeIds(companyId);
 
-        // Get active employees
-        let empQuery = `
-            SELECT e.id, e.codigo, e.nombres, e.apellidos, e.sueldo_base, e.fecha_ingreso,
-                   e.departamento_personal_id, e.cargo_id,
-                   e.aplica_renta, e.es_jubilado, e.es_jubilado_con_afp,
-                   c.descripcion as cargo_nombre,
-                   d.descripcion as departamento_nombre
-            FROM rh_empleados e
-            LEFT JOIN rh_cargos c ON e.cargo_id = c.id
-            LEFT JOIN rh_departamentos d ON e.departamento_personal_id = d.id
-            WHERE e.company_id = ? AND e.es_activo = 1
-        `;
-        let params = [companyId];
+    // Get active employees
+    let empQuery = `
+        SELECT e.id, e.codigo, e.nombres, e.apellidos, e.sueldo_base, e.fecha_ingreso,
+               e.departamento_personal_id, e.cargo_id,
+               e.aplica_renta, e.es_jubilado, e.es_jubilado_con_afp,
+               c.descripcion as cargo_nombre,
+               d.descripcion as departamento_nombre
+        FROM rh_empleados e
+        LEFT JOIN rh_cargos c ON e.cargo_id = c.id
+        LEFT JOIN rh_departamentos d ON e.departamento_personal_id = d.id
+        WHERE e.company_id = ? AND e.es_activo = 1
+    `;
+    let params = [companyId];
 
-        if (departamento_id) {
-            empQuery += ` AND e.departamento_personal_id = ?`;
-            params.push(parseInt(departamento_id));
-        }
+    if (departamento_id) {
+        empQuery += ` AND e.departamento_personal_id = ?`;
+        params.push(parseInt(departamento_id));
+    }
 
-        empQuery += ` ORDER BY e.codigo ASC`;
-        const [empleados] = await pool.query(empQuery, params);
+    empQuery += ` ORDER BY e.codigo ASC`;
+    const [empleados] = await pool.query(empQuery, params);
 
-        const results = [];
+    const results = [];
 
-        for (const emp of empleados) {
-            // Find last indemnizacion date
-            const [liqRows] = await pool.query(
-                `SELECT MAX(periodo_indemnizacion_hasta) as ultima_indemnizacion
-                 FROM rh_planilla_liquidaciones
-                 WHERE empleado_id = ? AND company_id = ? AND periodo_indemnizacion_hasta IS NOT NULL`,
-                [emp.id, companyId]
-            );
-            const ultimaIndemnizacion = liqRows[0]?.ultima_indemnizacion || null;
+    for (const emp of empleados) {
+        // Find last indemnizacion date
+        const [liqRows] = await pool.query(
+            `SELECT MAX(periodo_indemnizacion_hasta) as ultima_indemnizacion
+             FROM rh_planilla_liquidaciones
+             WHERE empleado_id = ? AND company_id = ? AND periodo_indemnizacion_hasta IS NOT NULL`,
+            [emp.id, companyId]
+        );
+        const ultimaIndemnizacion = liqRows[0]?.ultima_indemnizacion || null;
 
-            const fechaBase = ultimaIndemnizacion
-                ? new Date(ultimaIndemnizacion)
-                : (emp.fecha_ingreso ? new Date(emp.fecha_ingreso) : null);
+        const fechaBase = ultimaIndemnizacion
+            ? new Date(ultimaIndemnizacion)
+            : (emp.fecha_ingreso ? new Date(emp.fecha_ingreso) : null);
 
-            if (!fechaBase) continue;
+        if (!fechaBase) continue;
 
-            const pEnd = new Date(periodEnd);
-            const pStart = new Date(periodStart);
+        const pEnd = new Date(periodEnd);
+        const pStart = new Date(periodStart);
 
-            // Días de antigüedad (desde fecha_base hasta period_end)
-            const diasAntiguedad = Math.max(0, Math.ceil((pEnd - fechaBase) / (1000 * 60 * 60 * 24)) + 1);
-            const aniosServicio = Math.floor(diasAntiguedad / 365);
+        // Días de antigüedad (desde fecha_base hasta period_end)
+        const diasAntiguedad = Math.max(0, Math.ceil((pEnd - fechaBase) / (1000 * 60 * 60 * 24)) + 1);
+        const aniosServicio = Math.floor(diasAntiguedad / 365);
 
-            // Find matching dias_segun_tabla from config
-            let diasSegunTabla = 0;
-            if (detalles.length > 0) {
-                const match = detalles.find(d => aniosServicio >= d.anios_desde && aniosServicio <= d.anios_hasta);
-                if (match) {
-                    diasSegunTabla = parseFloat(match.dias_aguinaldo);
-                } else if (aniosServicio < detalles[0].anios_desde) {
-                    diasSegunTabla = parseFloat(detalles[0].dias_aguinaldo);
-                } else {
-                    diasSegunTabla = parseFloat(detalles[detalles.length - 1].dias_aguinaldo);
-                }
+        // Find matching dias_segun_tabla from config
+        let diasSegunTabla = 0;
+        if (detalles.length > 0) {
+            const match = detalles.find(d => aniosServicio >= d.anios_desde && aniosServicio <= d.anios_hasta);
+            if (match) {
+                diasSegunTabla = parseFloat(match.dias_aguinaldo);
+            } else if (aniosServicio < detalles[0].anios_desde) {
+                diasSegunTabla = parseFloat(detalles[0].dias_aguinaldo);
+            } else {
+                diasSegunTabla = parseFloat(detalles[detalles.length - 1].dias_aguinaldo);
             }
-
-            // Proportional calculation
-            const sueldo = parseFloat(emp.sueldo_base) || 0;
-            const aguinaldoCompleto = sueldo > 0 ? (sueldo / 30) * diasSegunTabla : 0;
-
-            // Days worked in this period
-            const effectiveStart = fechaBase > pStart ? fechaBase : pStart;
-            const diasLaborados = Math.max(0, Math.ceil((pEnd - effectiveStart) / (1000 * 60 * 60 * 24)) + 1);
-            const totalPeriodDays = Math.ceil((pEnd - pStart) / (1000 * 60 * 60 * 24)) + 1;
-            const proporcion = totalPeriodDays > 0 ? diasLaborados / totalPeriodDays : 1;
-
-            const aguinaldoCalculado = Math.round(aguinaldoCompleto * proporcion * 100) / 100;
-            const aplicaRenta = (emp.aplica_renta !== 0 && emp.aplica_renta !== false && emp.aplica_renta !== '0');
-            const excedente = aplicaRenta ? Math.round(Math.max(0, aguinaldoCalculado - 1500) * 100) / 100 : 0;
-            const renta = aplicaRenta ? Math.round(excedente * 0.10 * 100) / 100 : 0;
-            const montoRecibir = Math.round((aguinaldoCalculado - renta) * 100) / 100;
-
-            results.push({
-                empleado_id: emp.id,
-                codigo: emp.codigo,
-                nombres: emp.nombres,
-                apellidos: emp.apellidos,
-                cargo_nombre: emp.cargo_nombre || '',
-                departamento_nombre: emp.departamento_nombre || '',
-                departamento_personal_id: emp.departamento_personal_id,
-                sueldo_base: sueldo,
-                fecha_ingreso: emp.fecha_ingreso,
-                fecha_base: fechaBase.toISOString().substring(0, 10),
-                dias_antiguedad: diasAntiguedad,
-                dias_segun_tabla: diasSegunTabla,
-                aguinaldo_calculado: aguinaldoCalculado,
-                excedente,
-                renta,
-                monto_recibir: montoRecibir,
-                aplica_renta: aplicaRenta ? 1 : 0,
-                es_jubilado: emp.es_jubilado ? 1 : 0,
-                es_jubilado_con_afp: emp.es_jubilado_con_afp ? 1 : 0
-            });
         }
+
+        // Proportional calculation
+        const sueldo = parseFloat(emp.sueldo_base) || 0;
+        const aguinaldoCompleto = sueldo > 0 ? (sueldo / 30) * diasSegunTabla : 0;
+
+        // Days worked in this period
+        const effectiveStart = fechaBase > pStart ? fechaBase : pStart;
+        const diasLaborados = Math.max(0, Math.ceil((pEnd - effectiveStart) / (1000 * 60 * 60 * 24)) + 1);
+        const totalPeriodDays = Math.ceil((pEnd - pStart) / (1000 * 60 * 60 * 24)) + 1;
+        const proporcion = totalPeriodDays > 0 ? diasLaborados / totalPeriodDays : 1;
+
+        const aguinaldoCalculado = Math.round(aguinaldoCompleto * proporcion * 100) / 100;
+        const aplicaRenta = (emp.aplica_renta !== 0 && emp.aplica_renta !== false && emp.aplica_renta !== '0');
+        const excedente = aplicaRenta ? Math.round(Math.max(0, aguinaldoCalculado - 1500) * 100) / 100 : 0;
+        const renta = aplicaRenta ? Math.round(excedente * 0.10 * 100) / 100 : 0;
+
+        // Retención adicional de 30% sobre aguinaldo para cuota alimenticia PGR (Decreto Legislativo N° 140)
+        const aplicaProcuraduria = pgrEmployeeIds.has(Number(emp.id));
+        const procuraduria = aplicaProcuraduria ? Math.round(aguinaldoCalculado * 0.30 * 100) / 100 : 0;
+
+        const montoRecibir = Math.round(Math.max(0, aguinaldoCalculado - renta - procuraduria) * 100) / 100;
+
+        results.push({
+            empleado_id: emp.id,
+            codigo: emp.codigo,
+            nombres: emp.nombres,
+            apellidos: emp.apellidos,
+            cargo_nombre: emp.cargo_nombre || '',
+            departamento_nombre: emp.departamento_nombre || '',
+            departamento_personal_id: emp.departamento_personal_id,
+            sueldo_base: sueldo,
+            fecha_ingreso: emp.fecha_ingreso,
+            fecha_base: fechaBase.toISOString().substring(0, 10),
+            dias_antiguedad: diasAntiguedad,
+            dias_segun_tabla: diasSegunTabla,
+            aguinaldo_calculado: aguinaldoCalculado,
+            excedente,
+            renta,
+            procuraduria,
+            monto_recibir: montoRecibir,
+            aplica_renta: aplicaRenta ? 1 : 0,
+            aplica_procuraduria: aplicaProcuraduria ? 1 : 0,
+            es_jubilado: emp.es_jubilado ? 1 : 0,
+            es_jubilado_con_afp: emp.es_jubilado_con_afp ? 1 : 0
+        });
+    }
 
     return results;
 };
 
-module.exports = { calculate };
+module.exports = { calculate, ensureAguinaldosSchema, getActivePgrEmployeeIds };

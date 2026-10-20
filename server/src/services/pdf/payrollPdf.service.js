@@ -1009,18 +1009,19 @@ const generateAguinaldoPDF = async (data) => {
 
     const colW = {
         num: 18,
-        codigo: 38,
-        nombre: 150,
-        cargo: 85,
-        ingreso: 48,
-        base: 48,
-        dias: 28,
-        tabla: 26,
-        sueldo: 56,
-        aguinaldo: 62,
-        excedente: 55,
-        renta: 50,
-        recibir: 68
+        codigo: 36,
+        nombre: 140,
+        cargo: 83,
+        ingreso: 46,
+        base: 46,
+        dias: 26,
+        tabla: 24,
+        sueldo: 52,
+        aguinaldo: 56,
+        excedente: 50,
+        renta: 46,
+        procuraduria: 47,
+        recibir: 62
     };
 
     const drawTableHeader = (yPos) => {
@@ -1039,6 +1040,7 @@ const generateAguinaldoPDF = async (data) => {
         doc.text('AGUINALDO', x, yPos + 3.5, { width: colW.aguinaldo - 3, align: 'right' }); x += colW.aguinaldo;
         doc.text('EXC. RENTA', x, yPos + 3.5, { width: colW.excedente - 3, align: 'right' }); x += colW.excedente;
         doc.text('RET. RENTA', x, yPos + 3.5, { width: colW.renta - 3, align: 'right' }); x += colW.renta;
+        doc.text('RET. PGR', x, yPos + 3.5, { width: colW.procuraduria - 3, align: 'right' }); x += colW.procuraduria;
         doc.text('LÍQUIDO', x, yPos + 3.5, { width: colW.recibir - 3, align: 'right' });
 
         doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, yPos + 14).lineTo(startX + contentWidth, yPos + 14).stroke();
@@ -1063,6 +1065,7 @@ const generateAguinaldoPDF = async (data) => {
         let totalAguinaldo = 0;
         let totalExcedente = 0;
         let totalRenta = 0;
+        let totalProcuraduria = 0;
         let totalRecibir = 0;
         let globalIndex = 0;
 
@@ -1091,12 +1094,14 @@ const generateAguinaldoPDF = async (data) => {
                 const aguinaldo = parseFloat(item.aguinaldo_calculado || 0);
                 const excedente = parseFloat(item.excedente || 0);
                 const renta = parseFloat(item.renta || 0);
+                const procuraduria = parseFloat(item.procuraduria || 0);
                 const recibir = parseFloat(item.monto_recibir || 0);
 
                 totalSueldo += sueldo;
                 totalAguinaldo += aguinaldo;
                 totalExcedente += excedente;
                 totalRenta += renta;
+                totalProcuraduria += procuraduria;
                 totalRecibir += recibir;
 
                 if (globalIndex % 2 === 0) {
@@ -1108,9 +1113,9 @@ const generateAguinaldoPDF = async (data) => {
                 doc.text(String(globalIndex), rx, y, { width: colW.num, align: 'center' }); rx += colW.num;
                 doc.text(item.codigo || '', rx, y, { width: colW.codigo }); rx += colW.codigo;
                 const empNombre = `${item.nombres || ''} ${item.apellidos || ''}`.trim();
-                doc.text(empNombre.substring(0, 32), rx, y, { width: colW.nombre - 3, ellipsis: true }); rx += colW.nombre;
+                doc.text(empNombre.substring(0, 30), rx, y, { width: colW.nombre - 3, ellipsis: true }); rx += colW.nombre;
                 const cargoNombre = item.cargo_nombre || 'GENERAL';
-                doc.text(cargoNombre.substring(0, 18), rx, y, { width: colW.cargo - 3, ellipsis: true }); rx += colW.cargo;
+                doc.text(cargoNombre.substring(0, 17), rx, y, { width: colW.cargo - 3, ellipsis: true }); rx += colW.cargo;
                 doc.text(reportPdfHelper.formatDate(item.fecha_ingreso), rx, y, { width: colW.ingreso, align: 'center' }); rx += colW.ingreso;
                 doc.text(reportPdfHelper.formatDate(item.fecha_base), rx, y, { width: colW.base, align: 'center' }); rx += colW.base;
                 doc.text(String(item.dias_antiguedad || 0), rx, y, { width: colW.dias - 2, align: 'right' }); rx += colW.dias;
@@ -1119,6 +1124,7 @@ const generateAguinaldoPDF = async (data) => {
                 doc.text(reportPdfHelper.fmt(aguinaldo), rx, y, { width: colW.aguinaldo - 3, align: 'right' }); rx += colW.aguinaldo;
                 doc.text(reportPdfHelper.fmt(excedente), rx, y, { width: colW.excedente - 3, align: 'right' }); rx += colW.excedente;
                 doc.text(reportPdfHelper.fmt(renta), rx, y, { width: colW.renta - 3, align: 'right' }); rx += colW.renta;
+                doc.text(reportPdfHelper.fmt(procuraduria), rx, y, { width: colW.procuraduria - 3, align: 'right' }); rx += colW.procuraduria;
                 doc.font('Helvetica-Bold').text(reportPdfHelper.fmt(recibir), rx, y, { width: colW.recibir - 3, align: 'right' });
                 y += 12;
             }
@@ -1141,6 +1147,7 @@ const generateAguinaldoPDF = async (data) => {
         doc.text(reportPdfHelper.fmt(totalAguinaldo), tx, y, { width: colW.aguinaldo - 3, align: 'right' }); tx += colW.aguinaldo;
         doc.text(reportPdfHelper.fmt(totalExcedente), tx, y, { width: colW.excedente - 3, align: 'right' }); tx += colW.excedente;
         doc.text(reportPdfHelper.fmt(totalRenta), tx, y, { width: colW.renta - 3, align: 'right' }); tx += colW.renta;
+        doc.text(reportPdfHelper.fmt(totalProcuraduria), tx, y, { width: colW.procuraduria - 3, align: 'right' }); tx += colW.procuraduria;
         doc.text(reportPdfHelper.fmt(totalRecibir), tx, y, { width: colW.recibir - 3, align: 'right' });
 
         y += 18;
@@ -1191,6 +1198,8 @@ const generateAguinaldoRecibosPDF = (data) => {
                 const sueldoDiario = sueldo / 30;
                 const aguinaldo = parseFloat(item.aguinaldo_calculado || 0);
                 const renta = parseFloat(item.renta || 0);
+                const procuraduria = parseFloat(item.procuraduria || 0);
+                const totalDeducciones = Math.round((renta + procuraduria) * 100) / 100;
                 const monto = parseFloat(item.monto_recibir || 0);
                 const dias = item.dias_antiguedad || 0;
                 const anios = (dias / 365).toFixed(1);
@@ -1296,11 +1305,15 @@ const generateAguinaldoRecibosPDF = (data) => {
                     doc.text(`$ ${aguinaldo.toFixed(2)}`, leftX + 190, percY, { width: 75, align: 'right' });
                     percY += rowH;
 
-                    // Right Column: Renta / ISSS / AFP
+                    // Right Column: Renta / Procuraduría (PGR 30%)
                     let dedY = y;
                     doc.font('Helvetica').fontSize(6.5).fillColor('#334155');
                     doc.text('Impuesto sobre la Renta (ISR s/ Aguinaldo)', rightX + 4, dedY, { width: 185 });
                     doc.text(`$ ${renta.toFixed(2)}`, rightX + 190, dedY, { width: 75, align: 'right' });
+                    dedY += rowH;
+
+                    doc.text('Cuota Alimenticia PGR (30% D.L. N° 140)', rightX + 4, dedY, { width: 185 });
+                    doc.text(`$ ${procuraduria.toFixed(2)}`, rightX + 190, dedY, { width: 75, align: 'right' });
                     dedY += rowH;
 
                     // Subtotals
@@ -1314,7 +1327,7 @@ const generateAguinaldoRecibosPDF = (data) => {
                     doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(rightX, maxRowY).lineTo(rightX + colW, maxRowY).stroke();
                     doc.font('Helvetica-Bold').fontSize(7).fillColor('#0f172a');
                     doc.text('TOTAL DEDUCCIONES', rightX + 4, maxRowY + 3, { width: 180 });
-                    doc.text(`$ ${renta.toFixed(2)}`, rightX + 190, maxRowY + 3, { width: 75, align: 'right' });
+                    doc.text(`$ ${totalDeducciones.toFixed(2)}`, rightX + 190, maxRowY + 3, { width: 75, align: 'right' });
 
                     y = maxRowY + 16;
 

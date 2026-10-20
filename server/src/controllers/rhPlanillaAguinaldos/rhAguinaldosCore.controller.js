@@ -2,8 +2,10 @@ const pool = require('../../config/db');
 const TABLE = 'rh_planilla_aguinaldos';
 
 const calculationService = require('../../services/rhPayroll/rhAguinaldosCalculation.service');
+
 const getResumen = async (req, res) => {
     try {
+        await calculationService.ensureAguinaldosSchema();
         const { año } = req.query;
         let query = `
             SELECT pa.periodo_año, pa.periodo_mes, pa.filtro_departamento_id,
@@ -32,6 +34,7 @@ const getResumen = async (req, res) => {
 
 const getPlanilla = async (req, res) => {
     try {
+        await calculationService.ensureAguinaldosSchema();
         const { año, mes, departamento_id } = req.query;
         if (!año) return res.status(400).json({ message: 'año requerido' });
 
@@ -66,7 +69,15 @@ const getPlanilla = async (req, res) => {
 
         query += ` ORDER BY e.codigo ASC`;
         const [rows] = await pool.query(query, params);
-        res.json(rows);
+        const pgrEmployeeIds = await calculationService.getActivePgrEmployeeIds(req.company_id);
+
+        const enriched = rows.map(row => ({
+            ...row,
+            procuraduria: parseFloat(row.procuraduria || 0),
+            aplica_procuraduria: (parseFloat(row.procuraduria || 0) > 0 || pgrEmployeeIds.has(Number(row.empleado_id))) ? 1 : 0
+        }));
+
+        res.json(enriched);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

@@ -6,10 +6,21 @@ import { formatDate } from '../../../utils/dateUtils';
 const AguinaldosModal = ({ open, onClose, onSubmit, model }) => {
     const { calcAño, calcMes, calcDeptoId, calculado, calculando, yaExiste, deptos, years, months, handleCalcular, setPreviewPeriodo, saveMutation, changeFilter, canSave } = model;
     if (!open) return null;
+
+    const rows = Array.isArray(calculado) ? calculado : [];
+    const totals = rows.reduce((acc, item) => {
+        acc.aguinaldo += parseFloat(item.aguinaldo_calculado || 0);
+        acc.excedente += parseFloat(item.excedente || 0);
+        acc.renta += parseFloat(item.renta || 0);
+        acc.procuraduria += parseFloat(item.procuraduria || 0);
+        acc.recibir += parseFloat(item.monto_recibir || 0);
+        return acc;
+    }, { aguinaldo: 0, excedente: 0, renta: 0, procuraduria: 0, recibir: 0 });
+
     return (
         <>
             <Modal isOpen={open} onClose={onClose}
-                title="Planilla de Aguinaldos" maxWidth="max-w-5xl">
+                title="Planilla de Aguinaldos" maxWidth="max-w-6xl">
                 <div className="space-y-3 pb-2">
                     {/* Filters in modal */}
                     <div className="flex flex-wrap gap-2 items-end">
@@ -42,7 +53,7 @@ const AguinaldosModal = ({ open, onClose, onSubmit, model }) => {
                         </button>
                     </div>
             
-                    {yaExiste && calculado.length > 0 && (
+                    {yaExiste && rows.length > 0 && (
                         <div className="flex items-center justify-between gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 flex-wrap">
                             <div className="flex items-center gap-2">
                                 <AlertCircle size={14} className="text-amber-600 shrink-0" />
@@ -82,13 +93,13 @@ const AguinaldosModal = ({ open, onClose, onSubmit, model }) => {
                     )}
             
                     {/* Table */}
-                    {calculado.length > 0 && (
+                    {rows.length > 0 && (
                         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
                             <table className="w-full text-[12px] whitespace-nowrap">
                                 <thead>
                                     <tr className="bg-slate-50 border-b border-slate-200">
                                         <th className="text-left px-1.5 py-1 font-bold text-slate-500 uppercase text-[9px] w-12">Codigo</th>
-                                        <th className="text-left px-1.5 py-1 font-bold text-slate-500 uppercase text-[9px] max-w-[180px]">Nombre</th>
+                                        <th className="text-left px-1.5 py-1 font-bold text-slate-500 uppercase text-[9px] max-w-[190px]">Nombre</th>
                                         <th className="text-left px-1.5 py-1 font-bold text-slate-500 uppercase text-[9px] max-w-[120px]">Cargo</th>
                                         <th className="text-left px-1.5 py-1 font-bold text-slate-500 uppercase text-[9px] w-16">F. Ingreso</th>
                                         <th className="text-left px-1.5 py-1 font-bold text-slate-500 uppercase text-[9px] w-16">F. Base</th>
@@ -96,21 +107,28 @@ const AguinaldosModal = ({ open, onClose, onSubmit, model }) => {
                                         <th className="text-right px-1.5 py-1 font-bold text-slate-500 uppercase text-[9px] w-10">Tabla</th>
                                         <th className="text-right px-1.5 py-1 font-bold text-slate-500 uppercase text-[9px] w-16">Aguinaldo</th>
                                         <th className="text-right px-1.5 py-1 font-bold text-slate-500 uppercase text-[9px] w-16">Excedente</th>
-                                        <th className="text-right px-1.5 py-1 font-bold text-slate-500 uppercase text-[9px] w-12">Renta</th>
+                                        <th className="text-right px-1.5 py-1 font-bold text-slate-500 uppercase text-[9px] w-14">Renta</th>
+                                        <th className="text-right px-1.5 py-1 font-bold text-slate-500 uppercase text-[9px] w-16" title="Retención 30% Procuraduría General de la República (D.L. N° 140)">Procuraduría</th>
                                         <th className="text-right px-1.5 py-1 font-bold text-slate-500 uppercase text-[9px] w-16">Recibir</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {(Array.isArray(calculado) ? calculado : []).map((item, i) => {
+                                    {rows.map((item, i) => {
                                         const sinRenta = item.aplica_renta === 0 || item.aplica_renta === false || item.aplica_renta === '0';
+                                        const tienePgr = Boolean(item.aplica_procuraduria) || parseFloat(item.procuraduria || 0) > 0;
                                         return (
                                             <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
                                                 <td className="px-1.5 py-0.5 font-mono font-bold text-indigo-500">{item.codigo}</td>
-                                                <td className="px-1.5 py-0.5 font-bold text-slate-700 max-w-[180px] truncate" title={`${item.nombres} ${item.apellidos}`}>
+                                                <td className="px-1.5 py-0.5 font-bold text-slate-700 max-w-[190px] truncate" title={`${item.nombres} ${item.apellidos}`}>
                                                     <span>{item.nombres} {item.apellidos}</span>
                                                     {sinRenta && (
                                                         <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-700 border border-amber-200" title="Empleado configurado sin retención de Renta">
                                                             Sin Renta
+                                                        </span>
+                                                    )}
+                                                    {tienePgr && (
+                                                        <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-100 text-rose-700 border border-rose-200" title="Retención adicional 30% Procuraduría General de la República (Decreto Legislativo N° 140)">
+                                                            PGR 30%
                                                         </span>
                                                     )}
                                                 </td>
@@ -122,16 +140,27 @@ const AguinaldosModal = ({ open, onClose, onSubmit, model }) => {
                                                 <td className="px-1.5 py-0.5 text-right font-bold text-indigo-600"><Money value={item.aguinaldo_calculado} /></td>
                                                 <td className="px-1.5 py-0.5 text-right text-slate-600"><Money value={item.excedente} /></td>
                                                 <td className="px-1.5 py-0.5 text-right font-bold text-red-600"><Money value={item.renta} /></td>
+                                                <td className="px-1.5 py-0.5 text-right font-bold text-rose-600"><Money value={item.procuraduria || 0} /></td>
                                                 <td className="px-1.5 py-0.5 text-right font-bold text-emerald-600"><Money value={item.monto_recibir} /></td>
                                             </tr>
                                         );
                                     })}
                                 </tbody>
+                                <tfoot>
+                                    <tr className="bg-slate-50 border-t border-slate-200 font-bold">
+                                        <td colSpan={7} className="px-1.5 py-1 text-right text-[10px] uppercase text-slate-600">Totales ({rows.length} empleados):</td>
+                                        <td className="px-1.5 py-1 text-right text-indigo-700"><Money value={totals.aguinaldo} /></td>
+                                        <td className="px-1.5 py-1 text-right text-slate-700"><Money value={totals.excedente} /></td>
+                                        <td className="px-1.5 py-1 text-right text-red-700"><Money value={totals.renta} /></td>
+                                        <td className="px-1.5 py-1 text-right text-rose-700"><Money value={totals.procuraduria} /></td>
+                                        <td className="px-1.5 py-1 text-right text-emerald-700"><Money value={totals.recibir} /></td>
+                                    </tr>
+                                </tfoot>
                             </table>
                         </div>
                     )}
             
-                    {calculado.length === 0 && !calculando && (
+                    {rows.length === 0 && !calculando && (
                         <div className="py-10 text-center">
                             <Gift size={24} className="mx-auto text-slate-300 mb-1" />
                             <p className="text-[10px] font-bold text-slate-400">Seleccione filtros y presione Calcular</p>
@@ -139,7 +168,7 @@ const AguinaldosModal = ({ open, onClose, onSubmit, model }) => {
                     )}
             
                     <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
-                        {calculado.length > 0 && !yaExiste && (
+                        {rows.length > 0 && !yaExiste && (
                             <button type="button" onClick={onSubmit} disabled={!canSave || saveMutation.isPending}
                                 className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs transition-all shadow-lg shadow-emerald-600/20 active:scale-95 disabled:opacity-50">
                                 <Save size={14} />
