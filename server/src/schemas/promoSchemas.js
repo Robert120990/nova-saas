@@ -42,9 +42,9 @@ const customerDiscountSchema = z.object({
     branch_id: z.coerce.number({ required_error: 'La sucursal es requerida' })
         .int('El ID de sucursal debe ser un entero')
         .positive('Debe indicar una sucursal válida'),
-    discount_type: z.enum(['percentage', 'fixed'], {
+    discount_type: z.enum(['PORCENTAJE', 'VALOR', 'percentage', 'fixed'], {
         required_error: 'El tipo de descuento es requerido'
-    }),
+    }).transform((val) => val === 'percentage' ? 'PORCENTAJE' : val === 'fixed' ? 'VALOR' : val),
     discount_value: z.coerce.number({ required_error: 'El valor de descuento es requerido' })
         .positive('El valor de descuento debe ser mayor a cero')
 });

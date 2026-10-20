@@ -690,6 +690,7 @@ router.delete('/combos/:id', comboController.deleteCombo);
 // Customer Specific Discounts
 router.get('/customer-discounts', customerDiscountController.getDiscounts);
 router.post('/customer-discounts', validate(customerDiscountSchema), customerDiscountController.createDiscount);
+router.put('/customer-discounts/:id', validate(customerDiscountSchema), customerDiscountController.updateDiscount);
 router.delete('/customer-discounts/:id', customerDiscountController.deleteDiscount);
 
 // Product Discount Rules

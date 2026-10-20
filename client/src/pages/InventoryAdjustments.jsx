@@ -3,36 +3,18 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
-import { 
-    Plus, 
-    Trash2, 
-    Save, 
-    History, 
-    FileText, 
-    Search, 
-    Barcode,
-    Check,
-    Package,
-    Settings,
-    Eye,
-    Edit2,
-    XCircle,
-    AlertCircle,
-    FileSpreadsheet,
-    FileText as FilePdf
-} from 'lucide-react';
+import { Plus, History, Settings } from 'lucide-react';
 import { exportJsonToExcel } from '../utils/excelExport';
 import {
     AdjustmentDetailModal,
     AdjustmentMotivosModal,
     AdjustmentEditModal,
+    NewAdjustmentTab,
+    AdjustmentHistoryTab
 } from '../components/inventory';
 import PdfViewerModal from '../components/ui/PdfViewerModal';
-import Table from '../components/ui/Table';
-import Pagination from '../components/ui/Pagination';
 import ProductSearchModal from '../components/products/ProductSearchModal';
 import { useAuth } from '../context/AuthContext';
-import Money from '../components/ui/Money';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
 import { formatDateDMY } from '../utils/dateUtils';
 import { unwrapList } from '../utils/apiUtils';
@@ -43,8 +25,9 @@ const InventoryAdjustments = () => {
     const confirm = useConfirm();
     const [activeTab, setActiveTab] = useState('historial');
     const barcodeInputRef = useRef(null);
-    
-    // Form State
+    const qtyInputRef = useRef(null);
+    const costInputRef = useRef(null);
+
     const [branchId, setBranchId] = useState(user?.branch_id ? String(user.branch_id) : '');
     const [tipo, setTipo] = useState('ENTRADA');
     const [motivoId, setMotivoId] = useState('');
@@ -52,17 +35,27 @@ const InventoryAdjustments = () => {
     const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
     const [observaciones, setObservaciones] = useState('');
     const [selectedItems, setSelectedItems] = useState([]);
-    
-    // History State
+
     const [historySearch, setHistorySearch] = useState('');
     const [historyPage, setHistoryPage] = useState(1);
     const limit = 10;
 
-    // PDF Report Modal State
     const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
     const [pdfUrl, setPdfUrl] = useState(null);
     const [isLoadingPdf, setIsLoadingPdf] = useState(false);
     const [pdfError, setPdfError] = useState(null);
+
+    const [quickProd, setQuickProd] = useState(null);
+    const [quickCant, setQuickCant] = useState(1);
+    const [quickCosto, setQuickCosto] = useState(0);
+    const [quickBarcode, setQuickBarcode] = useState('');
+
+    const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+    const [isMotivosModalOpen, setIsMotivosModalOpen] = useState(false);
+    const [viewingAdjustment, setViewingAdjustment] = useState(null);
+    const [editingAdjustment, setEditingAdjustment] = useState(null);
+
+    useDirtyTracker('ajustes', selectedItems.length > 0 || numero);
 
     useEffect(() => {
         return () => {
@@ -70,18 +63,49 @@ const InventoryAdjustments = () => {
         };
     }, [pdfUrl]);
 
-    // Quick Add state
-    const [quickProd, setQuickProd] = useState(null);
-    const [quickCant, setQuickCant] = useState(1);
-    const [quickCosto, setQuickCosto] = useState(0);
-    const [quickBarcode, setQuickBarcode] = useState('');
+    const { data: branches = [] } = useQuery({
+        queryKey: ['branches'],
+        queryFn: async () => unwrapList(await axios.get('/api/branches'))
+    });
 
-    // Product Modal state
-    const [isProductModalOpen, setIsProductModalOpen] = useState(false);
-    const [isMotivosModalOpen, setIsMotivosModalOpen] = useState(false);
+    const { data: motivos = [] } = useQuery({
+        queryKey: ['inventory-motivos'],
+        queryFn: async () => unwrapList(await axios.get('/api/inventory/motivos'))
+    });
 
-    useDirtyTracker('ajustes', selectedItems.length > 0 || numero);
-    
+    const { data: adjustmentsData = { data: [], totalItems: 0, totalPages: 0 }, isLoading: loadingAdjustments } = useQuery({
+        queryKey: ['inventory-adjustments', historySearch, historyPage, user?.branch_id],
+        queryFn: async () => (await axios.get('/api/inventory/adjustments', {
+            params: { search: historySearch, page: historyPage, limit, branch_id: user?.branch_id }
+        })).data,
+        enabled: activeTab === 'historial'
+    });
+
+    const getDefaultBranchId = () => {
+        if (user?.branch_id) return String(user.branch_id);
+        if (Array.isArray(branches) && branches.length === 1) return String(branches[0].id);
+        return '';
+    };
+
+    useEffect(() => {
+        if (!branchId) {
+            const defBranch = getDefaultBranchId();
+            if (defBranch) setBranchId(defBranch);
+        }
+    }, [branches, user?.branch_id, branchId]);
+
+    useEffect(() => {
+        const matchingMotivos = (Array.isArray(motivos) ? motivos : []).filter((m) => m.tipo === tipo);
+        if (matchingMotivos.length > 0) {
+            const currentValid = matchingMotivos.some((m) => String(m.id) === String(motivoId));
+            if (!currentValid) {
+                setMotivoId(String(matchingMotivos[0].id));
+            }
+        } else if (motivoId) {
+            setMotivoId('');
+        }
+    }, [motivos, tipo, motivoId]);
+
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (e.key === 'F3') {
@@ -98,30 +122,18 @@ const InventoryAdjustments = () => {
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [branchId, activeTab]);
-    
-    const qtyInputRef = useRef(null);
-    const costInputRef = useRef(null);
 
-    // Queries
-    const { data: branches = [] } = useQuery({
-        queryKey: ['branches'],
-        queryFn: async () => unwrapList(await axios.get('/api/branches'))
-    });
+    const resetForm = () => {
+        setBranchId(getDefaultBranchId());
+        const matchingMotivos = (Array.isArray(motivos) ? motivos : []).filter((m) => m.tipo === tipo);
+        setMotivoId(matchingMotivos.length > 0 ? String(matchingMotivos[0].id) : '');
+        setNumero('');
+        setObservaciones('');
+        setSelectedItems([]);
+        setQuickBarcode('');
+        setQuickProd(null);
+    };
 
-    const { data: motivos = [] } = useQuery({
-        queryKey: ['inventory-motivos'],
-        queryFn: async () => unwrapList(await axios.get('/api/inventory/motivos'))
-    });
-
-    const { data: adjustmentsData = { data: [], totalItems: 0, totalPages: 0 }, isLoading: loadingAdjustments } = useQuery({
-        queryKey: ['inventory-adjustments', historySearch, historyPage, user?.branch_id],
-        queryFn: async () => (await axios.get('/api/inventory/adjustments', { 
-            params: { search: historySearch, page: historyPage, limit, branch_id: user?.branch_id } 
-        })).data,
-        enabled: activeTab === 'historial'
-    });
-
-    // Mutations
     const createMutation = useMutation({
         mutationFn: (data) => axios.post('/api/inventory/adjustments', data),
         onSuccess: () => {
@@ -136,20 +148,23 @@ const InventoryAdjustments = () => {
             setActiveTab('historial');
         },
         onError: (err) => {
-            const serverMsg = err.response?.data?.message;
-            toast.error(serverMsg || 'Error al procesar el movimiento');
+            toast.error(err.response?.data?.message || 'Error al procesar el movimiento');
         }
     });
 
-    const resetForm = () => {
-        setBranchId('');
-        setMotivoId('');
-        setNumero('');
-        setObservaciones('');
-        setSelectedItems([]);
-        setQuickBarcode('');
-        setQuickProd(null);
-    };
+    const voidMutation = useMutation({
+        mutationFn: (id) => axios.post(`/api/inventory/adjustments/${id}/void`),
+        onSuccess: () => {
+            toast.success('Movimiento anulado correctamente');
+            queryClient.invalidateQueries({ queryKey: ['inventory-adjustments'] });
+            queryClient.invalidateQueries({ queryKey: ['inventory'] });
+            queryClient.invalidateQueries({ queryKey: ['products'] });
+            queryClient.invalidateQueries({ queryKey: ['terminal-products'] });
+            queryClient.invalidateQueries({ queryKey: ['inventory-stock'] });
+            queryClient.invalidateQueries({ queryKey: ['kardex'] });
+        },
+        onError: (err) => toast.error(err.response?.data?.message || 'Error al anular')
+    });
 
     const handleBarcodeSubmit = async (e) => {
         if (e.key === 'Enter' && quickBarcode) {
@@ -173,49 +188,31 @@ const InventoryAdjustments = () => {
 
     const handleAddQuick = () => {
         if (!quickProd) return;
-
-        if (quickProd.status !== 'activo') {
-            return toast.error('El producto seleccionado se encuentra inactivo');
-        }
-
-        if (branchId && !quickProd.branches?.includes(parseInt(branchId))) {
-            return toast.error('El producto no está autorizado para esta sucursal');
-        }
-        if (!branchId || !motivoId || !numero) {
-            return toast.error('Complete la configuración del encabezado (Sucursal, Motivo y Número)');
-        }
-        
-        const cant = parseFloat(quickCant);
-        const cost = parseFloat(quickCosto);
-
-        if (isNaN(cant) || cant <= 0) return toast.error('Cantidad inválida');
-        if (isNaN(cost) || cost < 0) return toast.error('Costo inválido');
-
-        if (quickProd.status !== 'activo') {
-            return toast.error('El producto seleccionado se encuentra inactivo');
-        }
-
-        // Verificar sucursal
-        if (!quickProd.branches?.includes(parseInt(branchId))) {
+        if (quickProd.status !== 'activo') return toast.error('El producto seleccionado se encuentra inactivo');
+        if (!branchId || !motivoId) return toast.error('Seleccione la sucursal y el motivo del movimiento');
+        if (Array.isArray(quickProd.branches) && quickProd.branches.length > 0 && !quickProd.branches.includes(parseInt(branchId))) {
             return toast.error(`El producto "${quickProd.nombre}" no está autorizado para esta sucursal`);
         }
 
-        // Si ya está en la lista, sumar cantidad? No, el usuario mostró filas repetidas usualmente, pero aquí mantendremos la lógica de "ya está en la lista" o "sumar". 
-        // Siguiendo el estándar previo: error si ya está.
-        if (selectedItems.find(item => item.product_id === quickProd.id)) {
+        const cant = parseFloat(quickCant);
+        const cost = parseFloat(quickCosto);
+        if (isNaN(cant) || cant <= 0) return toast.error('Cantidad inválida');
+        if (isNaN(cost) || cost < 0) return toast.error('Costo inválido');
+        if (selectedItems.find((item) => item.product_id === quickProd.id)) {
             return toast.error('El producto ya está en la lista');
         }
 
-        const newItem = {
-            product_id: quickProd.id,
-            nombre: quickProd.nombre,
-            codigo: quickProd.codigo,
-            cantidad: parseFloat(quickCant),
-            costo: parseFloat(quickCosto),
-            total: parseFloat(quickCant) * parseFloat(quickCosto)
-        };
-        
-        setSelectedItems([...selectedItems, newItem]);
+        setSelectedItems([
+            ...selectedItems,
+            {
+                product_id: quickProd.id,
+                nombre: quickProd.nombre,
+                codigo: quickProd.codigo,
+                cantidad: cant,
+                costo: cost,
+                total: cant * cost
+            }
+        ]);
         setQuickProd(null);
         setQuickBarcode('');
         setQuickCant(1);
@@ -232,7 +229,7 @@ const InventoryAdjustments = () => {
     };
 
     const updateItem = (productId, field, value) => {
-        setSelectedItems(prev => prev.map(item => {
+        setSelectedItems((prev) => prev.map((item) => {
             if (item.product_id === productId) {
                 const updated = { ...item, [field]: value };
                 updated.total = updated.cantidad * updated.costo;
@@ -243,7 +240,7 @@ const InventoryAdjustments = () => {
     };
 
     const removeItem = (id) => {
-        setSelectedItems(selectedItems.filter(item => item.product_id !== id));
+        setSelectedItems(selectedItems.filter((item) => item.product_id !== id));
     };
 
     const handleSubmit = (e) => {
@@ -262,44 +259,19 @@ const InventoryAdjustments = () => {
         });
     };
 
-    const totalAjuste = selectedItems.reduce((acc, item) => acc + item.total, 0);
-
-    const inputCls = "w-full px-4 py-2 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-[13px] font-medium";
-    const labelCls = "block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 ml-1";
-
-    const [viewingAdjustment, setViewingAdjustment] = useState(null);
-    const [editingAdjustment, setEditingAdjustment] = useState(null);
-
-    const voidMutation = useMutation({
-        mutationFn: (id) => axios.post(`/api/inventory/adjustments/${id}/void`),
-        onSuccess: () => {
-            toast.success('Movimiento anulado correctamente');
-            queryClient.invalidateQueries({ queryKey: ['inventory-adjustments'] });
-            queryClient.invalidateQueries({ queryKey: ['inventory'] });
-            queryClient.invalidateQueries({ queryKey: ['products'] });
-            queryClient.invalidateQueries({ queryKey: ['terminal-products'] });
-            queryClient.invalidateQueries({ queryKey: ['inventory-stock'] });
-            queryClient.invalidateQueries({ queryKey: ['kardex'] });
-        },
-        onError: (err) => toast.error(err.response?.data?.message || 'Error al anular')
-    });
-
     const handleVoidAdjustment = async (id) => {
         const ok = await confirm({
             title: '¿Anular movimiento?',
             message: 'El stock afectado será revertido automáticamente. Esta acción no se puede deshacer.',
             confirmLabel: 'Sí, anular',
-            variant: 'warning',
+            variant: 'warning'
         });
         if (ok) voidMutation.mutate(id);
     };
-    
+
     const exportToExcel = () => {
-        if (!adjustmentsData?.data?.length) {
-            return toast.warning('No hay movimientos para exportar');
-        }
-        
-        const rows = adjustmentsData.data.map(a => ({
+        if (!adjustmentsData?.data?.length) return toast.warning('No hay movimientos para exportar');
+        const rows = adjustmentsData.data.map((a) => ({
             Documento: `AJ-${String(a.id).padStart(6, '0')}`,
             Referencia: a.numero || '',
             Fecha: formatDateDMY(a.fecha),
@@ -309,63 +281,51 @@ const InventoryAdjustments = () => {
             Items: a.items_count,
             Estado: a.status || 'COMPLETADO'
         }));
-        
         exportJsonToExcel(rows, `Movimientos_Inventario_${new Date().toISOString().split('T')[0]}`, 'Movimientos');
     };
-    
+
     const handleOpenPdfModal = async () => {
         setIsPdfModalOpen(true);
         setIsLoadingPdf(true);
         setPdfError(null);
-
         try {
-            const params = {
-                branch_id: user?.branch_id || undefined,
-                search: historySearch?.trim() ? historySearch.trim() : undefined
-            };
-
             const response = await axios.get('/api/inventory/adjustments/reports/pdf', {
-                params,
+                params: {
+                    branch_id: user?.branch_id || undefined,
+                    search: historySearch?.trim() ? historySearch.trim() : undefined
+                },
                 responseType: 'blob'
             });
-
             if (response.data.type !== 'application/pdf') {
                 const text = await response.data.text();
                 let errorMsg = 'Error al generar el reporte en formato PDF';
-                try {
-                    const errObj = JSON.parse(text);
-                    errorMsg = errObj.message || errorMsg;
-                } catch {}
+                try { errorMsg = JSON.parse(text).message || errorMsg; } catch {}
                 throw new Error(errorMsg);
             }
-
             if (pdfUrl) URL.revokeObjectURL(pdfUrl);
-            const url = URL.createObjectURL(response.data);
-            setPdfUrl(url);
+            setPdfUrl(URL.createObjectURL(response.data));
         } catch (err) {
-            console.error('Error fetching adjustments PDF:', err);
             setPdfError(err.message || 'Ocurrió un error al generar el PDF');
         } finally {
             setIsLoadingPdf(false);
         }
     };
 
+    const totalAjuste = selectedItems.reduce((acc, item) => acc + item.total, 0);
+
     return (
         <div className="max-w-7xl mx-auto space-y-6 pb-20">
-            {/* Header section */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
                     <h2 className="text-2xl font-bold tracking-tight text-slate-900">
                         {activeTab === 'historial' ? 'Movimientos de Inventario' : 'Nuevo Movimiento de Inventario'}
                     </h2>
                     <p className="text-slate-500 mt-1 font-medium text-sm">
-                        {activeTab === 'historial'
-                            ? 'Historial de ajustes, entradas y salidas de stock'
-                            : 'Registro de entradas y salidas de stock'}
+                        {activeTab === 'historial' ? 'Historial de ajustes, entradas y salidas de stock' : 'Registro de entradas y salidas de stock'}
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button 
+                    <button
                         onClick={() => setIsMotivosModalOpen(true)}
                         className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-sm active:scale-95"
                     >
@@ -373,22 +333,16 @@ const InventoryAdjustments = () => {
                         Motivos
                     </button>
                     {activeTab === 'historial' ? (
-                        <button 
-                            onClick={() => {
-                                resetForm();
-                                setActiveTab('nuevo');
-                            }}
+                        <button
+                            onClick={() => { resetForm(); setActiveTab('nuevo'); }}
                             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-lg shadow-indigo-600/20 active:scale-95"
                         >
                             <Plus size={14} />
                             Nuevo Movimiento
                         </button>
                     ) : (
-                        <button 
-                            onClick={() => {
-                                resetForm();
-                                setActiveTab('historial');
-                            }}
+                        <button
+                            onClick={() => { resetForm(); setActiveTab('historial'); }}
                             className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-sm active:scale-95"
                         >
                             <History size={14} />
@@ -399,424 +353,76 @@ const InventoryAdjustments = () => {
             </div>
 
             {activeTab === 'nuevo' ? (
-                <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-top-2 duration-300">
-                    {/* Top Row: Configuration & Totals */}
-                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
-                        <div className="lg:col-span-3 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-                                <FileText size={18} className="text-indigo-600" />
-                                <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider">Configuración del Movimiento</h3>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                <div className="md:col-span-2">
-                                    <label className={labelCls}>Sucursal</label>
-                                    <select 
-                                        value={branchId} 
-                                        onChange={(e) => setBranchId(e.target.value)}
-                                        className={inputCls}
-                                    >
-                                        <option value="">Seleccionar Sucursal...</option>
-                                        {branches.map(b => (
-                                            <option key={b.id} value={b.id}>{b.nombre}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className={labelCls}>Tipo</label>
-                                    <select 
-                                        value={tipo} 
-                                        onChange={(e) => setTipo(e.target.value)}
-                                        className={inputCls}
-                                    >
-                                        <option value="ENTRADA">ENTRADA</option>
-                                        <option value="SALIDA">SALIDA</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className={labelCls}>Fecha</label>
-                                    <input 
-                                        type="date"
-                                        value={fecha}
-                                        onChange={(e) => setFecha(e.target.value)}
-                                        className={inputCls}
-                                    />
-                                </div>
-                            </div>
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                <div>
-                                    <label className={labelCls}>Número</label>
-                                    <input 
-                                        type="text"
-                                        value={numero}
-                                        onChange={(e) => setNumero(e.target.value)}
-                                        placeholder="Doc #"
-                                        className={inputCls}
-                                    />
-                                </div>
-                                <div className="md:col-span-3">
-                                    <label className={labelCls}>Motivo</label>
-                                    <select 
-                                        value={motivoId} 
-                                        onChange={(e) => setMotivoId(e.target.value)}
-                                        className={inputCls}
-                                    >
-                                        <option value="">Seleccionar Motivo...</option>
-                                        {motivos
-                                            .filter(m => m.tipo === tipo)
-                                            .map(m => (
-                                                <option key={m.id} value={m.id}>{m.nombre}</option>
-                                            ))
-                                        }
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className={labelCls}>Observaciones</label>
-                                <input 
-                                    type="text"
-                                    value={observaciones}
-                                    onChange={(e) => setObservaciones(e.target.value)}
-                                    placeholder="Ingrese observaciones del movimiento..."
-                                    className={inputCls}
-                                />
-                            </div>
-                        </div>
-
-                        {/* Totals Section */}
-                        <div className="lg:col-span-1 h-full">
-                            <div className="bg-slate-900 p-6 rounded-2xl shadow-xl text-white space-y-4 h-full flex flex-col justify-between">
-                                <div>
-                                    <div className="flex justify-between items-center text-[10px] opacity-60 uppercase font-black mb-2">
-                                        <span>Items: {selectedItems.length}</span>
-                                        <span>Subtotal: <Money value={totalAjuste} /></span>
-                                    </div>
-                                    <div className="flex justify-between items-center border-t border-white/10 pt-4">
-                                        <span className="text-sm font-bold opacity-80 uppercase tracking-widest">Total Ajuste</span>
-                                        <span className="text-2xl font-black"><Money value={totalAjuste} /></span>
-                                    </div>
-                                </div>
-                                <div className="space-y-2 mt-4">
-                                    <button 
-                                        onClick={handleSubmit}
-                                        disabled={createMutation.isPending || selectedItems.length === 0}
-                                        className="w-full bg-indigo-600 text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-500 transition-all active:scale-95 disabled:opacity-50"
-                                    >
-                                        <Save size={18} />
-                                        <span>{createMutation.isPending ? 'Guardando...' : 'Guardar Movimiento'}</span>
-                                    </button>
-                                    <button 
-                                        type="button"
-                                        onClick={() => { resetForm(); setActiveTab('historial'); }}
-                                        className="w-full bg-white/10 hover:bg-white/20 text-white py-2 rounded-xl text-xs font-bold transition-all text-center"
-                                    >
-                                        Cancelar y Volver
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Detail Row: Items */}
-                    <div className="space-y-6">
-                        <div className={`bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden transition-all duration-300 relative ${(!branchId || !motivoId || !numero) ? 'opacity-40 grayscale pointer-events-none select-none' : ''}`}>
-                            {(!branchId || !motivoId || !numero) && (
-                                <div className="absolute inset-0 z-10 flex items-center justify-center p-6 text-center">
-                                    <div className="bg-white/90 backdrop-blur-sm p-6 rounded-3xl border border-slate-100 shadow-2xl max-w-sm animate-in zoom-in-95 duration-300">
-                                        <AlertCircle size={32} className="mx-auto mb-3 text-amber-500" />
-                                        <p className="text-[11px] font-black text-slate-800 uppercase tracking-widest leading-relaxed">
-                                            Debe completar la sucursal, el motivo y el número de documento para comenzar a agregar productos.
-                                        </p>
-                                    </div>
-                                </div>
-                            )}
-                            <div className="p-6 space-y-6">
-                                <div className="flex items-center justify-between gap-4 p-4 border-b border-slate-100 bg-slate-50/30 rounded-xl">
-                                <div className="flex-1 grid grid-cols-2 md:grid-cols-[150px_1fr_100px_120px_100px_50px] gap-2 items-end">
-                                    <div>
-                                        <label className="text-[9px] font-black text-slate-400 uppercase ml-1 block mb-1">Cód. Producto</label>
-                                        <div className="relative">
-                                            <Barcode className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                            <input 
-                                                ref={barcodeInputRef}
-                                                type="text"
-                                                value={quickBarcode}
-                                                onChange={(e) => setQuickBarcode(e.target.value.toUpperCase())}
-                                                onKeyDown={handleBarcodeSubmit}
-                                                placeholder="CÓDIGO + ENTER"
-                                                className="w-full pl-8 pr-2 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all font-mono text-xs font-bold"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="text-[9px] font-black text-slate-400 uppercase ml-1 block mb-1">Descripción</label>
-                                        <div className="w-full px-3 py-1.5 bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-500 truncate h-[34px] flex items-center">
-                                            {quickProd?.nombre || '---'}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="text-[9px] font-black text-slate-400 uppercase ml-1 block mb-1">Cant.</label>
-                                        <input 
-                                            ref={qtyInputRef}
-                                            type="number"
-                                            value={quickCant}
-                                            onChange={(e) => setQuickCant(e.target.value)}
-                                            onKeyDown={(e) => e.key === 'Enter' && costInputRef.current?.focus()}
-                                            onFocus={(e) => e.target.select()}
-                                            className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 text-xs font-black text-center h-[34px]"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-[9px] font-black text-slate-400 uppercase ml-1 block mb-1">Costo Unit.</label>
-                                        <div className="relative">
-                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[10px] font-bold">$</span>
-                                            <input 
-                                                ref={costInputRef}
-                                                type="number"
-                                                value={quickCosto}
-                                                onChange={(e) => setQuickCosto(e.target.value)}
-                                                onKeyDown={(e) => e.key === 'Enter' && handleAddQuick()}
-                                                onFocus={(e) => e.target.select()}
-                                                className="w-full pl-6 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 text-xs font-black text-right h-[34px]"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="text-[9px] font-black text-slate-400 uppercase ml-1 block mb-1 text-right pr-1 italic">Total</label>
-                                        <div className="w-full px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-xl text-xs font-black text-indigo-600 text-right h-[34px] flex items-center justify-end">
-                                            <Money value={parseFloat(quickCant || 0) * parseFloat(quickCosto || 0)} />
-                                        </div>
-                                    </div>
-                                    <button 
-                                        onClick={handleAddQuick}
-                                        disabled={!quickProd}
-                                        className="h-[34px] w-full bg-indigo-600 text-white rounded-xl flex items-center justify-center hover:bg-indigo-700 disabled:opacity-30 transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
-                                    >
-                                        <Check size={18} />
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div className="bg-white rounded-2xl border border-slate-200 overflow-x-auto min-h-[400px]">
-                                <table className="w-full text-left border-collapse table-cards">
-                                    <thead>
-                                        <tr className="bg-slate-50/50 border-b border-slate-100 font-bold text-[10px] text-slate-500 uppercase tracking-widest">
-                                            <th className="px-6 py-2">Código</th>
-                                            <th className="px-6 py-2">Producto</th>
-                                            <th className="px-6 py-2 text-center w-24">Cant.</th>
-                                            <th className="px-6 py-2 text-right w-32">Costo U.</th>
-                                            <th className="px-6 py-2 text-right w-32">Total</th>
-                                            <th className="px-6 py-2 text-right w-16"></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                        {selectedItems.length === 0 ? (
-                                            <tr>
-                                                <td colSpan="6" className="px-6 py-24 text-center">
-                                                    <div className="flex flex-col items-center gap-3 text-slate-300">
-                                                        <Package size={48} className="opacity-20" />
-                                                        <p className="text-sm font-bold uppercase tracking-widest">Lista Vacía</p>
-                                                        <p className="text-xs font-medium text-slate-400">Escanea o selecciona productos manualmente</p>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ) : (
-                                            selectedItems.map((item) => (
-                                                <tr key={item.product_id} className="hover:bg-slate-50/50 transition-colors border-b border-slate-50 last:border-0 grow">
-                                                    <td className="px-6 py-1.5" data-label="Código">
-                                                        <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-50/50 px-2 py-0.5 rounded">{item.codigo}</span>
-                                                    </td>
-                                                    <td className="px-6 py-1.5" data-label="Producto">
-                                                        <div className="text-xs font-bold text-slate-700">{item.nombre}</div>
-                                                    </td>
-                                                    <td className="px-6 py-1.5" data-label="Cant.">
-                                                        <input 
-                                                            type="number" 
-                                                            value={item.cantidad}
-                                                            onChange={(e) => updateItem(item.product_id, 'cantidad', parseFloat(e.target.value))}
-                                                            onFocus={(e) => e.target.select()}
-                                                            className="w-full bg-transparent border-none rounded-lg text-center font-black py-0.5 text-xs focus:ring-2 focus:ring-indigo-500/10"
-                                                        />
-                                                    </td>
-                                                    <td className="px-6 py-1.5" data-label="Costo U.">
-                                                        <div className="relative">
-                                                            <span className="absolute left-1 top-1/2 -translate-y-1/2 text-slate-300 font-bold text-[10px]">$</span>
-                                                            <input 
-                                                                type="number" 
-                                                                value={item.costo}
-                                                                onChange={(e) => updateItem(item.product_id, 'costo', parseFloat(e.target.value))}
-                                                                onFocus={(e) => e.target.select()}
-                                                                className="w-full bg-transparent border-none rounded-lg pl-4 text-right font-bold py-0.5 text-xs focus:ring-2 focus:ring-indigo-500/10"
-                                                            />
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-1.5 text-right" data-label="Total">
-                                                        <span className="text-xs font-black text-slate-900"><Money value={item.total} /></span>
-                                                    </td>
-                                                    <td className="px-6 py-1.5 text-right" data-label="">
-                                                        <button 
-                                                            onClick={() => removeItem(item.product_id)}
-                                                            className="p-1 text-slate-600 hover:text-rose-500 transition-colors"
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            ))
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                </div>
+                <NewAdjustmentTab
+                    branchId={branchId}
+                    setBranchId={setBranchId}
+                    branches={branches}
+                    tipo={tipo}
+                    setTipo={setTipo}
+                    fecha={fecha}
+                    setFecha={setFecha}
+                    numero={numero}
+                    setNumero={setNumero}
+                    motivoId={motivoId}
+                    setMotivoId={setMotivoId}
+                    motivos={motivos}
+                    observaciones={observaciones}
+                    setObservaciones={setObservaciones}
+                    selectedItems={selectedItems}
+                    totalAjuste={totalAjuste}
+                    isSubmitting={createMutation.isPending}
+                    onSubmit={handleSubmit}
+                    onCancel={() => { resetForm(); setActiveTab('historial'); }}
+                    barcodeInputRef={barcodeInputRef}
+                    qtyInputRef={qtyInputRef}
+                    costInputRef={costInputRef}
+                    quickBarcode={quickBarcode}
+                    setQuickBarcode={setQuickBarcode}
+                    handleBarcodeSubmit={handleBarcodeSubmit}
+                    onOpenProductSearch={() => {
+                        if (!branchId) toast.error('Seleccione primero una sucursal');
+                        else setIsProductModalOpen(true);
+                    }}
+                    quickProd={quickProd}
+                    quickCant={quickCant}
+                    setQuickCant={setQuickCant}
+                    quickCosto={quickCosto}
+                    setQuickCosto={setQuickCosto}
+                    handleAddQuick={handleAddQuick}
+                    updateItem={updateItem}
+                    removeItem={removeItem}
+                />
             ) : (
-                /* History Tab */
-                <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-300">
-                    <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
-                        <div className="flex-1 min-w-[180px] relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                            <input 
-                                type="text"
-                                value={historySearch}
-                                onChange={(e) => { setHistorySearch(e.target.value.toUpperCase()); setHistoryPage(1); }}
-                                placeholder="Buscar por número, sucursal u observaciones..."
-                                className="w-full pl-10 pr-4 py-2 bg-slate-50 border-none rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all text-sm font-bold"
-                            />
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <button 
-                                onClick={exportToExcel}
-                                className="px-4 py-2 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-emerald-100 transition-all"
-                            >
-                                <FileSpreadsheet size={14} />
-                                Excel
-                            </button>
-                            <button 
-                                onClick={handleOpenPdfModal}
-                                className="px-4 py-2 bg-rose-50 text-rose-700 border border-rose-100 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-rose-100 transition-all"
-                            >
-                                <FilePdf size={14} />
-                                PDF
-                            </button>
-                        </div>
-                    </div>
-
-                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                        <Table 
-                            headers={['Documento', 'Fecha', 'Sucursal', 'Motivo', 'Tipo', 'Items', 'Estado', 'Acciones']}
-                            data={adjustmentsData?.data || []}
-                            isLoading={loadingAdjustments}
-                            renderRow={(a) => (
-                                <tr key={a.id} className={`hover:bg-slate-50/50 transition-colors border-b border-slate-100 last:border-0 ${a.status === 'ANULADO' ? 'opacity-50 grayscale select-none' : ''}`}>
-                                    <td className="px-3 py-2">
-                                        <span className="text-xs font-mono font-black text-indigo-600 whitespace-nowrap">
-                                            AJ-{String(a.id).padStart(6, '0')}
-                                            {a.numero && <> <span className="text-slate-400 font-normal ml-1 mr-1">/</span> {a.numero} </>}
-                                        </span>
-                                    </td>
-                                    <td className="px-3 py-2">
-                                        <span className="text-xs font-bold text-slate-600 whitespace-nowrap">
-                                            {formatDateDMY(a.fecha)}
-                                        </span>
-                                    </td>
-                                    <td className="px-3 py-2">
-                                        <span className="text-xs font-bold text-slate-700 truncate block max-w-[120px]">{a.branch_name}</span>
-                                    </td>
-                                    <td className="px-3 py-2">
-                                        <span className="text-xs font-medium text-slate-500 truncate block max-w-[200px]">{a.motivo_name}</span>
-                                    </td>
-                                    <td className="px-3 py-2">
-                                        <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black tracking-wider ${a.tipo === 'ENTRADA' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
-                                            {a.tipo}
-                                        </span>
-                                    </td>
-                                    <td className="px-3 py-2 text-center">
-                                        <span className="bg-slate-100 px-2 py-0.5 rounded-lg text-xs font-bold text-slate-600">{a.items_count}</span>
-                                    </td>
-                                    <td className="px-2 py-2">
-                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black tracking-tighter uppercase ${a.status === 'ANULADO' ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>
-                                            {a.status || 'COMPLETADO'}
-                                        </span>
-                                    </td>
-                                    <td className="px-2 py-2 text-right">
-                                        <div className="flex items-center justify-end gap-1">
-                                            <button 
-                                                onClick={() => setViewingAdjustment(a)}
-                                                className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                            >
-                                                <Eye size={14} />
-                                            </button>
-                                            {a.status !== 'ANULADO' && (
-                                                <>
-                                                    <button 
-                                                        onClick={() => setEditingAdjustment(a)}
-                                                        className="p-1.5 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-                                                    >
-                                                        <Edit2 size={14} />
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => handleVoidAdjustment(a.id)}
-                                                        className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                                                    >
-                                                        <XCircle size={14} />
-                                                    </button>
-                                                </>
-                                            )}
-                                        </div>
-                                    </td>
-                                </tr>
-                            )}
-                        />
-                        <Pagination 
-                            currentPage={historyPage}
-                            totalPages={adjustmentsData?.totalPages || 0}
-                            totalItems={adjustmentsData?.totalItems || 0}
-                            onPageChange={setHistoryPage}
-                            itemsOnPage={adjustmentsData?.data?.length || 0}
-                            isLoading={loadingAdjustments}
-                        />
-                    </div>
-                </div>
+                <AdjustmentHistoryTab
+                    historySearch={historySearch}
+                    setHistorySearch={setHistorySearch}
+                    historyPage={historyPage}
+                    setHistoryPage={setHistoryPage}
+                    adjustmentsData={adjustmentsData}
+                    loadingAdjustments={loadingAdjustments}
+                    onExportExcel={exportToExcel}
+                    onOpenPdfModal={handleOpenPdfModal}
+                    onViewAdjustment={setViewingAdjustment}
+                    onEditAdjustment={setEditingAdjustment}
+                    onVoidAdjustment={handleVoidAdjustment}
+                />
             )}
 
-            <ProductSearchModal 
+            <ProductSearchModal
                 isOpen={isProductModalOpen}
                 onClose={() => setIsProductModalOpen(false)}
-                onSelectProduct={(product) => {
-                    handleSelectProduct(product);
-                }}
+                onSelectProduct={handleSelectProduct}
                 branchId={branchId}
                 mode="inventory"
             />
-
-            <AdjustmentMotivosModal 
-                open={isMotivosModalOpen}
-                onClose={() => setIsMotivosModalOpen(false)}
-                tipo={tipo}
-                motivos={motivos}
-            />
-
-            <AdjustmentDetailModal 
-                adjustment={viewingAdjustment}
-                onClose={() => setViewingAdjustment(null)}
-            />
-
-            <AdjustmentEditModal 
-                open={!!editingAdjustment}
-                adjustment={editingAdjustment}
-                onClose={() => setEditingAdjustment(null)}
-            />
-
-            {/* Modal de Visualización Interactiva de Reporte PDF */}
+            <AdjustmentMotivosModal open={isMotivosModalOpen} onClose={() => setIsMotivosModalOpen(false)} tipo={tipo} motivos={motivos} />
+            <AdjustmentDetailModal adjustment={viewingAdjustment} onClose={() => setViewingAdjustment(null)} />
+            <AdjustmentEditModal open={!!editingAdjustment} adjustment={editingAdjustment} onClose={() => setEditingAdjustment(null)} />
             <PdfViewerModal
                 isOpen={isPdfModalOpen}
                 onClose={() => setIsPdfModalOpen(false)}
                 title="Reporte de Movimientos de Inventario"
-                subtitle={historySearch ? `Búsqueda: "${historySearch}"` : (user?.branch_id ? `Sucursal: ${branches.find(b => String(b.id) === String(user.branch_id))?.nombre || ''}` : 'Historial general de movimientos')}
+                subtitle={historySearch ? `Búsqueda: "${historySearch}"` : (user?.branch_id ? `Sucursal: ${branches.find((b) => String(b.id) === String(user.branch_id))?.nombre || ''}` : 'Historial general de movimientos')}
                 badge="Formato Oficial"
                 pdfUrl={pdfUrl}
                 isLoading={isLoadingPdf}

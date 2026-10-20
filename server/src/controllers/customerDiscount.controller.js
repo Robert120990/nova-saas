@@ -15,7 +15,7 @@ const getDiscounts = async (req, res) => {
             JOIN branches b ON cd.branch_id = b.id
             WHERE cd.company_id = ?
         `;
-        let params = [req.company_id];
+        const params = [req.company_id];
 
         if (branch_id) {
             query += ` AND cd.branch_id = ?`;
@@ -23,7 +23,7 @@ const getDiscounts = async (req, res) => {
         }
 
         query += ` ORDER BY cd.created_at DESC`;
-        
+
         const [rows] = await pool.query(query, params);
         res.json(rows);
     } catch (error) {
@@ -44,7 +44,6 @@ const createDiscount = async (req, res) => {
         );
 
         if (existing.length > 0) {
-            // Actualizar existente
             await pool.query(
                 'UPDATE customer_product_discounts SET discount_type = ?, discount_value = ? WHERE id = ?',
                 [discount_type, discount_value, existing[0].id]
@@ -56,11 +55,38 @@ const createDiscount = async (req, res) => {
             INSERT INTO customer_product_discounts (company_id, branch_id, customer_id, product_id, discount_type, discount_value)
             VALUES (?, ?, ?, ?, ?, ?)
         `, [req.company_id, branch_id, customer_id, product_id, discount_type, discount_value]);
-        
+
         res.status(201).json({ message: 'Descuento creado exitosamente' });
     } catch (error) {
         console.error('Error in createDiscount:', error);
         res.status(500).json({ message: 'Error al crear descuento' });
+    }
+};
+
+const updateDiscount = async (req, res) => {
+    const { id } = req.params;
+    const { customer_id, product_id, branch_id, discount_type, discount_value } = req.body;
+    try {
+        if (!branch_id) return res.status(400).json({ message: 'La sucursal es obligatoria' });
+
+        const [conflict] = await pool.query(
+            'SELECT id FROM customer_product_discounts WHERE company_id = ? AND customer_id = ? AND product_id = ? AND branch_id = ? AND id != ?',
+            [req.company_id, customer_id, product_id, branch_id, id]
+        );
+        if (conflict.length > 0) {
+            return res.status(400).json({ message: 'Ya existe otra regla de descuento para este cliente y producto en la misma sucursal' });
+        }
+
+        await pool.query(
+            `UPDATE customer_product_discounts
+             SET branch_id = ?, customer_id = ?, product_id = ?, discount_type = ?, discount_value = ?
+             WHERE id = ? AND company_id = ?`,
+            [branch_id, customer_id, product_id, discount_type, discount_value, id, req.company_id]
+        );
+        res.json({ message: 'Descuento actualizado exitosamente' });
+    } catch (error) {
+        console.error('Error in updateDiscount:', error);
+        res.status(500).json({ message: 'Error al actualizar descuento' });
     }
 };
 
@@ -78,5 +104,6 @@ const deleteDiscount = async (req, res) => {
 module.exports = {
     getDiscounts,
     createDiscount,
+    updateDiscount,
     deleteDiscount
 };
