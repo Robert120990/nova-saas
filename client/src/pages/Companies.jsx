@@ -210,7 +210,12 @@ const Companies = () => {
                                 <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 bg-slate-100 rounded-lg flex-shrink-0 overflow-hidden border border-slate-200">
                                         {company.logo_url ? (
-                                            <img src={company.logo_url} alt="Logo" className="w-full h-full object-contain" />
+                                            <>
+                                                <img src={company.logo_url.startsWith('http') || company.logo_url.startsWith('/') ? company.logo_url : `/${company.logo_url}`} alt="Logo" className="w-full h-full object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; if (e.currentTarget.nextElementSibling) e.currentTarget.nextElementSibling.style.display = 'flex'; }} />
+                                                <div style={{ display: 'none' }} className="w-full h-full items-center justify-center text-slate-400">
+                                                    <Building2 size={20} />
+                                                </div>
+                                            </>
                                         ) : (
                                             <div className="w-full h-full flex items-center justify-center text-slate-400">
                                                 <Building2 size={20} />
@@ -401,7 +406,7 @@ const Companies = () => {
                             {(previewUrl || selectedCompany?.logo_url) && !removeLogo && (
                                 <div className="w-16 h-16 bg-white border border-slate-200 rounded-lg overflow-hidden flex-shrink-0 shadow-sm relative group">
                                     <img 
-                                        src={previewUrl || selectedCompany.logo_url} 
+                                        src={(previewUrl || selectedCompany.logo_url)?.startsWith('http') || (previewUrl || selectedCompany.logo_url)?.startsWith('blob:') || (previewUrl || selectedCompany.logo_url)?.startsWith('/') ? (previewUrl || selectedCompany.logo_url) : `/${previewUrl || selectedCompany.logo_url}`} 
                                         alt="Vista previa" 
                                         className="w-full h-full object-contain" 
                                     />
