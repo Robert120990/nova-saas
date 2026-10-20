@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Plus, Lock, X, Clock } from 'lucide-react';
 import PackagingColdChainSection from './PackagingColdChainSection';
 import PackagingBatchBalanceCard from './PackagingBatchBalanceCard';
-import PackagingItemsSection from './PackagingItemsSection';
+import PackagingItemsSection, { resolveCatalogMatch } from './PackagingItemsSection';
 
 const EggNewPackagingModal = ({
     isOpen,
@@ -208,11 +208,19 @@ const EggNewPackagingModal = ({
                         </label>
                         <select
                             value={packagingForm.product_type}
-                            onChange={(e) => setPackagingForm({ ...packagingForm, product_type: e.target.value })}
+                            onChange={(e) => {
+                                const newType = e.target.value;
+                                const updatedItems = (packagingForm.items || []).map(it => {
+                                    const autoProd = resolveCatalogMatch(newType, it.presentation, catalogProducts, codeMappings);
+                                    return { ...it, product_id: autoProd?.id || null };
+                                });
+                                setPackagingForm({ ...packagingForm, product_type: newType, items: updatedItems });
+                            }}
                             className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                         >
                             <option value="huevo entero">Huevo Entero Pasteurizado</option>
                             <option value="huevo rapido">Huevo Entero Rápido</option>
+                            <option value="huevo con leche">Huevo con Leche Pasteurizado</option>
                             <option value="clara">Clara de Huevo Pasteurizada</option>
                             <option value="clara ppg">Clara PPG Pasteurizada</option>
                             <option value="yema">Yema Líquida Pasteurizada</option>

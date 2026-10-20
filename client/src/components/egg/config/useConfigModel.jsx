@@ -29,6 +29,8 @@ const inferCategoryAndPresentation = (productName = '', code = '') => {
         product_type = 'clara ppg';
     } else if (text.includes('clara')) {
         product_type = 'clara';
+    } else if (text.includes('leche') || text.includes('hlgl') || text.includes('hecl') || text.includes('hel2')) {
+        product_type = 'huevo con leche';
     } else if (text.includes('rapido') || text.includes('rápido')) {
         product_type = 'huevo rapido';
     } else if (text.includes('salada') || text.includes('yema sal')) {
@@ -211,6 +213,7 @@ export default function useConfigModel() {
     const defaults = {
         'huevo entero': { weight: '32.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' },
         'huevo rapido': { weight: '32.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' },
+        'huevo con leche': { weight: '8.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' },
         'clara': { weight: '8.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' },
         'clara ppg': { weight: '8.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' },
         'yema salada': { weight: '4.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' },
@@ -222,6 +225,7 @@ export default function useConfigModel() {
     const baseFormulationProducts = [
         { type: 'huevo entero', label: 'Huevo Entero Pasteurizado' },
         { type: 'huevo rapido', label: 'Huevo Entero Rápido' },
+        { type: 'huevo con leche', label: 'Huevo con Leche Pasteurizado' },
         { type: 'clara', label: 'Clara Pasteurizada' },
         { type: 'clara ppg', label: 'Clara PPG' },
         { type: 'yema salada', label: 'Yema Líquida Salada' },

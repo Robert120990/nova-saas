@@ -3,6 +3,7 @@ import { Pencil, ShieldCheck, Lock, X, Clock } from 'lucide-react';
 const PRODUCT_OPTIONS = [
     { value: 'huevo entero', label: 'Huevo Entero Pasteurizado' },
     { value: 'huevo rapido', label: 'Huevo Entero Rápido' },
+    { value: 'huevo con leche', label: 'Huevo con Leche Pasteurizado' },
     { value: 'clara', label: 'Clara de Huevo Pasteurizada' },
     { value: 'clara ppg', label: 'Clara PPG Pasteurizada' },
     { value: 'yema', label: 'Yema Líquida Pasteurizada' },

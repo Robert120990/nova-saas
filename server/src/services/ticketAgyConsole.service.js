@@ -214,11 +214,16 @@ function buildAgyExecutionPrompt(ticket, model) {
 
 function extractCleanAgyResult(rawTranscript, endMarker) {
     const clean = stripAnsiCodes(rawTranscript);
-    if (clean.includes(endMarker)) {
-        const beforeMarker = clean.split(endMarker)[0];
-        return beforeMarker.trim();
+    if (!clean || !clean.includes(endMarker)) return '';
+    const beforeMarker = clean.split(endMarker)[0].trim();
+    if (
+        beforeMarker.includes('error: /model takes no arguments') ||
+        beforeMarker.includes('INSTRUCCIONES ESTRICTAS PARA AGY') ||
+        beforeMarker.includes('INSTRUCCIONES DE EJECUCIÓN:')
+    ) {
+        return '';
     }
-    return '';
+    return beforeMarker;
 }
 
 function buildRemoteShellScript({ projectPath, agyCommand, model, promptText, isPlanPhase, endMarker }) {
@@ -247,8 +252,6 @@ AGY_BIN=$(type -P ${safeCmd} 2>/dev/null || find /root /home /usr/local /opt -na
 if [ -n "$AGY_BIN" ]; then
   (
     sleep 2
-    echo "/model ${safeModel}"
-    sleep 1
     ${isPlanPhase ? 'echo "/plan $FLAT_PROMPT"' : 'echo "$FLAT_PROMPT"'}
     ${isPlanPhase ? 'sleep 35' : 'for i in 1 2 3 4 5; do sleep 8; echo "y"; done'}
     echo "/exit"

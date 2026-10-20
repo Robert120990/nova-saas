@@ -9,7 +9,7 @@ const WEIGHT_MAP = {
     'bolsa 5LB': '5.00'
 };
 
-const resolveCatalogMatch = (productType, presentation, catalogProducts = [], codeMappings = []) => {
+export const resolveCatalogMatch = (productType, presentation, catalogProducts = [], codeMappings = []) => {
     if (!catalogProducts || catalogProducts.length === 0) return null;
     const cleanType = (productType || '').toLowerCase();
     const cleanPres = (presentation || '').toLowerCase();
@@ -24,20 +24,21 @@ const resolveCatalogMatch = (productType, presentation, catalogProducts = [], co
         }
         if (Array.isArray(codeItems)) {
             const found = codeItems.find(it => {
-                const name = (it.product_name || '').toLowerCase();
+                const name = (it.product_name || m.catalog_product_name || '').toLowerCase();
                 const code = (it.code || '').toLowerCase();
                 const presMatch = (cleanPres.includes('32') && (name.includes('32') || code.includes('32') || code.includes('c32'))) ||
                                   (cleanPres.includes('30') && (name.includes('30') || code.includes('30') || code.includes('c30'))) ||
-                                  (cleanPres.includes('8') && (name.includes('8') || name.includes('galon') || name.includes('galón') || code.includes('8') || code.includes('g') || code.includes('gl'))) ||
+                                  (cleanPres.includes('8') && (name.includes('8') || name.includes('galon') || name.includes('galón') || code.includes('8') || code.includes('g') || code.includes('gl') || code.includes('75'))) ||
                                   (cleanPres.includes('4') && (name.includes('4') || code.includes('4'))) ||
                                   (cleanPres.includes('2') && (name.includes('2') || name.includes('litro') || code.includes('2') || code.includes('l')));
-                const typeMatch = cleanType.includes('rapido') ? (name.includes('rapido') || code.includes('rapido') || code.includes('her'))
+                const typeMatch = cleanType.includes('leche') ? (name.includes('leche') || code.includes('hlgl') || code.includes('hecl') || code.includes('hel2'))
+                                : cleanType.includes('rapido') ? (name.includes('rapido') || code.includes('rapido') || code.includes('her'))
                                 : cleanType.includes('clara ppg') ? (name.includes('ppg') || code.includes('ppg') || code.includes('cppg'))
                                 : cleanType.includes('clara') ? (name.includes('clara') && !name.includes('ppg'))
                                 : cleanType.includes('azucarada') ? (name.includes('azucarada') || code.includes('ya'))
                                 : cleanType.includes('salada') ? (name.includes('salada') || code.includes('ys'))
                                 : cleanType.includes('yema') ? name.includes('yema')
-                                : (name.includes('entero') || code.includes('he'));
+                                : ((name.includes('entero') || code.includes('he')) && !name.includes('leche') && !code.includes('hlgl') && !code.includes('hecl') && !code.includes('hel2'));
                 return presMatch && typeMatch;
             });
             if (found && found.product_id) {
@@ -53,13 +54,14 @@ const resolveCatalogMatch = (productType, presentation, catalogProducts = [], co
         const name = (p.nombre || '').toLowerCase();
         const code = (p.codigo || '').toLowerCase();
         const hasWeight = weightNum ? (name.includes(weightNum) || code.includes(weightNum)) : true;
-        const typeMatch = cleanType.includes('rapido') ? (name.includes('rapido') || code.includes('her'))
+        const typeMatch = cleanType.includes('leche') ? (name.includes('leche') || code.includes('hlgl') || code.includes('hecl') || code.includes('hel2'))
+                        : cleanType.includes('rapido') ? (name.includes('rapido') || code.includes('her'))
                         : cleanType.includes('clara ppg') ? (name.includes('ppg') || code.includes('ppg'))
                         : cleanType.includes('clara') ? (name.includes('clara') && !name.includes('ppg'))
                         : cleanType.includes('azucarada') ? name.includes('azucarada')
                         : cleanType.includes('salada') ? name.includes('salada')
                         : cleanType.includes('yema') ? name.includes('yema')
-                        : (name.includes('entero') || code.includes('he'));
+                        : ((name.includes('entero') || code.includes('he')) && !name.includes('leche') && !code.includes('hlgl') && !code.includes('hecl') && !code.includes('hel2'));
         return hasWeight && typeMatch;
     });
 

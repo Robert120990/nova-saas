@@ -11,6 +11,7 @@ export const POUNDS_PER_KILOGRAM = 2.2046226218;
 export const INDUSTRIAL_PRODUCT_CATEGORIES = Object.freeze([
     { value: 'huevo entero', label: 'Huevo entero' },
     { value: 'huevo rapido', label: 'Huevo rápido' },
+    { value: 'huevo con leche', label: 'Huevo con leche' },
     { value: 'clara', label: 'Clara' },
     { value: 'clara ppg', label: 'Clara PPG' },
     { value: 'yema salada', label: 'Yema salada' },
@@ -26,6 +27,8 @@ export const INDUSTRIAL_PRODUCT_CATEGORIES = Object.freeze([
 export const RECIPE_FORMULA_NAMES = Object.freeze({
     'huevo entero': 'Huevo Entero Pasteurizado',
     'huevo rapido': 'Huevo Entero Rápido',
+    'huevo con leche': 'Huevo con Leche Pasteurizado',
+    'huevo en leche': 'Huevo con Leche Pasteurizado',
     'clara': 'Clara Pasteurizada',
     'clara ppg': 'Clara PPG',
     'yema salada': 'Yema Líquida Salada',
@@ -39,6 +42,7 @@ export const RECIPE_FORMULA_NAMES = Object.freeze({
 export const RECIPES_CATALOG = Object.freeze([
     { type: 'huevo entero', label: 'Huevo Entero Pasteurizado', defaultWeight: '32.00', defaultYield: '85.00' },
     { type: 'huevo rapido', label: 'Huevo Entero Rápido', defaultWeight: '32.00', defaultYield: '85.00' },
+    { type: 'huevo con leche', label: 'Huevo con Leche Pasteurizado', defaultWeight: '8.00', defaultYield: '85.00' },
     { type: 'clara', label: 'Clara Pasteurizada', defaultWeight: '8.00', defaultYield: '85.00' },
     { type: 'clara ppg', label: 'Clara PPG', defaultWeight: '8.00', defaultYield: '85.00' },
     { type: 'yema salada', label: 'Yema Líquida Salada', defaultWeight: '4.00', defaultYield: '85.00' },

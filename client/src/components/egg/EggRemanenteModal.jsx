@@ -4,6 +4,7 @@ import { Sparkles, XCircle } from 'lucide-react';
 const CANONICAL_REMANENTE_PRODUCTS = [
     { value: 'huevo entero', label: 'Huevo Entero' },
     { value: 'huevo rapido', label: 'Huevo Rápido' },
+    { value: 'huevo con leche', label: 'Huevo con Leche Pasteurizado' },
     { value: 'clara', label: 'Clara de Huevo' },
     { value: 'clara ppg', label: 'Clara PPG' },
     { value: 'yema', label: 'Yema Líquida' },

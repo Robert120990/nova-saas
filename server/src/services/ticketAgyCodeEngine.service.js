@@ -106,10 +106,30 @@ function resolveProjectForTicket(ticket = {}, settings = {}) {
     };
 }
 
+const KNOWN_SAAS_ROUTE_FILES = {
+    '/industrial/empaque': [
+        'client/src/components/egg/packaging/EggNewPackagingModal.jsx',
+        'client/src/components/egg/packaging/PackagingItemsSection.jsx',
+        'client/src/components/egg/packaging/EggEditPackagingModal.jsx',
+        'client/src/constants/eggIndustrialCatalogs.js',
+        'client/src/pages/EggIndustrial/Packaging.jsx'
+    ],
+    '/industrial/produccion': [
+        'client/src/components/egg/production/ProductionIsNewBatchModalOpenModal.jsx',
+        'client/src/constants/eggIndustrialCatalogs.js',
+        'client/src/pages/EggIndustrial/Production.jsx'
+    ]
+};
+
 function findRouteMappedFiles(rootDir, pageUrl, isAdmin) {
     if (!pageUrl) return [];
     const matched = [];
     const cleanRoute = String(pageUrl).split('?')[0].trim();
+    if (!isAdmin && KNOWN_SAAS_ROUTE_FILES[cleanRoute]) {
+        for (const rel of KNOWN_SAAS_ROUTE_FILES[cleanRoute]) {
+            if (fs.existsSync(path.join(rootDir, rel))) matched.push(rel);
+        }
+    }
     const routerFiles = isAdmin
         ? [path.join(rootDir, 'frontend/src/pages/DashboardLayout.jsx'), path.join(rootDir, 'frontend/src/App.jsx')]
         : [path.join(rootDir, 'client/src/App.jsx')];

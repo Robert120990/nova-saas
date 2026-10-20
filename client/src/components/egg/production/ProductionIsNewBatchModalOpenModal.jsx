@@ -254,6 +254,7 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                     >
                                         <option value="huevo entero">Huevo Entero Pasteurizado</option>
                                         <option value="huevo rapido">Huevo Entero Rápido</option>
+                                        <option value="huevo con leche">Huevo con Leche Pasteurizado</option>
                                         <option value="clara">Clara Pasteurizada</option>
                                         <option value="clara ppg">Clara PPG</option>
                                         <option value="yema salada">Yema Líquida Salada (10% sal)</option>
@@ -369,6 +370,7 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                                         <option value="clara ppg">Clara PPG</option>
                                                         <option value="huevo entero">Huevo Entero Pasteurizado</option>
                                                         <option value="huevo rapido">Huevo Entero Rápido</option>
+                                        <option value="huevo con leche">Huevo con Leche Pasteurizado</option>
                                                         <option value="yema salada">Yema Líquida Salada (10% sal)</option>
                                                         <option value="yema azucarada">Yema Líquida Azucarada (10% azúcar)</option>
                                                         <option value="fórmula especial">Fórmula Especial / HE Plus</option>
@@ -513,6 +515,7 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                                             >
                                                                 <option value="huevo entero">Huevo Entero Pasteurizado</option>
                                                                 <option value="huevo rapido">Huevo Entero Rápido</option>
+                                        <option value="huevo con leche">Huevo con Leche Pasteurizado</option>
                                                                 <option value="clara">Clara Pasteurizada</option>
                                                                 <option value="clara ppg">Clara PPG</option>
                                                                 <option value="yema salada">Yema Líquida Salada (10% sal)</option>

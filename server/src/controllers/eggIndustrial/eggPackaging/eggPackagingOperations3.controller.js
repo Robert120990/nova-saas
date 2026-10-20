@@ -167,6 +167,8 @@ const getCodeMappings = async (req, res) => {
         const RECIPE_NAMES = {
             'huevo entero': 'Huevo Entero Pasteurizado',
             'huevo rapido': 'Huevo Entero Rápido',
+            'huevo con leche': 'Huevo con Leche Pasteurizado',
+            'huevo en leche': 'Huevo con Leche Pasteurizado',
             'clara': 'Clara Pasteurizada',
             'clara ppg': 'Clara PPG',
             'yema salada': 'Yema Líquida Salada',
@@ -232,6 +234,7 @@ const getCatalogOvoproducts = async (req, res) => {
                    OR LOWER(p.nombre) LIKE '%clara%'
                    OR LOWER(p.nombre) LIKE '%yema%'
                    OR LOWER(p.nombre) LIKE '%ovoproducto%'
+                   OR LOWER(p.nombre) LIKE '%leche%'
                )
              ORDER BY p.nombre ASC`,
             [branchId, branchId, companyId, companyId]
