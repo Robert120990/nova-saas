@@ -119,11 +119,15 @@ async function notifyNewTicketToTelegram(ticket) {
     if (typeof attList === 'string') { try { attList = JSON.parse(attList); } catch { attList = []; } }
     const firstCaption = Array.isArray(attList) && attList[0]?.caption ? `\n🖼️ *Nota en captura:* "${escapeMd(attList[0].caption)}"\n` : '';
 
+    const isFromAdmin = String(ticket.source_system || '').toLowerCase().includes('admin.sipesv.com') || String(ticket.ticket_code || '').toUpperCase().startsWith('ADM-');
+    const projectBadge = isFromAdmin ? '🌐 *Proyecto:* `admin.sipesv.com` (SIPE Admin)' : '🖥️ *Proyecto:* `sys.sipesv.com` (SIPE SaaS)';
+
     const text =
-        `🎫 *NUEVO TICKET DE SOPORTE — #${escapeMd(ticket.ticket_code)}*\n\n` +
+        `🎫 *NUEVO TICKET DE SOPORTE — #${escapeMd(ticket.ticket_code)}*\n` +
+        `${projectBadge}\n\n` +
         `📌 *Asunto:* ${escapeMd(ticket.subject)}\n` +
         `🏷️ *Tipo:* ${typeText}  |  *Prioridad:* ${prioText}\n` +
-        `🏢 *Empresa:* ${escapeMd(ticket.company_name || 'Empresa')} (${escapeMd(ticket.branch_name || 'Global')})\n` +
+        `🏢 *Empresa:* ${escapeMd(ticket.company_name || (isFromAdmin ? 'SIPE Admin' : 'Empresa'))} (${escapeMd(ticket.branch_name || 'Global')})\n` +
         `👤 *Reportado por:* ${escapeMd(ticket.user_name)}${ticket.user_role ? ` (${escapeMd(ticket.user_role)})` : ''}\n` +
         (ticket.page_url ? `🖥️ *Pantalla:* \`${escapeMd(ticket.page_url)}\`\n` : '') +
         `\n📝 *Descripción:*\n${escapeMd(ticket.description)}\n` +

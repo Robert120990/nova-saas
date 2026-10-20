@@ -5,6 +5,7 @@ const { spawn } = require('child_process');
 const { Client } = require('ssh2');
 const pool = require('../config/db');
 const { buildTicketDiagnosticMarkdown } = require('./ticketAiTaskBridge.service');
+const { resolveProjectForTicket, findSmartRelatedFiles } = require('./ticketAgyCodeEngine.service');
 
 function detectDefaultProjectRoot() {
     if (process.env.AGY_PROJECT_PATH && fs.existsSync(process.env.AGY_PROJECT_PATH)) {
@@ -148,44 +149,7 @@ function parseFeedbackHistory(raw) {
 }
 
 function findRelatedRepoFiles(ticket, projectPath) {
-    const rootDir = resolveActiveProjectPath(projectPath);
-    const found = [];
-    const keywords = [
-        ...(String(ticket.page_url || '').split('/').filter(Boolean)),
-        ...(String(ticket.module_name || '').split(/\s+/).filter((w) => w.length > 3)),
-        ...(String(ticket.subject || '').split(/\s+/).filter((w) => w.length > 4))
-    ].map((k) => k.toLowerCase().replace(/[^a-z0-9]/g, '')).filter((k) => k.length >= 3);
-
-    const dirsToScan = [
-        path.join(rootDir, 'client', 'src', 'pages'),
-        path.join(rootDir, 'client', 'src', 'components'),
-        path.join(rootDir, 'server', 'src', 'controllers'),
-        path.join(rootDir, 'server', 'src', 'services')
-    ];
-
-    const walk = (dir, depth = 0) => {
-        if (depth > 2 || !fs.existsSync(dir) || found.length >= 8) return;
-        try {
-            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-                if (found.length >= 8) break;
-                const full = path.join(dir, entry.name);
-                if (entry.isDirectory()) {
-                    walk(full, depth + 1);
-                } else if (/\.(jsx?|tsx?)$/.test(entry.name)) {
-                    const lower = entry.name.toLowerCase();
-                    if (keywords.some((kw) => lower.includes(kw))) {
-                        found.push(path.relative(rootDir, full).replace(/\\/g, '/'));
-                    }
-                }
-            }
-        } catch { /* ignore */ }
-    };
-
-    dirsToScan.forEach((d) => walk(d, 0));
-    if (found.length === 0) {
-        found.push('client/src/pages/SupportTickets.jsx', 'server/src/controllers/ticket.controller.js');
-    }
-    return found;
+    return findSmartRelatedFiles(ticket, { project_path: projectPath });
 }
 
 function buildAgyPlanningPrompt(ticket, model, planVersion = 1) {
@@ -265,11 +229,13 @@ function buildRemoteShellScript({ projectPath, agyCommand, model, promptText, is
 
     return `
 shopt -s expand_aliases 2>/dev/null || true
-[ -f ~/.profile ] && . ~/.profile 2>/dev/null || true
-if [ -f ~/.bashrc ]; then eval "$(sed '/case \\$- in/,/esac/d' ~/.bashrc 2>/dev/null)" 2>/dev/null || true; fi
-[ -f ~/.bash_aliases ] && . ~/.bash_aliases 2>/dev/null || true
-[ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh" 2>/dev/null || true
-export PATH="$HOME/.local/bin:$HOME/.antigravity/bin:$HOME/.npm-global/bin:$HOME/.bun/bin:/usr/local/bin:$PATH"
+for p in ~/.profile /root/.profile /home/sistemas/.profile; do [ -f "$p" ] && . "$p" 2>/dev/null || true; done
+for b in ~/.bashrc /root/.bashrc /home/sistemas/.bashrc; do
+  if [ -f "$b" ]; then eval "$(sed '/case \\$- in/,/esac/d' "$b" 2>/dev/null)" 2>/dev/null || true; fi
+done
+for a in ~/.bash_aliases /root/.bash_aliases /home/sistemas/.bash_aliases; do [ -f "$a" ] && . "$a" 2>/dev/null || true; done
+for n in "$HOME/.nvm/nvm.sh" "/root/.nvm/nvm.sh" "/home/sistemas/.nvm/nvm.sh"; do [ -s "$n" ] && . "$n" 2>/dev/null || true; done
+export PATH="$HOME/.local/bin:$HOME/.antigravity/bin:/root/.local/bin:/root/.antigravity/bin:/home/sistemas/.local/bin:/home/sistemas/.antigravity/bin:/home/sistemas/.local/share/pnpm:$HOME/.npm-global/bin:$HOME/.bun/bin:/usr/local/bin:$PATH"
 mkdir -p ~/.gemini/antigravity-cli
 echo '{"model":"${safeModel}"}' > ~/.gemini/antigravity-cli/settings.json 2>/dev/null || true
 if [ -d "${safePath}" ]; then cd "${safePath}"; elif [ -d "/opt/nova-saas" ]; then cd "/opt/nova-saas"; fi
@@ -277,7 +243,7 @@ PROMPT_FILE="/tmp/agy_ticket_${Date.now()}.txt"
 echo "${b64Prompt}" | base64 -d > "$PROMPT_FILE"
 FLAT_PROMPT=$(tr '\\n' ' ' < "$PROMPT_FILE")
 echo "=== CONSOLA AGY | Directorio: $(pwd) | Comando: ${safeCmd} | Modelo: ${safeModel} ==="
-AGY_BIN=$(command -v ${safeCmd} 2>/dev/null || find /root /home /usr/local /opt -name "${safeCmd}" -type f -executable 2>/dev/null | head -n 1)
+AGY_BIN=$(type -P ${safeCmd} 2>/dev/null || find /root /home /usr/local /opt -name "${safeCmd}" \\( -type f -o -type l \\) -executable 2>/dev/null | head -n 1)
 if [ -n "$AGY_BIN" ]; then
   (
     sleep 2
@@ -352,7 +318,7 @@ function runLocalInteractiveSession(settings, scriptContent, onChunk, timeoutMs 
 
 module.exports = {
     AVAILABLE_AGY_MODELS, getAgyServerSettings, saveAgyServerSettings, isRunningOnTargetServer,
-    stripAnsiCodes, sanitizeConsoleText, parseFeedbackHistory, findRelatedRepoFiles,
+    stripAnsiCodes, sanitizeConsoleText, parseFeedbackHistory, findRelatedRepoFiles, resolveProjectForTicket,
     buildAgyPlanningPrompt, extractAgyQuestionsAndOptions, buildAgyExecutionPrompt,
     extractCleanAgyResult, buildRemoteShellScript, runSshInteractiveSession, runLocalInteractiveSession
 };

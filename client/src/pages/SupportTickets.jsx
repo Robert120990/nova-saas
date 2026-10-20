@@ -223,7 +223,7 @@ const SupportTickets = () => {
                                         >
                                             <td className="py-3 px-4 whitespace-nowrap">
                                                 <div className="flex items-center gap-1.5">
-                                                    <span className="font-mono text-xs font-extrabold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-100">
+                                                    <span className={`font-mono text-xs font-extrabold px-2 py-0.5 rounded-lg border ${String(t.code || '').startsWith('ADM-') || String(t.source_system || '').includes('admin') ? 'text-purple-700 bg-purple-50 border-purple-200' : 'text-indigo-600 bg-indigo-50 border-indigo-100'}`}>
                                                         {t.code}
                                                     </span>
                                                     {t.screenshot_url && (

@@ -184,8 +184,12 @@ async function sendAgyPlanToTelegram(ticket) {
         ? `👇 *AGY detectó ${options.length} opciones posibles. Toca un botón para elegir la opción o escribe tu respuesta:*`
         : (requiresDecision ? `👇 *AGY planteó una duda antes de ejecutar. Presiona "✍️ Responder Duda" o aprueba el plan:*` : `👇 *Selecciona una decisión para la Consola AGY:*`);
 
+    const isFromAdmin = String(ticket.source_system || '').toLowerCase().includes('admin.sipesv.com') || String(ticket.ticket_code || '').toUpperCase().startsWith('ADM-');
+    const projectTag = isFromAdmin ? 'admin.sipesv.com (SIPE Admin)' : 'sys.sipesv.com (SIPE SaaS)';
+
     const msg =
         `${headerTitle}\n` +
+        `🌐 *Proyecto:* \`${escapeMd(projectTag)}\`\n` +
         `🖥️ *Entorno:* \`Consola AGY\`  |  🧠 *Modelo:* \`${escapeMd(model)}\`\n` +
         `📌 *Asunto:* ${escapeMd(ticket.subject)}\n` +
         `🏢 *Empresa:* ${escapeMd(ticket.company_name || 'Global')} · *Módulo:* ${escapeMd(ticket.module_name || 'General')}\n` +

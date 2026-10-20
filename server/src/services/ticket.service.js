@@ -1,10 +1,26 @@
 const pool = require('../config/db');
 const { sendToUser, broadcastToCompany } = require('./websocket.service');
 
-async function generateTicketCode() {
-    const [rows] = await pool.query('SELECT id FROM support_tickets ORDER BY id DESC LIMIT 1');
-    const nextNum = (rows[0]?.id || 0) + 1;
-    return `TKT-${String(nextNum).padStart(4, '0')}`;
+async function generateTicketCode(sourceSystem = 'sys.sipesv.com') {
+    const isAdmin = String(sourceSystem || '').toLowerCase().includes('admin.sipesv.com');
+    const prefix = isAdmin ? 'ADM' : 'TKT';
+    const [rows] = await pool.query(
+        'SELECT ticket_code FROM support_tickets WHERE ticket_code LIKE ? ORDER BY id DESC LIMIT 50',
+        [`${prefix}-%`]
+    );
+    let maxSeq = 0;
+    for (const r of rows) {
+        const m = String(r.ticket_code || '').match(/^(?:TKT|ADM)-(\d+)$/i);
+        if (m) {
+            const num = parseInt(m[1], 10);
+            if (!isNaN(num) && num > maxSeq) maxSeq = num;
+        }
+    }
+    if (maxSeq === 0 && !isAdmin) {
+        const [idRows] = await pool.query('SELECT id FROM support_tickets ORDER BY id DESC LIMIT 1');
+        maxSeq = idRows[0]?.id || 0;
+    }
+    return `${prefix}-${String(maxSeq + 1).padStart(4, '0')}`;
 }
 
 function getCurrentSystemVersion() {
@@ -169,7 +185,16 @@ async function getTicketByCodeOrId(codeOrId) {
     if (/^\d+$/.test(clean)) {
         return getTicketById(parseInt(clean, 10));
     }
-    const normalizedCode = clean.startsWith('TKT-') ? clean : `TKT-${clean.padStart(4, '0')}`;
+    let normalizedCode = clean;
+    if (/^ADM-?\d+$/i.test(clean)) {
+        const digits = clean.replace(/^ADM-?/i, '');
+        normalizedCode = `ADM-${digits.padStart(4, '0')}`;
+    } else if (/^TKT-?\d+$/i.test(clean)) {
+        const digits = clean.replace(/^TKT-?/i, '');
+        normalizedCode = `TKT-${digits.padStart(4, '0')}`;
+    } else {
+        normalizedCode = `TKT-${clean.padStart(4, '0')}`;
+    }
     const [rows] = await pool.query('SELECT id FROM support_tickets WHERE ticket_code = ? LIMIT 1', [normalizedCode]);
     if (rows.length === 0) return null;
     return getTicketById(rows[0].id);
