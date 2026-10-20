@@ -182,14 +182,16 @@ async function getComprasData({ companyId, branchId, year, month, search, limit,
         const valExenta = Math.round(sign * e * 100) / 100;
         const valNosujeta = Math.round(sign * ns * 100) / 100;
         const valIva = Math.round(sign * i * 100) / 100;
+        const valRetencion = Math.round(sign * ret * 100) / 100;
+        const valPercepcion = Math.round(sign * per * 100) / 100;
         const valTotal = Math.round(sign * to * 100) / 100;
 
         totalGravada += valGravada;
         totalExenta += valExenta;
         totalNosujeta += valNosujeta;
         totalIva += valIva;
-        totalRetencion += ret;
-        totalPercepcion += per;
+        totalRetencion += valRetencion;
+        totalPercepcion += valPercepcion;
         totalAnticipo += ac;
         totalCompras += valTotal;
 
@@ -211,8 +213,8 @@ async function getComprasData({ companyId, branchId, year, month, search, limit,
             total_nosujeta: valNosujeta,
             total_gravada: valGravada,
             iva: valIva,
-            retencion: ret,
-            percepcion: per,
+            retencion: valRetencion,
+            percepcion: valPercepcion,
             anticipo_cuenta: ac,
             monto_total: valTotal,
             tipo_operacion: r.tipo_operacion || '1',

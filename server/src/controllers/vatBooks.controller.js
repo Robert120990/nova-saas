@@ -209,27 +209,31 @@ const drawCuadroResumenCompras = (doc, startX, totalWidth, totals, onNewPage = n
             y += rowH;
         };
 
-        const locGravNet = (totals.locales_grav_bruto || 0) - (totals.locales_nc || 0);
+        const locGravBruto = totals.locales_grav_bruto || 0;
+        const locGravNet = locGravBruto - (totals.locales_nc || 0);
         const locExeNet = (totals.locales_exe_bruto || 0) - (totals.locales_exe_nc || 0);
         const locNsNet = (totals.locales_ns_bruto || 0) - (totals.locales_ns_nc || 0);
         const locTotal = Number((locExeNet + locNsNet + locGravNet).toFixed(2));
 
-        const impGravNet = (totals.import_grav_bruto || 0) - (totals.import_nc || 0);
+        const impGravBruto = totals.import_grav_bruto || 0;
+        const impGravNet = impGravBruto - (totals.import_nc || 0);
         const impExeNet = (totals.import_exe_bruto || 0) - (totals.import_exe_nc || 0);
         const impNsNet = (totals.import_ns_bruto || 0) - (totals.import_ns_nc || 0);
         const impTotal = Number((impExeNet + impNsNet + impGravNet).toFixed(2));
 
-        const intGravNet = (totals.intern_grav_bruto || 0) - (totals.intern_nc || 0);
+        const intGravBruto = totals.intern_grav_bruto || 0;
+        const intGravNet = intGravBruto - (totals.intern_nc || 0);
         const intExeNet = (totals.intern_exe_bruto || 0) - (totals.intern_exe_nc || 0);
         const intNsNet = (totals.intern_ns_bruto || 0) - (totals.intern_ns_nc || 0);
         const intTotal = Number((intExeNet + intNsNet + intGravNet).toFixed(2));
 
         const ivaNet = totals.iva || 0;
+        const ivaBruto = totals.iva_bruto || (ivaNet + (totals.iva_nc || 0));
 
-        drawMatrixRow('LOCALES', locExeNet, locNsNet, locGravNet, totals.locales_nc || 0, locTotal, false, '#ffffff');
-        drawMatrixRow('IMPORTACIONES', impExeNet, impNsNet, impGravNet, totals.import_nc || 0, impTotal, false, '#f8fafc');
-        drawMatrixRow('INTERNACIONES', intExeNet, intNsNet, intGravNet, totals.intern_nc || 0, intTotal, false, '#ffffff');
-        drawMatrixRow('CREDITO FISCAL', null, null, ivaNet, totals.iva_nc || 0, ivaNet, true, '#f1f5f9');
+        drawMatrixRow('LOCALES', locExeNet, locNsNet, locGravBruto, totals.locales_nc || 0, locTotal, false, '#ffffff');
+        drawMatrixRow('IMPORTACIONES', impExeNet, impNsNet, impGravBruto, totals.import_nc || 0, impTotal, false, '#f8fafc');
+        drawMatrixRow('INTERNACIONES', intExeNet, intNsNet, intGravBruto, totals.intern_nc || 0, intTotal, false, '#ffffff');
+        drawMatrixRow('CREDITO FISCAL', null, null, ivaBruto, totals.iva_nc || 0, ivaNet, true, '#f1f5f9');
         const matrixBottomY = y;
 
         // Líneas verticales divisoras de la matriz
@@ -519,7 +523,7 @@ const getVatBookPurchasesPDF = async (req, res) => {
                     Neto: Number((sign * g).toFixed(2)),
                     IVA: Number((sign * i).toFixed(2)),
                     'No Sujetas': Number((sign * ns).toFixed(2)),
-                    'Ret/Per': Number((re).toFixed(2)),
+                    'Ret/Per': Number((sign * re).toFixed(2)),
                     'Anticipo Cta.': Number((ac).toFixed(2)),
                     Total: Number((sign * to).toFixed(2)),
                     Origen: r.source_type === 'gasto' ? 'Gasto' : 'Compra',
@@ -690,7 +694,7 @@ const getVatBookPurchasesPDF = async (req, res) => {
             doc.text(reportPdfHelper.fmt(sign * e), x, rowY, { width: cols.exenta - 2, align: 'right' }); x += cols.exenta;
             doc.text(reportPdfHelper.fmt(sign * i), x, rowY, { width: cols.iva - 2, align: 'right' }); x += cols.iva;
             doc.text(reportPdfHelper.fmt(sign * ns), x, rowY, { width: cols.no_sujeta - 2, align: 'right' }); x += cols.no_sujeta;
-            doc.text(reportPdfHelper.fmt(re), x, rowY, { width: cols.ret_per - 2, align: 'right' }); x += cols.ret_per;
+            doc.text(reportPdfHelper.fmt(sign * re), x, rowY, { width: cols.ret_per - 2, align: 'right' }); x += cols.ret_per;
             doc.text(reportPdfHelper.fmt(ac), x, rowY, { width: cols.ant_cta - 2, align: 'right' }); x += cols.ant_cta;
             doc.text(reportPdfHelper.fmt(sign * to), x, rowY, { width: cols.total - 2, align: 'right' });
 
@@ -733,8 +737,8 @@ const getVatBookPurchasesPDF = async (req, res) => {
                 }
             }
             t.anticipo_cuenta += ac;
-            t.iva_retenido += retVal;
-            t.iva_percibido += perVal;
+            t.iva_retenido += sign * retVal;
+            t.iva_percibido += sign * perVal;
 
             doc.y = rowY + 13;
         });
@@ -2014,8 +2018,8 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
     const comprasGravadasNetas = Math.round(Math.max(0, (ccfPurchases.gravado + otrosPurchases.gravado) - ncPurchases.gravado) * 100) / 100;
     const comprasExentasNetas = Math.round(Math.max(0, (ccfPurchases.exento + otrosPurchases.exento) - ncPurchases.exento) * 100) / 100;
     const comprasNosujetasNetas = Math.round(Math.max(0, (ccfPurchases.nosujeta + otrosPurchases.nosujeta) - ncPurchases.nosujeta) * 100) / 100;
-    const percepcionesIvaSoportadas = Math.round((ccfPurchases.percepcion + otrosPurchases.percepcion) * 100) / 100;
-    const retencionesIvaComprasSoportadas = Math.round((ccfPurchases.retencion + otrosPurchases.retencion) * 100) / 100;
+    const percepcionesIvaSoportadas = Math.round(Math.max(0, (ccfPurchases.percepcion + otrosPurchases.percepcion) - ncPurchases.percepcion) * 100) / 100;
+    const retencionesIvaComprasSoportadas = Math.round(Math.max(0, (ccfPurchases.retencion + otrosPurchases.retencion) - ncPurchases.retencion) * 100) / 100;
     const totalRetencionesIvaSufridas = Math.round((retencionesIvaSufridas + retencionesIvaComprasSoportadas) * 100) / 100;
     const retencionesSujetosExcluidos = Math.round(sujetosExcluidos.retencion * 100) / 100;
 
