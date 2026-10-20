@@ -263,13 +263,29 @@ async function executeApprovedTicketAgyPlan(ticketId, { approvedBy = 'SuperAdmin
                 if (liveProgress) liveProgress.onConsoleChunk(msg);
             });
 
+            if (patchResult.modifiedFiles.length === 0 && !execOutput) {
+                const warnSummary = sanitizeConsoleText(
+                    `⚠️ El motor AGY inspeccionó ${relatedFiles.join(', ')} en ${proj.projectLabel}, pero no pudo aplicar cambios automáticos sin intervención adicional. Agrega una Directriz Técnica (ai_notes) más específica o aplica el cambio manualmente.`
+                );
+                await pool.query(
+                    `UPDATE support_tickets SET agy_status = 'esperando_aprobacion', agy_execution_log = CONCAT(COALESCE(agy_execution_log, ''), '\n=== AVISO EJECUCIÓN ===\n', ?), agy_updated_at = NOW() WHERE id = ?`,
+                    [warnSummary, ticketId]
+                );
+                if (liveProgress) await liveProgress.complete(warnSummary);
+                const pendingTicket = await ticketService.getTicketById(ticketId);
+                notifyFrontendAgyUpdate(pendingTicket);
+                await notifyAgyExecutionResultToTelegram(pendingTicket, warnSummary, approvedBy);
+                return;
+            }
+
             const touchedList = patchResult.modifiedFiles.length > 0 ? patchResult.modifiedFiles : relatedFiles;
             const finalSummary = sanitizeConsoleText(
                 execOutput ||
                 [
                     `✅ Plan v${runningTicket.agy_plan_version || 1} ejecutado en ${proj.projectLabel} (${chosenModel}).`,
-                    `• Archivos intervenidos/verificados: ${touchedList.join(', ')}`,
+                    `• Archivos modificados: ${touchedList.join(', ')}`,
                     patchResult.buildLog ? `• Compilación: ${patchResult.buildLog}` : null,
+                    patchResult.gitLog ? `• Git Sync: ${patchResult.gitLog}` : null,
                     `• Estado del ticket actualizado automáticamente a RESUELTO.`
                 ].filter(Boolean).join('\n')
             );

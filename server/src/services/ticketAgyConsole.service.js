@@ -207,7 +207,7 @@ function buildAgyExecutionPrompt(ticket, model) {
         `\nINSTRUCCIONES DE EJECUCIÓN:`,
         `1. Aplica todos los pasos del Plan de Ejecución aprobado en el repositorio.`,
         `2. Respeta estrictamente AGENTS.md (máximo 350 líneas por archivo, modales en archivos *Modal.jsx separados, dateUtils, Money).`,
-        `3. NO ejecutes git commit ni git push automáticos.`,
+        `3. El servidor ejecutará automáticamente build, git commit y git push al concluir.`,
         `4. Al concluir, entrega un resumen claro de los archivos modificados y escribe en la última línea: [[FIN_EJECUCION_AGY]]`
     ].filter(Boolean).join('\n');
 }
@@ -218,6 +218,8 @@ function extractCleanAgyResult(rawTranscript, endMarker) {
     const beforeMarker = clean.split(endMarker)[0].trim();
     if (
         beforeMarker.includes('error: /model takes no arguments') ||
+        beforeMarker.includes('jetski: no output produced') ||
+        beforeMarker.includes('headless mode cannot prompt for') ||
         beforeMarker.includes('INSTRUCCIONES ESTRICTAS PARA AGY') ||
         beforeMarker.includes('INSTRUCCIONES DE EJECUCIÓN:')
     ) {
@@ -242,7 +244,7 @@ for a in ~/.bash_aliases /root/.bash_aliases /home/sistemas/.bash_aliases; do [ 
 for n in "$HOME/.nvm/nvm.sh" "/root/.nvm/nvm.sh" "/home/sistemas/.nvm/nvm.sh"; do [ -s "$n" ] && . "$n" 2>/dev/null || true; done
 export PATH="$HOME/.local/bin:$HOME/.antigravity/bin:/root/.local/bin:/root/.antigravity/bin:/home/sistemas/.local/bin:/home/sistemas/.antigravity/bin:/home/sistemas/.local/share/pnpm:$HOME/.npm-global/bin:$HOME/.bun/bin:/usr/local/bin:$PATH"
 mkdir -p ~/.gemini/antigravity-cli
-echo '{"model":"${safeModel}"}' > ~/.gemini/antigravity-cli/settings.json 2>/dev/null || true
+echo '{"model":"${safeModel}","permissions":{"allow":["*"]},"autoApprove":true}' > ~/.gemini/antigravity-cli/settings.json 2>/dev/null || true
 if [ -d "${safePath}" ]; then cd "${safePath}"; elif [ -d "/opt/nova-saas" ]; then cd "/opt/nova-saas"; fi
 PROMPT_FILE="/tmp/agy_ticket_${Date.now()}.txt"
 echo "${b64Prompt}" | base64 -d > "$PROMPT_FILE"
@@ -255,7 +257,7 @@ if [ -n "$AGY_BIN" ]; then
     ${isPlanPhase ? 'echo "/plan $FLAT_PROMPT"' : 'echo "$FLAT_PROMPT"'}
     ${isPlanPhase ? 'sleep 35' : 'for i in 1 2 3 4 5; do sleep 8; echo "y"; done'}
     echo "/exit"
-  ) | "$AGY_BIN" 2>&1
+  ) | "$AGY_BIN" --dangerously-skip-permissions 2>&1 || true
   echo "${endMarker}"
 else
   echo "[AGY] Analizador de repositorio integrado ejecutado en $(pwd) con modelo ${safeModel}."
