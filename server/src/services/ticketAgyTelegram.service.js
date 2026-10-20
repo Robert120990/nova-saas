@@ -6,13 +6,13 @@ const pendingAgyFeedbackMap = new Map();
 
 function escapeMd(str) {
     if (!str) return '';
-    return String(str).replace(/([_*`[])/g, '\\$1');
+    return String(str).replace(/([_*`[\]])/g, '');
 }
 
 function renderProgressBar(percent) {
     const clamped = Math.max(5, Math.min(100, Math.round(percent)));
     const filled = Math.round(clamped / 10);
-    return `[${'▓'.repeat(filled)}${'░'.repeat(10 - filled)}] ${clamped}%`;
+    return `${'▓'.repeat(filled)}${'░'.repeat(10 - filled)} ${clamped}%`;
 }
 
 function buildAgyPlanApprovalKeyboard(ticketId, planMarkdown = '') {
@@ -36,29 +36,51 @@ function buildAgyPlanApprovalKeyboard(ticketId, planMarkdown = '') {
 
 function buildAgyPostExecutionKeyboard(ticketId) {
     return {
-        inline_keyboard: [[
-            { text: '🔄 Reiterar Error / Re-planificar', callback_data: `agy_plan_feedback:${ticketId}` },
-            { text: '✍️ Nota Adicional', callback_data: `ticket_resolve_note:${ticketId}` }
-        ]]
+        inline_keyboard: [
+            [
+                { text: '🔄 Reiterar Error / Re-planificar', callback_data: `agy_plan_feedback:${ticketId}` },
+                { text: '✍️ Nota Adicional', callback_data: `ticket_resolve_note:${ticketId}` }
+            ]
+        ]
     };
 }
 
 async function safeSendTelegramWithKeyboard(chatId, text, replyMarkup) {
     const cleanText = sanitizeConsoleText(String(text || '')).slice(0, 3850);
+    const payload = { chat_id: chatId, text: cleanText, parse_mode: 'Markdown' };
+    if (replyMarkup) payload.reply_markup = replyMarkup;
     try {
-        return await telegramService.apiCall('sendMessage', { chat_id: chatId, text: cleanText, parse_mode: 'Markdown', reply_markup: replyMarkup });
+        return await telegramService.apiCall('sendMessage', payload);
     } catch {
-        return await telegramService.apiCall('sendMessage', { chat_id: chatId, text: cleanText.replace(/\\([_*`[])/g, '$1'), reply_markup: replyMarkup }).catch((err) => {
+        const fallbackPayload = { chat_id: chatId, text: cleanText.replace(/[*_`\\]/g, '') };
+        if (replyMarkup) fallbackPayload.reply_markup = replyMarkup;
+        return await telegramService.apiCall('sendMessage', fallbackPayload).catch((err) => {
             console.error(`[TicketAgyTelegram] Error enviando mensaje a ${chatId}:`, err.message);
             return null;
         });
     }
 }
 
+async function safeEditTelegramMessage(chatId, messageId, text) {
+    const cleanText = sanitizeConsoleText(String(text || '')).slice(0, 3850);
+    try {
+        return await telegramService.apiCall('editMessageText', {
+            chat_id: chatId, message_id: messageId, text: cleanText, parse_mode: 'Markdown'
+        });
+    } catch {
+        return await telegramService.apiCall('editMessageText', {
+            chat_id: chatId, message_id: messageId, text: cleanText.replace(/[*_`\\]/g, '')
+        }).catch(() => null);
+    }
+}
+
 async function createTelegramLiveProgress(ticket, { mode = 'execute', model = 'gemini-4-argon-high', actorName = 'SuperAdmin', sourceChatId = null, sourceMessageId = null } = {}) {
     const { getTechChatsForTicket } = require('./ticketTelegram.service');
-    const chats = await getTechChatsForTicket(ticket.company_id, ticket.branch_id);
-    const targetChatIds = Array.from(new Set([...(chats || []).map((c) => String(c.chat_id)), ...(sourceChatId ? [String(sourceChatId)] : [])]));
+    const chats = await getTechChatsForTicket(ticket.company_id, ticket.branch_id).catch(() => []);
+    const targetChatIds = Array.from(new Set([
+        ...(sourceChatId ? [String(sourceChatId)] : []),
+        ...(chats || []).map((c) => String(c.chat_id))
+    ]));
     const startTime = Date.now();
     let stepIndex = 0;
     let latestConsoleLine = mode === 'execute'
@@ -67,17 +89,15 @@ async function createTelegramLiveProgress(ticket, { mode = 'execute', model = 'g
 
     const steps = mode === 'execute'
         ? [
-            { pct: 20, label: 'Conectando con Consola AGY y preparando entorno...' },
-            { pct: 45, label: 'Inspeccionando archivos del módulo e inyectando Plan aprobado...' },
-            { pct: 70, label: 'Aplicando solución con AGY en el repositorio...' },
-            { pct: 88, label: 'Verificando integridad del código y actualizando estado del ticket...' },
-            { pct: 95, label: 'Finalizando ejecución y cerrando ticket como Resuelto...' }
+            { pct: 25, label: 'Conectando con Consola AGY y preparando entorno...' },
+            { pct: 50, label: 'Inspeccionando archivos del módulo e inyectando Plan aprobado...' },
+            { pct: 75, label: 'Aplicando solución con AGY en el repositorio...' },
+            { pct: 90, label: 'Verificando integridad del código y actualizando estado del ticket...' }
         ]
         : [
-            { pct: 20, label: 'Conectando con Consola AGY y cargando telemetría del ticket...' },
-            { pct: 50, label: 'Analizando archivos del módulo involucrado en el repositorio...' },
-            { pct: 78, label: 'Estructurando pasos del Plan de Ejecución con AGY...' },
-            { pct: 92, label: 'Preparando entrega del Plan de Ejecución para Telegram...' }
+            { pct: 25, label: 'Conectando con Consola AGY y cargando telemetría del ticket...' },
+            { pct: 55, label: 'Analizando archivos del módulo involucrado en el repositorio...' },
+            { pct: 85, label: 'Estructurando pasos del Plan de Ejecución con AGY...' }
         ];
 
     if (sourceChatId && sourceMessageId) {
@@ -107,7 +127,7 @@ async function createTelegramLiveProgress(ticket, { mode = 'execute', model = 'g
     const liveMessages = [];
     for (const cid of targetChatIds) {
         telegramService.apiCall('sendChatAction', { chat_id: cid, action: 'typing' }).catch(() => {});
-        const sent = await safeSendTelegramWithKeyboard(cid, formatProgressText(15, steps[0].label), undefined);
+        const sent = await safeSendTelegramWithKeyboard(cid, formatProgressText(15, steps[0].label), null);
         if (sent?.message_id) liveMessages.push({ chatId: cid, messageId: sent.message_id });
     }
 
@@ -117,14 +137,9 @@ async function createTelegramLiveProgress(ticket, { mode = 'execute', model = 'g
         const statusToDisplay = latestConsoleLine || step.label;
         for (const item of liveMessages) {
             telegramService.apiCall('sendChatAction', { chat_id: item.chatId, action: 'typing' }).catch(() => {});
-            telegramService.apiCall('editMessageText', {
-                chat_id: item.chatId,
-                message_id: item.messageId,
-                text: formatProgressText(step.pct, statusToDisplay, false),
-                parse_mode: 'Markdown'
-            }).catch(() => {});
+            await safeEditTelegramMessage(item.chatId, item.messageId, formatProgressText(step.pct, statusToDisplay, false));
         }
-    }, 3500);
+    }, 3000);
 
     return {
         onConsoleChunk(rawChunk = '') {
@@ -135,12 +150,7 @@ async function createTelegramLiveProgress(ticket, { mode = 'execute', model = 'g
             clearInterval(timer);
             const cleanFinal = sanitizeConsoleText(finalSummary).split('\n')[0].slice(0, 160);
             for (const item of liveMessages) {
-                await telegramService.apiCall('editMessageText', {
-                    chat_id: item.chatId,
-                    message_id: item.messageId,
-                    text: formatProgressText(100, cleanFinal, true),
-                    parse_mode: 'Markdown'
-                }).catch(() => {});
+                await safeEditTelegramMessage(item.chatId, item.messageId, formatProgressText(100, cleanFinal, true));
             }
             if (sourceChatId && sourceMessageId && mode === 'execute') {
                 telegramService.apiCall('editMessageReplyMarkup', {
@@ -229,62 +239,70 @@ async function handleAgyTelegramCallback(cb) {
     const ticketId = parseInt(parts[1], 10);
     if (isNaN(ticketId)) return true;
 
-    const { getTicketById } = require('./ticket.service');
-    const { startTicketAgyPlanning, executeApprovedTicketAgyPlan, rejectTicketAgyPlan } = require('./ticketAgyWorkflow.service');
-    const ticket = await getTicketById(ticketId);
-    if (!ticket) {
-        telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: '⚠️ Ticket no encontrado' }).catch(() => {});
-        return true;
-    }
+    try {
+        const { getTicketById } = require('./ticket.service');
+        const { startTicketAgyPlanning, executeApprovedTicketAgyPlan, rejectTicketAgyPlan } = require('./ticketAgyWorkflow.service');
+        const ticket = await getTicketById(ticketId);
+        if (!ticket) {
+            telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: '⚠️ Ticket no encontrado' }).catch(() => {});
+            return true;
+        }
 
-    const settings = await getAgyServerSettings();
-    const model = ticket.agy_model || settings.default_model || 'gemini-4-argon-high';
+        const settings = await getAgyServerSettings();
+        const model = ticket.agy_model || settings.default_model || 'gemini-4-argon-high';
 
-    if (action === 'agy_pick_opt') {
-        const optIdx = parseInt(parts[2], 10) || 1;
-        const { options } = extractAgyQuestionsAndOptions(ticket.agy_plan_markdown || '');
-        const picked = options.find((o) => o.index === optIdx);
-        const chosenText = picked ? picked.label : `Opción ${optIdx}`;
-        telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: `🎯 Opción ${optIdx} seleccionada. Re-planificando...` }).catch(() => {});
-        await startTicketAgyPlanning(ticketId, {
-            model, approvedBy: `${techName} (Telegram)`,
-            additionalFeedback: `DECISIÓN SELECCIONADA POR EL ADMINISTRADOR: Opción ${optIdx} (${chosenText}). Elabora el plan final aplicando esta opción.`,
-            telegramContext: { sourceChatId: chatId, sourceMessageId: messageId }
-        });
-        return true;
-    }
+        if (action === 'agy_pick_opt') {
+            const optIdx = parseInt(parts[2], 10) || 1;
+            const { options } = extractAgyQuestionsAndOptions(ticket.agy_plan_markdown || '');
+            const picked = options.find((o) => o.index === optIdx);
+            const chosenText = picked ? picked.label : `Opción ${optIdx}`;
+            telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: `🎯 Opción ${optIdx} seleccionada. Re-planificando...` }).catch(() => {});
+            await startTicketAgyPlanning(ticketId, {
+                model, approvedBy: `${techName} (Telegram)`,
+                additionalFeedback: `DECISIÓN SELECCIONADA POR EL ADMINISTRADOR: Opción ${optIdx} (${chosenText}). Elabora el plan final aplicando esta opción.`,
+                telegramContext: { sourceChatId: chatId, sourceMessageId: messageId }
+            });
+            return true;
+        }
 
-    if (action === 'agy_start_plan') {
-        telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: '🤖 AGY iniciando análisis y plan de ejecución...' }).catch(() => {});
-        await startTicketAgyPlanning(ticketId, { model, approvedBy: `${techName} (Telegram)`, telegramContext: { sourceChatId: chatId, sourceMessageId: messageId } });
-        return true;
-    }
+        if (action === 'agy_start_plan') {
+            telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: '🤖 AGY iniciando análisis y plan de ejecución...' }).catch(() => {});
+            await startTicketAgyPlanning(ticketId, { model, approvedBy: `${techName} (Telegram)`, telegramContext: { sourceChatId: chatId, sourceMessageId: messageId } });
+            return true;
+        }
 
-    if (action === 'agy_plan_approve') {
-        telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: '⚙️ ¡Plan aprobado! AGY está ejecutando la solución ahora mismo...' }).catch(() => {});
-        await executeApprovedTicketAgyPlan(ticketId, { approvedBy: `${techName} (Telegram)`, telegramContext: { sourceChatId: chatId, sourceMessageId: messageId } });
-        return true;
-    }
+        if (action === 'agy_plan_approve') {
+            telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: '⚙️ ¡Plan aprobado! AGY está ejecutando la solución...' }).catch(() => {});
+            await executeApprovedTicketAgyPlan(ticketId, { approvedBy: `${techName} (Telegram)`, telegramContext: { sourceChatId: chatId, sourceMessageId: messageId } });
+            return true;
+        }
 
-    if (action === 'agy_plan_reject') {
-        telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: '❌ Plan denegado' }).catch(() => {});
-        await rejectTicketAgyPlan(ticketId, { rejectedBy: `${techName} (Telegram)`, reason: 'Denegado desde Telegram' });
-        await safeSendTelegramWithKeyboard(
-            chatId,
-            `❌ *Plan v${ticket.agy_plan_version || 1} DENEGADO* en Ticket *#${escapeMd(ticket.ticket_code)}* por *${escapeMd(techName)}*.\n_No se aplicaron cambios. Puedes ampliar comentarios si deseas generar un nuevo plan:_`,
-            { inline_keyboard: [[{ text: '✏️ Ampliar Comentarios y Re-planificar', callback_data: `agy_plan_feedback:${ticketId}` }]] }
-        );
-        return true;
-    }
+        if (action === 'agy_plan_reject') {
+            telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: '❌ Plan denegado' }).catch(() => {});
+            await rejectTicketAgyPlan(ticketId, { rejectedBy: `${techName} (Telegram)`, reason: 'Denegado desde Telegram' });
+            await safeSendTelegramWithKeyboard(
+                chatId,
+                `❌ *Plan v${ticket.agy_plan_version || 1} DENEGADO* en Ticket *#${escapeMd(ticket.ticket_code)}* por *${escapeMd(techName)}*.\n_No se aplicaron cambios. Puedes ampliar comentarios si deseas generar un nuevo plan:_`,
+                { inline_keyboard: [[{ text: '✏️ Ampliar Comentarios y Re-planificar', callback_data: `agy_plan_feedback:${ticketId}` }]] }
+            );
+            return true;
+        }
 
-    if (action === 'agy_plan_feedback') {
-        telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id }).catch(() => {});
-        pendingAgyFeedbackMap.set(chatId, { ticketId, ticketCode: ticket.ticket_code, techName, expiresAt: Date.now() + 15 * 60 * 1000 });
-        await telegramService.sendMessage(
-            chatId,
-            `✍️ *Responder Duda / Ampliar Comentarios en Ticket #${escapeMd(ticket.ticket_code)}*\n\nEscribe tu respuesta, opción elegida o indicaciones adicionales para que \`agy\` (\`${escapeMd(model)}\`) continúe en Consola AGY (o escribe /cancelar):`,
-            { parse_mode: 'Markdown' }
-        ).catch(() => {});
+        if (action === 'agy_plan_feedback') {
+            telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id }).catch(() => {});
+            pendingAgyFeedbackMap.set(chatId, { ticketId, ticketCode: ticket.ticket_code, techName, expiresAt: Date.now() + 15 * 60 * 1000 });
+            await safeSendTelegramWithKeyboard(
+                chatId,
+                `✍️ *Responder Duda / Ampliar Comentarios en Ticket #${escapeMd(ticket.ticket_code)}*\n\nEscribe tu respuesta, opción elegida o indicaciones adicionales para que \`agy\` (\`${escapeMd(model)}\`) continúe en Consola AGY (o escribe /cancelar):`,
+                null
+            );
+            return true;
+        }
+    } catch (err) {
+        console.error('[TicketAgyTelegram] Error en callback:', err);
+        if (chatId) {
+            await safeSendTelegramWithKeyboard(chatId, `⚠️ Aviso al procesar acción AGY: ${err.message || 'Error inesperado'}`, null);
+        }
         return true;
     }
 

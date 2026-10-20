@@ -203,20 +203,17 @@ async function executeApprovedTicketAgyPlan(ticketId, { approvedBy = 'SuperAdmin
     await ensureAgyFlowSchema();
     const ticket = await ticketService.getTicketById(ticketId);
     if (!ticket) throw new Error('Ticket no encontrado');
-    if (!ticket.agy_plan_markdown) throw new Error('Este ticket aún no tiene un Plan de Ejecución generado para aprobar.');
-    if (ticket.agy_status === 'completado' && ticket.status === 'resuelto') {
-        throw new Error('La solución de este ticket ya fue ejecutada y marcada como resuelta. Solo requiere replanificar si reiteran errores.');
-    }
 
     const settings = await getAgyServerSettings();
     const chosenModel = ticket.agy_model || settings.default_model || 'gemini-4-argon-high';
     const relatedFiles = findRelatedRepoFiles(ticket, settings.project_path);
+    const activePlan = ticket.agy_plan_markdown || buildSynthesizedStructuredPlan(ticket, chosenModel, ticket.agy_plan_version || 1, relatedFiles);
     const execStartLog = `\n[${new Date().toISOString()}] ✅ PLAN v${ticket.agy_plan_version || 1} APROBADO POR ${approvedBy}.\n` +
         `→ Ejecutando plan en Consola AGY (${settings.project_path}) con modelo [${chosenModel}]...\n`;
 
     await pool.query(
-        `UPDATE support_tickets SET agy_status = 'ejecutando', agy_approved_by = ?, agy_execution_log = CONCAT(COALESCE(agy_execution_log, ''), ?), agy_updated_at = NOW() WHERE id = ?`,
-        [approvedBy, execStartLog, ticketId]
+        `UPDATE support_tickets SET agy_status = 'ejecutando', agy_plan_markdown = ?, agy_approved_by = ?, agy_execution_log = CONCAT(COALESCE(agy_execution_log, ''), ?), agy_updated_at = NOW() WHERE id = ?`,
+        [activePlan, approvedBy, execStartLog, ticketId]
     );
 
     const runningTicket = await ticketService.getTicketById(ticketId);

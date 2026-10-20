@@ -173,7 +173,9 @@ const resendAgyPlanToTelegram = async (req, res) => {
         if (!ticket || !ticket.agy_plan_markdown) {
             return res.status(400).json({ message: 'Este ticket aún no cuenta con un plan generado para enviar a Telegram' });
         }
-        const sent = await sendAgyPlanToTelegram(ticket);
+        await pool.query(`UPDATE support_tickets SET agy_status = 'esperando_aprobacion', agy_updated_at = NOW() WHERE id = ?`, [req.params.id]);
+        const updatedTicket = await ticketService.getTicketById(req.params.id);
+        const sent = await sendAgyPlanToTelegram(updatedTicket);
         res.json({
             success: sent,
             message: sent
