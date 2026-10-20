@@ -32,6 +32,7 @@ const calculate = async (filters, companyId) => {
         let empQuery = `
             SELECT e.id, e.codigo, e.nombres, e.apellidos, e.sueldo_base, e.fecha_ingreso,
                    e.departamento_personal_id, e.cargo_id,
+                   e.aplica_renta, e.es_jubilado, e.es_jubilado_con_afp,
                    c.descripcion as cargo_nombre,
                    d.descripcion as departamento_nombre
             FROM rh_empleados e
@@ -98,8 +99,9 @@ const calculate = async (filters, companyId) => {
             const proporcion = totalPeriodDays > 0 ? diasLaborados / totalPeriodDays : 1;
 
             const aguinaldoCalculado = Math.round(aguinaldoCompleto * proporcion * 100) / 100;
-            const excedente = Math.max(0, aguinaldoCalculado - 1500);
-            const renta = Math.round(excedente * 0.10 * 100) / 100;
+            const aplicaRenta = (emp.aplica_renta !== 0 && emp.aplica_renta !== false && emp.aplica_renta !== '0');
+            const excedente = aplicaRenta ? Math.round(Math.max(0, aguinaldoCalculado - 1500) * 100) / 100 : 0;
+            const renta = aplicaRenta ? Math.round(excedente * 0.10 * 100) / 100 : 0;
             const montoRecibir = Math.round((aguinaldoCalculado - renta) * 100) / 100;
 
             results.push({
@@ -118,7 +120,10 @@ const calculate = async (filters, companyId) => {
                 aguinaldo_calculado: aguinaldoCalculado,
                 excedente,
                 renta,
-                monto_recibir: montoRecibir
+                monto_recibir: montoRecibir,
+                aplica_renta: aplicaRenta ? 1 : 0,
+                es_jubilado: emp.es_jubilado ? 1 : 0,
+                es_jubilado_con_afp: emp.es_jubilado_con_afp ? 1 : 0
             });
         }
 

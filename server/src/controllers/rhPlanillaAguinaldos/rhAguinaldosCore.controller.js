@@ -42,6 +42,9 @@ const getPlanilla = async (req, res) => {
                    e.apellidos,
                    e.num_nit,
                    e.cuenta_planillera,
+                   e.aplica_renta,
+                   e.es_jubilado,
+                   e.es_jubilado_con_afp,
                    c.descripcion as cargo_nombre,
                    d.descripcion as departamento_nombre
             FROM ${TABLE} pa

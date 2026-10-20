@@ -38,7 +38,7 @@ const AguinaldosModal = ({ open, onClose, onSubmit, model }) => {
                         <button type="button" onClick={handleCalcular} disabled={calculando || !calcAño}
                             className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs transition-all shadow-lg shadow-indigo-600/20 active:scale-95 disabled:opacity-50 h-8">
                             <Calculator size={14} />
-                            {calculando ? 'Calculando...' : 'Calcular'}
+                            {calculando ? 'Calculando...' : (yaExiste ? 'Recalcular' : 'Calcular')}
                         </button>
                     </div>
             
@@ -46,7 +46,7 @@ const AguinaldosModal = ({ open, onClose, onSubmit, model }) => {
                         <div className="flex items-center justify-between gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 flex-wrap">
                             <div className="flex items-center gap-2">
                                 <AlertCircle size={14} className="text-amber-600 shrink-0" />
-                                <span className="text-[10px] font-bold text-amber-700">Planilla guardada para este período.</span>
+                                <span className="text-[10px] font-bold text-amber-700">Planilla guardada para este período. Puede presionar Recalcular y luego Guardar para actualizarla.</span>
                             </div>
                             <div className="flex items-center gap-1.5">
                                 <button
@@ -101,21 +101,31 @@ const AguinaldosModal = ({ open, onClose, onSubmit, model }) => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {(Array.isArray(calculado) ? calculado : []).map((item, i) => (
-                                        <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
-                                             <td className="px-1.5 py-0.5 font-mono font-bold text-indigo-500">{item.codigo}</td>
-                                            <td className="px-1.5 py-0.5 font-bold text-slate-700 max-w-[180px] truncate">{item.nombres} {item.apellidos}</td>
-                                            <td className="px-1.5 py-0.5 text-slate-500 max-w-[120px] truncate">{item.cargo_nombre || '-'}</td>
-                                            <td className="px-1.5 py-0.5 text-slate-500">{formatDate(item.fecha_ingreso)}</td>
-                                            <td className="px-1.5 py-0.5 text-slate-500">{formatDate(item.fecha_base)}</td>
-                                            <td className="px-1.5 py-0.5 text-right text-slate-600">{item.dias_antiguedad}</td>
-                                            <td className="px-1.5 py-0.5 text-right font-bold text-slate-700">{item.dias_segun_tabla}</td>
-                                            <td className="px-1.5 py-0.5 text-right font-bold text-indigo-600"><Money value={item.aguinaldo_calculado} /></td>
-                                            <td className="px-1.5 py-0.5 text-right text-slate-600"><Money value={item.excedente} /></td>
-                                            <td className="px-1.5 py-0.5 text-right font-bold text-red-600"><Money value={item.renta} /></td>
-                                            <td className="px-1.5 py-0.5 text-right font-bold text-emerald-600"><Money value={item.monto_recibir} /></td>
-                                        </tr>
-                                    ))}
+                                    {(Array.isArray(calculado) ? calculado : []).map((item, i) => {
+                                        const sinRenta = item.aplica_renta === 0 || item.aplica_renta === false || item.aplica_renta === '0';
+                                        return (
+                                            <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
+                                                <td className="px-1.5 py-0.5 font-mono font-bold text-indigo-500">{item.codigo}</td>
+                                                <td className="px-1.5 py-0.5 font-bold text-slate-700 max-w-[180px] truncate" title={`${item.nombres} ${item.apellidos}`}>
+                                                    <span>{item.nombres} {item.apellidos}</span>
+                                                    {sinRenta && (
+                                                        <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-700 border border-amber-200" title="Empleado configurado sin retención de Renta">
+                                                            Sin Renta
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="px-1.5 py-0.5 text-slate-500 max-w-[120px] truncate">{item.cargo_nombre || '-'}</td>
+                                                <td className="px-1.5 py-0.5 text-slate-500">{formatDate(item.fecha_ingreso)}</td>
+                                                <td className="px-1.5 py-0.5 text-slate-500">{formatDate(item.fecha_base)}</td>
+                                                <td className="px-1.5 py-0.5 text-right text-slate-600">{item.dias_antiguedad}</td>
+                                                <td className="px-1.5 py-0.5 text-right font-bold text-slate-700">{item.dias_segun_tabla}</td>
+                                                <td className="px-1.5 py-0.5 text-right font-bold text-indigo-600"><Money value={item.aguinaldo_calculado} /></td>
+                                                <td className="px-1.5 py-0.5 text-right text-slate-600"><Money value={item.excedente} /></td>
+                                                <td className="px-1.5 py-0.5 text-right font-bold text-red-600"><Money value={item.renta} /></td>
+                                                <td className="px-1.5 py-0.5 text-right font-bold text-emerald-600"><Money value={item.monto_recibir} /></td>
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         </div>

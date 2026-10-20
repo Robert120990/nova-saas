@@ -12,7 +12,7 @@ async function calculateVacaciones(pool, companyId, query) {
 
         // 1. Get employee data
         const [empRows] = await pool.query(
-            `SELECT afp_id, sueldo_base, bonificacion_fija, es_jubilado, es_jubilado_con_afp FROM rh_empleados WHERE id = ? AND company_id = ?`,
+            `SELECT afp_id, sueldo_base, bonificacion_fija, es_jubilado, es_jubilado_con_afp, aplica_renta FROM rh_empleados WHERE id = ? AND company_id = ?`,
             [empleado_id, companyId]
         );
         if (empRows.length === 0) {
@@ -22,6 +22,7 @@ async function calculateVacaciones(pool, companyId, query) {
         const esJubiladoConAfp = !!empleado.es_jubilado_con_afp;
         const esJubilado = !!empleado.es_jubilado && !esJubiladoConAfp;
         const esCualquierJubilado = esJubilado || esJubiladoConAfp;
+        const aplicaRenta = (empleado.aplica_renta !== 0 && empleado.aplica_renta !== false && empleado.aplica_renta !== '0');
 
         // 2. ISSS calculation (skip if jubilado)
         let descuentoISSS = 0;
@@ -67,46 +68,48 @@ async function calculateVacaciones(pool, companyId, query) {
             }
         }
 
-        // 4. Renta calculation
+        // 4. Renta calculation (skip if aplica_renta = 0)
         let descuentoRenta = 0;
         const ingresoGravado = vacacionesMonto - descuentoISSS - descuentoAFP;
         let rentaInfo = null;
 
-        if (esCualquierJubilado) {
-            // Jubilado: flat 10% ISR
-            descuentoRenta = Math.round(ingresoGravado * 0.10 * 100) / 100;
-            rentaInfo = { tipo: 'jubilado', porcentaje: 10, ingreso_gravado: Math.round(ingresoGravado * 100) / 100 };
-        } else {
-            // Normal: progressive table (prefer Q if quincena is indicated, else M)
-            const tipoOrder = quincena ? "FIELD(tipo, 'Q', 'M')" : "FIELD(tipo, 'M', 'Q')";
-            const [rentaConfigRows] = await pool.query(
-                `SELECT id, tipo FROM rh_renta_config 
-                 WHERE company_id = ? AND (tipo = 'Q' OR tipo = 'M') AND fecha_desde <= ? AND (fecha_hasta IS NULL OR fecha_hasta >= ?)
-                 ORDER BY ${tipoOrder}, fecha_desde DESC LIMIT 1`,
-                [companyId, today, today]
-            );
-
-            if (rentaConfigRows.length > 0 && ingresoGravado > 0) {
-                const [bracketRows] = await pool.query(
-                    `SELECT sueldo_inicial, sueldo_final, porcentaje, valor_descuento, exceso FROM rh_renta_config_detalle 
-                     WHERE renta_config_id = ? AND sueldo_inicial <= ? AND (sueldo_final >= ? OR sueldo_final IS NULL OR sueldo_final = 0)
-                     ORDER BY sueldo_inicial ASC LIMIT 1`,
-                    [rentaConfigRows[0].id, ingresoGravado, ingresoGravado]
+        if (aplicaRenta) {
+            if (esCualquierJubilado) {
+                // Jubilado: flat 10% ISR
+                descuentoRenta = Math.round(ingresoGravado * 0.10 * 100) / 100;
+                rentaInfo = { tipo: 'jubilado', porcentaje: 10, ingreso_gravado: Math.round(ingresoGravado * 100) / 100 };
+            } else {
+                // Normal: progressive table (prefer Q if quincena is indicated, else M)
+                const tipoOrder = quincena ? "FIELD(tipo, 'Q', 'M')" : "FIELD(tipo, 'M', 'Q')";
+                const [rentaConfigRows] = await pool.query(
+                    `SELECT id, tipo FROM rh_renta_config 
+                     WHERE company_id = ? AND (tipo = 'Q' OR tipo = 'M') AND fecha_desde <= ? AND (fecha_hasta IS NULL OR fecha_hasta >= ?)
+                     ORDER BY ${tipoOrder}, fecha_desde DESC LIMIT 1`,
+                    [companyId, today, today]
                 );
-                if (bracketRows.length > 0) {
-                    const bracket = bracketRows[0];
-                    const excedente = Math.max(0, ingresoGravado - parseFloat(bracket.exceso || 0));
-                    descuentoRenta = Math.max(0, (excedente * parseFloat(bracket.porcentaje) / 100) + parseFloat(bracket.valor_descuento || 0));
-                    rentaInfo = {
-                        tipo: rentaConfigRows[0].tipo,
-                        sueldo_inicial: bracket.sueldo_inicial,
-                        sueldo_final: bracket.sueldo_final,
-                        porcentaje: bracket.porcentaje,
-                        valor_descuento: bracket.valor_descuento,
-                        exceso: bracket.exceso,
-                        excedente: Math.round(excedente * 100) / 100,
-                        ingreso_gravado: Math.round(ingresoGravado * 100) / 100
-                    };
+
+                if (rentaConfigRows.length > 0 && ingresoGravado > 0) {
+                    const [bracketRows] = await pool.query(
+                        `SELECT sueldo_inicial, sueldo_final, porcentaje, valor_descuento, exceso FROM rh_renta_config_detalle 
+                         WHERE renta_config_id = ? AND sueldo_inicial <= ? AND (sueldo_final >= ? OR sueldo_final IS NULL OR sueldo_final = 0)
+                         ORDER BY sueldo_inicial ASC LIMIT 1`,
+                        [rentaConfigRows[0].id, ingresoGravado, ingresoGravado]
+                    );
+                    if (bracketRows.length > 0) {
+                        const bracket = bracketRows[0];
+                        const excedente = Math.max(0, ingresoGravado - parseFloat(bracket.exceso || 0));
+                        descuentoRenta = Math.max(0, (excedente * parseFloat(bracket.porcentaje) / 100) + parseFloat(bracket.valor_descuento || 0));
+                        rentaInfo = {
+                            tipo: rentaConfigRows[0].tipo,
+                            sueldo_inicial: bracket.sueldo_inicial,
+                            sueldo_final: bracket.sueldo_final,
+                            porcentaje: bracket.porcentaje,
+                            valor_descuento: bracket.valor_descuento,
+                            exceso: bracket.exceso,
+                            excedente: Math.round(excedente * 100) / 100,
+                            ingreso_gravado: Math.round(ingresoGravado * 100) / 100
+                        };
+                    }
                 }
             }
         }
@@ -123,6 +126,7 @@ async function calculateVacaciones(pool, companyId, query) {
             afp_info: afpInfo,
             renta_info: rentaInfo,
             es_jubilado: esJubilado,
+            aplica_renta: aplicaRenta ? 1 : 0,
             total_devengado: vacacionesMonto,
             total_deducciones: Math.round(totalDeducciones * 100) / 100,
             monto_recibir: Math.round((vacacionesMonto - totalDeducciones) * 100) / 100
@@ -145,12 +149,10 @@ async function calculateLiquidaciones(pool, companyId, query) {
             ? (montoVacaciones + montoUltimosDias)
             : (parseFloat(monto) || 0);
 
-        const excedenteAguinaldo = Math.max(0, montoAguinaldo - 1500);
-
         const today = new Date().toISOString().split('T')[0];
 
         const [empRows] = await pool.query(
-            `SELECT afp_id, sueldo_base, es_jubilado, es_jubilado_con_afp FROM rh_empleados WHERE id = ? AND company_id = ?`,
+            `SELECT afp_id, sueldo_base, es_jubilado, es_jubilado_con_afp, aplica_renta FROM rh_empleados WHERE id = ? AND company_id = ?`,
             [empleado_id, companyId]
         );
         if (empRows.length === 0) {
@@ -160,6 +162,9 @@ async function calculateLiquidaciones(pool, companyId, query) {
         const esJubiladoConAfp = !!empleado.es_jubilado_con_afp;
         const esJubilado = !!empleado.es_jubilado && !esJubiladoConAfp;
         const esCualquierJubilado = esJubilado || esJubiladoConAfp;
+        const aplicaRenta = (empleado.aplica_renta !== 0 && empleado.aplica_renta !== false && empleado.aplica_renta !== '0');
+
+        const excedenteAguinaldo = aplicaRenta ? Math.max(0, montoAguinaldo - 1500) : 0;
 
         // ISSS (skip if jubilado)
         let descuentoISSS = 0;
@@ -201,41 +206,43 @@ async function calculateLiquidaciones(pool, companyId, query) {
             }
         }
 
-        // Renta: Base imponible = baseCotizable + excedenteAguinaldo - ISSS - AFP
+        // Renta: Base imponible = baseCotizable + excedenteAguinaldo - ISSS - AFP (skip if aplica_renta = 0)
         let descuentoRenta = 0;
         const ingresoGravado = Math.max(0, (baseCotizable + excedenteAguinaldo) - descuentoISSS - descuentoAFP);
         let rentaInfo = null;
 
-        if (esCualquierJubilado) {
-            descuentoRenta = Math.round(ingresoGravado * 0.10 * 100) / 100;
-            rentaInfo = { tipo: 'jubilado', porcentaje: 10, ingreso_gravado: Math.round(ingresoGravado * 100) / 100 };
-        } else {
-            const [rentaConfigRows] = await pool.query(
-                `SELECT id FROM rh_renta_config 
-                 WHERE company_id = ? AND tipo = 'M' AND fecha_desde <= ? AND (fecha_hasta IS NULL OR fecha_hasta >= ?)
-                 ORDER BY fecha_desde DESC LIMIT 1`,
-                [companyId, today, today]
-            );
-            if (rentaConfigRows.length > 0 && ingresoGravado > 0) {
-                const [bracketRows] = await pool.query(
-                    `SELECT sueldo_inicial, sueldo_final, porcentaje, valor_descuento, exceso FROM rh_renta_config_detalle 
-                     WHERE renta_config_id = ? AND sueldo_inicial <= ? AND sueldo_final >= ?
-                     ORDER BY sueldo_inicial ASC LIMIT 1`,
-                    [rentaConfigRows[0].id, ingresoGravado, ingresoGravado]
+        if (aplicaRenta) {
+            if (esCualquierJubilado) {
+                descuentoRenta = Math.round(ingresoGravado * 0.10 * 100) / 100;
+                rentaInfo = { tipo: 'jubilado', porcentaje: 10, ingreso_gravado: Math.round(ingresoGravado * 100) / 100 };
+            } else {
+                const [rentaConfigRows] = await pool.query(
+                    `SELECT id FROM rh_renta_config 
+                     WHERE company_id = ? AND tipo = 'M' AND fecha_desde <= ? AND (fecha_hasta IS NULL OR fecha_hasta >= ?)
+                     ORDER BY fecha_desde DESC LIMIT 1`,
+                    [companyId, today, today]
                 );
-                if (bracketRows.length > 0) {
-                    const bracket = bracketRows[0];
-                    const excedente = ingresoGravado - bracket.exceso;
-                    descuentoRenta = Math.max(0, (excedente * bracket.porcentaje / 100) + parseFloat(bracket.valor_descuento));
-                    rentaInfo = {
-                        sueldo_inicial: bracket.sueldo_inicial,
-                        sueldo_final: bracket.sueldo_final,
-                        porcentaje: bracket.porcentaje,
-                        valor_descuento: bracket.valor_descuento,
-                        exceso: bracket.exceso,
-                        excedente: Math.round(excedente * 100) / 100,
-                        ingreso_gravado: Math.round(ingresoGravado * 100) / 100
-                    };
+                if (rentaConfigRows.length > 0 && ingresoGravado > 0) {
+                    const [bracketRows] = await pool.query(
+                        `SELECT sueldo_inicial, sueldo_final, porcentaje, valor_descuento, exceso FROM rh_renta_config_detalle 
+                         WHERE renta_config_id = ? AND sueldo_inicial <= ? AND sueldo_final >= ?
+                         ORDER BY sueldo_inicial ASC LIMIT 1`,
+                        [rentaConfigRows[0].id, ingresoGravado, ingresoGravado]
+                    );
+                    if (bracketRows.length > 0) {
+                        const bracket = bracketRows[0];
+                        const excedente = ingresoGravado - bracket.exceso;
+                        descuentoRenta = Math.max(0, (excedente * bracket.porcentaje / 100) + parseFloat(bracket.valor_descuento));
+                        rentaInfo = {
+                            sueldo_inicial: bracket.sueldo_inicial,
+                            sueldo_final: bracket.sueldo_final,
+                            porcentaje: bracket.porcentaje,
+                            valor_descuento: bracket.valor_descuento,
+                            exceso: bracket.exceso,
+                            excedente: Math.round(excedente * 100) / 100,
+                            ingreso_gravado: Math.round(ingresoGravado * 100) / 100
+                        };
+                    }
                 }
             }
         }
@@ -251,6 +258,7 @@ async function calculateLiquidaciones(pool, companyId, query) {
             afp_info: afpInfo,
             renta_info: rentaInfo,
             es_jubilado: esJubilado,
+            aplica_renta: aplicaRenta ? 1 : 0,
             base_cotizable: baseCotizable,
             total_deducciones_auto: Math.round(totalDeducciones * 100) / 100
         };
