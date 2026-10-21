@@ -2,6 +2,7 @@ const pool = require('../../config/db');
 const TABLE = 'rh_planilla_aguinaldos';
 
 const calculationService = require('../../services/rhPayroll/rhAguinaldosCalculation.service');
+const { parseIdList } = require('../../services/rhPayroll/shared');
 
 const getResumen = async (req, res) => {
     try {
@@ -35,7 +36,7 @@ const getResumen = async (req, res) => {
 const getPlanilla = async (req, res) => {
     try {
         await calculationService.ensureAguinaldosSchema();
-        const { año, mes, departamento_id } = req.query;
+        const { año, mes, departamento_id, branch_ids, departamento_ids } = req.query;
         if (!año) return res.status(400).json({ message: 'año requerido' });
 
         let query = `
@@ -43,17 +44,23 @@ const getPlanilla = async (req, res) => {
                    e.codigo,
                    e.nombres,
                    e.apellidos,
+                   e.nombres as empleado_nombres,
+                   e.apellidos as empleado_apellidos,
                    e.num_nit,
                    e.cuenta_planillera,
                    e.aplica_renta,
                    e.es_jubilado,
                    e.es_jubilado_con_afp,
+                   e.branch_id,
+                   COALESCE(b.nombre, 'SIN SUCURSAL') as branch_nombre,
+                   COALESCE(pa.departamento_personal_id, e.departamento_personal_id) as departamento_personal_id,
                    c.descripcion as cargo_nombre,
                    d.descripcion as departamento_nombre
             FROM ${TABLE} pa
             JOIN rh_empleados e ON pa.empleado_id = e.id
+            LEFT JOIN branches b ON e.branch_id = b.id
             LEFT JOIN rh_cargos c ON e.cargo_id = c.id
-            LEFT JOIN rh_departamentos d ON e.departamento_personal_id = d.id
+            LEFT JOIN rh_departamentos d ON COALESCE(pa.departamento_personal_id, e.departamento_personal_id) = d.id
             WHERE pa.company_id = ? AND pa.periodo_año = ?
         `;
         let params = [req.company_id, parseInt(año)];
@@ -62,9 +69,20 @@ const getPlanilla = async (req, res) => {
             query += ` AND pa.periodo_mes = ?`;
             params.push(parseInt(mes));
         }
-        if (departamento_id) {
-            query += ` AND pa.departamento_personal_id = ?`;
-            params.push(parseInt(departamento_id));
+
+        const branchList = parseIdList(branch_ids);
+        if (branchList.length > 0) {
+            query += ` AND e.branch_id IN (?)`;
+            params.push(branchList);
+        }
+
+        const deptoList = parseIdList(departamento_ids);
+        if (deptoList.length > 0) {
+            query += ` AND COALESCE(pa.departamento_personal_id, e.departamento_personal_id) IN (?)`;
+            params.push(deptoList);
+        } else if (departamento_id && departamento_id !== '0') {
+            query += ` AND (pa.filtro_departamento_id = ? OR COALESCE(pa.departamento_personal_id, e.departamento_personal_id) = ?)`;
+            params.push(parseInt(departamento_id), parseInt(departamento_id));
         }
 
         query += ` ORDER BY e.codigo ASC`;

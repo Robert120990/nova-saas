@@ -8,8 +8,10 @@ import { unwrapList } from '../../../utils/apiUtils';
 import { useRhPayrollRequest } from '../../../hooks/useRhPayrollRequest';
 import { useConfirm } from '../../../context/ConfirmContext';
 import { toast } from 'sonner';
-import { Plus, Trash2, Eye, FileText, ReceiptText } from 'lucide-react';
+import { Plus, Trash2, Eye, FileText, ReceiptText, Download } from 'lucide-react';
 import PlanillaReportModal from '../PlanillaReportModal';
+import PlanillaExportModal from '../PlanillaExportModal';
+import { downloadBankFilesFromRows } from '../planillas/planillaUtils';
 
 const yearNow = new Date().getFullYear();
 const years = Array.from({ length: 6 }, (_, i) => yearNow - 2 + i);
@@ -27,6 +29,7 @@ const AguinaldosScreen = ({ companyId }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [filterAño, setFilterAño] = useState(yearNow);
     const [previewPeriodo, setPreviewPeriodo] = useState(null);
+    const [exportModalConfig, setExportModalConfig] = useState(null);
 
     // Modal form
     const [calcAño, setCalcAño] = useState(yearNow);
@@ -92,58 +95,78 @@ const AguinaldosScreen = ({ companyId }) => {
     };
 
     const handleVerPlanillaPDF = (r) => {
-        setPreviewPeriodo({
+        setExportModalConfig({
             anio: r.periodo_año,
             mes: r.periodo_mes || 12,
-            departamento_id: r.filtro_departamento_id,
+            esAguinaldo: true,
+            filtro_departamento_id: r.filtro_departamento_id,
             departamento_nombre: r.departamento_nombre,
-            tipo: 'aguinaldo'
+            tipo: 'planilla'
         });
     };
 
     const handleVerRecibosPDF = (r) => {
-        setPreviewPeriodo({
+        setExportModalConfig({
             anio: r.periodo_año,
             mes: r.periodo_mes || 12,
-            departamento_id: r.filtro_departamento_id,
+            esAguinaldo: true,
+            filtro_departamento_id: r.filtro_departamento_id,
             departamento_nombre: r.departamento_nombre,
-            tipo: 'aguinaldo-recibos'
+            tipo: 'recibos'
         });
     };
 
-    const handleDownloadCSV = async (r) => {
+    const handleOpenBankExport = (r) => {
+        setExportModalConfig({
+            anio: r.periodo_año,
+            mes: r.periodo_mes || 12,
+            esAguinaldo: true,
+            filtro_departamento_id: r.filtro_departamento_id,
+            departamento_nombre: r.departamento_nombre,
+            tipo: 'csv'
+        });
+    };
+
+    const handleDownloadCSV = async (anio, mes, branchIds = [], departamentoIds = [], filtroDeptoId = null, deptoNombre = '', formatoBancario = 'ambos') => {
         try {
-            const params = { año: r.periodo_año, mes: r.periodo_mes };
-            if (r.filtro_departamento_id) params.departamento_id = r.filtro_departamento_id;
-            const res = await axios.get('/api/rh/planilla-aguinaldos', { params, headers });
-            const rows = unwrapList(res).filter(item => String(item.filtro_departamento_id || '') === String(r.filtro_departamento_id || ''));
-            if (!rows.length) return toast.error('Sin datos');
-            const sortedRows = [...rows].sort((a, b) => {
-                const cuentaA = String(a.cuenta_planillera || '').trim();
-                const cuentaB = String(b.cuenta_planillera || '').trim();
-                const hasA = Boolean(cuentaA && cuentaA !== '0' && cuentaA !== '-');
-                const hasB = Boolean(cuentaB && cuentaB !== '0' && cuentaB !== '-');
-                if (hasA && !hasB) return -1;
-                if (!hasA && hasB) return 1;
-                return 0;
+            const params = { año: anio, mes: mes || 12 };
+            if (branchIds && branchIds.length > 0) params.branch_ids = branchIds.join(',');
+            if (departamentoIds && departamentoIds.length > 0) params.departamento_ids = departamentoIds.join(',');
+            else if (filtroDeptoId) params.departamento_id = filtroDeptoId;
+
+            const [res, bankConfigRes] = await Promise.all([
+                axios.get('/api/rh/planilla-aguinaldos', { params, headers }),
+                axios.get('/api/rh/config/banco-formatos', { headers }).catch(() => ({ data: {} }))
+            ]);
+            const rows = unwrapList(res);
+            const baseName = `AGUINALDOS_${anio}${String(mes || 12).padStart(2, '0')}_${deptoNombre || 'TODOS'}`;
+            downloadBankFilesFromRows({
+                rows,
+                bankConfigs: bankConfigRes.data?.configs || [],
+                baseName,
+                formatoBancario,
+                toast
             });
-            const csv = sortedRows.map(item => {
-                const cuenta = String(item.cuenta_planillera || '');
-                const monto = parseFloat(item.monto_recibir || 0).toFixed(2);
-                const nombre = `${item.nombres || ''} ${item.apellidos || ''}`.trim();
-                return `${cuenta}\t${monto}\t${nombre}`;
-            }).join('\n');
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `AGUINALDOS_${r.periodo_año}${r.periodo_mes}_${r.departamento_nombre || 'TODOS'}.csv`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            setTimeout(() => window.URL.revokeObjectURL(url), 1000);
-            toast.success('CSV descargado');
-        } catch { toast.error('Error al descargar CSV'); }
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Error al descargar el archivo bancario');
+        }
+    };
+
+    const handleConfirmExport = ({ tipo, anio, mes, filtro_departamento_id, departamento_nombre, branch_ids, departamento_ids, formatoBancario }) => {
+        if (tipo === 'csv') {
+            handleDownloadCSV(anio, mes, branch_ids, departamento_ids, filtro_departamento_id, departamento_nombre, formatoBancario);
+        } else {
+            setPreviewPeriodo({
+                anio,
+                mes: mes || 12,
+                departamento_id: filtro_departamento_id,
+                departamento_nombre,
+                branch_ids,
+                departamento_ids,
+                tipo: tipo === 'recibos' ? 'aguinaldo-recibos' : 'aguinaldo'
+            });
+            setExportModalConfig(null);
+        }
     };
 
     const handleVerPlanilla = async (r) => {
@@ -233,7 +256,7 @@ const AguinaldosScreen = ({ companyId }) => {
         saveMutation.mutate({ request: requestScope.begin(), payload: { año: calcAño, mes: calcMes, items: calculado, filtro_departamento_id: calcDeptoId || null } });
     };
 
-    const model = { isModalOpen, calcAño, calcMes, calcDeptoId, calculado, calculando, yaExiste, deptos, years, months, handleCalcular, setPreviewPeriodo, saveMutation, closeModal, changeFilter, handleGuardar, canSave };
+    const model = { isModalOpen, calcAño, calcMes, calcDeptoId, calculado, calculando, yaExiste, deptos, years, months, handleCalcular, setPreviewPeriodo, setExportModalConfig, saveMutation, closeModal, changeFilter, handleGuardar, canSave };
 
     return (
         <div className="space-y-3 text-slate-900">
@@ -280,7 +303,7 @@ const AguinaldosScreen = ({ companyId }) => {
                                 <button onClick={() => handleVerPlanilla(item)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Ver detalle de planilla"><Eye size={15} /></button>
                                 <button onClick={() => handleVerPlanillaPDF(item)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Ver Planilla de Aguinaldos en PDF (Formato Oficial)"><FileText size={15} /></button>
                                 <button onClick={() => handleVerRecibosPDF(item)} className="p-1 text-slate-600 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="Ver e Imprimir Recibos de Aguinaldo Masivos"><ReceiptText size={15} /></button>
-                                <button onClick={() => handleDownloadCSV(item)} className="p-1 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Descargar CSV"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+                                <button onClick={() => handleOpenBankExport(item)} className="p-1 text-slate-600 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors" title="Descargar CSV / TXT Bancario"><Download size={15} /></button>
                                 <button onClick={() => handleDelete(item)} className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar planilla"><Trash2 size={15} /></button>
                             </td>
                         </tr>
@@ -288,6 +311,14 @@ const AguinaldosScreen = ({ companyId }) => {
             </div>
 
             <AguinaldosModal open={isModalOpen} onClose={closeModal} onSubmit={handleGuardar} model={model} />
+
+            {/* Modal de Configuración de Filtros (Sucursal / Departamento) y Formato */}
+            <PlanillaExportModal
+                isOpen={!!exportModalConfig}
+                onClose={() => setExportModalConfig(null)}
+                periodo={exportModalConfig}
+                onConfirm={handleConfirmExport}
+            />
 
             {/* Modal de Vista Previa de Reportes / Recibos */}
             <PlanillaReportModal

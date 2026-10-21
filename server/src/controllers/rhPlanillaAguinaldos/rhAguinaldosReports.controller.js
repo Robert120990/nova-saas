@@ -1,14 +1,18 @@
 const pool = require('../../config/db');
 const TABLE = 'rh_planilla_aguinaldos';
 const reportPdfHelper = require('../../utils/reportPdfHelper');
+const { parseIdList } = require('../../services/rhPayroll/shared');
 
 const exportPDF = async (req, res) => {
     try {
-        const { año, mes, departamento_id } = req.query;
+        const { año, mes, departamento_id, branch_ids, departamento_ids } = req.query;
         if (!año) return res.status(400).json({ message: 'año requerido' });
 
         let query = `
             SELECT pa.*, e.codigo, e.nombres, e.apellidos,
+                   e.branch_id,
+                   COALESCE(b.nombre, 'SIN SUCURSAL') as branch_nombre,
+                   COALESCE(pa.departamento_personal_id, e.departamento_personal_id) as departamento_personal_id,
                    c.descripcion as cargo_nombre,
                    d.descripcion as departamento_nombre,
                    comp.razon_social as company_name,
@@ -16,29 +20,38 @@ const exportPDF = async (req, res) => {
             FROM ${TABLE} pa
             JOIN rh_empleados e ON pa.empleado_id = e.id
             JOIN companies comp ON pa.company_id = comp.id
+            LEFT JOIN branches b ON e.branch_id = b.id
             LEFT JOIN rh_cargos c ON e.cargo_id = c.id
-            LEFT JOIN rh_departamentos d ON e.departamento_personal_id = d.id
+            LEFT JOIN rh_departamentos d ON COALESCE(pa.departamento_personal_id, e.departamento_personal_id) = d.id
             WHERE pa.company_id = ? AND pa.periodo_año = ? AND pa.periodo_mes = ?
         `;
         let params = [req.company_id, parseInt(año), parseInt(mes) || 12];
 
-        if (departamento_id && departamento_id !== '0') {
-            query += ` AND pa.filtro_departamento_id = ?`;
-            params.push(parseInt(departamento_id));
-        } else {
-            query += ` AND pa.filtro_departamento_id IS NULL`;
+        const branchList = parseIdList(branch_ids);
+        if (branchList.length > 0) {
+            query += ` AND e.branch_id IN (?)`;
+            params.push(branchList);
         }
 
-        query += ` ORDER BY d.descripcion, e.codigo`;
-        const [rows] = await pool.query(query, params);
+        const deptoList = parseIdList(departamento_ids);
+        if (deptoList.length > 0) {
+            query += ` AND COALESCE(pa.departamento_personal_id, e.departamento_personal_id) IN (?)`;
+            params.push(deptoList);
+        } else if (departamento_id && departamento_id !== '0') {
+            query += ` AND (pa.filtro_departamento_id = ? OR COALESCE(pa.departamento_personal_id, e.departamento_personal_id) = ?)`;
+            params.push(parseInt(departamento_id), parseInt(departamento_id));
+        }
 
-        if (rows.length === 0) return res.status(404).json({ message: 'Planilla no encontrada' });
+        query += ` ORDER BY COALESCE(d.descripcion, 'ZZZ') ASC, COALESCE(b.nombre, 'ZZZ') ASC, e.codigo ASC`;
+        const [rows] = await pool.query(query, params);
 
         const months = ['', 'Enero','Febrero','Marzo','Abril','Mayo','Junio',
             'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
         const company = await reportPdfHelper.getCompanyInfo(req.company_id);
-        const depLabel = departamento_id && departamento_id !== '0' ? (rows[0]?.departamento_nombre || '') : 'Todos';
+        const depLabel = (deptoList.length === 1 || (departamento_id && departamento_id !== '0' && deptoList.length === 0))
+            ? (rows[0]?.departamento_nombre || '')
+            : 'Todos';
 
         const { generateAguinaldoPDF } = require('../../services/pdf.service');
         const pdfData = {
@@ -49,6 +62,8 @@ const exportPDF = async (req, res) => {
             logo_url: rows[0]?.logo_url || '',
             periodo_label: `${months[parseInt(mes) || 12]} ${año}`,
             departamento_label: depLabel,
+            branch_ids: branchList,
+            departamento_ids: deptoList,
             año: parseInt(año),
             mes: parseInt(mes) || 12,
             items: rows
@@ -66,12 +81,15 @@ const exportPDF = async (req, res) => {
 
 const exportRecibos = async (req, res) => {
     try {
-        const { año, mes, departamento_id } = req.query;
+        const { año, mes, departamento_id, branch_ids, departamento_ids } = req.query;
         if (!año) return res.status(400).json({ message: 'año requerido' });
 
         let query = `
             SELECT pa.*, e.codigo, e.nombres, e.apellidos,
                    e.num_dui, e.num_nit, e.fecha_ingreso,
+                   e.branch_id,
+                   COALESCE(b.nombre, 'SIN SUCURSAL') as branch_nombre,
+                   COALESCE(pa.departamento_personal_id, e.departamento_personal_id) as departamento_personal_id,
                    c.descripcion as cargo_nombre,
                    d.descripcion as departamento_nombre,
                    comp.razon_social as company_name,
@@ -79,23 +97,32 @@ const exportRecibos = async (req, res) => {
             FROM ${TABLE} pa
             JOIN rh_empleados e ON pa.empleado_id = e.id
             JOIN companies comp ON pa.company_id = comp.id
+            LEFT JOIN branches b ON e.branch_id = b.id
             LEFT JOIN rh_cargos c ON e.cargo_id = c.id
-            LEFT JOIN rh_departamentos d ON e.departamento_personal_id = d.id
+            LEFT JOIN rh_departamentos d ON COALESCE(pa.departamento_personal_id, e.departamento_personal_id) = d.id
             WHERE pa.company_id = ? AND pa.periodo_año = ? AND pa.periodo_mes = ?
         `;
         let params = [req.company_id, parseInt(año), parseInt(mes) || 12];
 
-        if (departamento_id && departamento_id !== '0') {
-            query += ` AND pa.filtro_departamento_id = ?`;
-            params.push(parseInt(departamento_id));
-        } else {
-            query += ` AND pa.filtro_departamento_id IS NULL`;
+        const branchList = parseIdList(branch_ids);
+        if (branchList.length > 0) {
+            query += ` AND e.branch_id IN (?)`;
+            params.push(branchList);
         }
 
-        query += ` ORDER BY d.descripcion, e.codigo`;
+        const deptoList = parseIdList(departamento_ids);
+        if (deptoList.length > 0) {
+            query += ` AND COALESCE(pa.departamento_personal_id, e.departamento_personal_id) IN (?)`;
+            params.push(deptoList);
+        } else if (departamento_id && departamento_id !== '0') {
+            query += ` AND (pa.filtro_departamento_id = ? OR COALESCE(pa.departamento_personal_id, e.departamento_personal_id) = ?)`;
+            params.push(parseInt(departamento_id), parseInt(departamento_id));
+        }
+
+        query += ` ORDER BY e.codigo ASC`;
         const [rows] = await pool.query(query, params);
 
-        if (rows.length === 0) return res.status(404).json({ message: 'Planilla no encontrada' });
+        if (rows.length === 0) return res.status(404).json({ message: 'No hay recibos de aguinaldo para los filtros seleccionados' });
 
         let responsable = '';
         let firmaUrl = '', selloUrl = '';

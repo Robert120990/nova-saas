@@ -1,10 +1,10 @@
 import Modal from '../../ui/Modal';
 import Money from '../../ui/Money';
-import { Calculator, Save, Gift, AlertCircle, FileText, ReceiptText } from 'lucide-react';
+import { Calculator, Save, Gift, AlertCircle, FileText, ReceiptText, Download } from 'lucide-react';
 import { formatDate } from '../../../utils/dateUtils';
 
 const AguinaldosModal = ({ open, onClose, onSubmit, model }) => {
-    const { calcAño, calcMes, calcDeptoId, calculado, calculando, yaExiste, deptos, years, months, handleCalcular, setPreviewPeriodo, saveMutation, changeFilter, canSave } = model;
+    const { calcAño, calcMes, calcDeptoId, calculado, calculando, yaExiste, deptos, years, months, handleCalcular, setExportModalConfig, saveMutation, changeFilter, canSave } = model;
     if (!open) return null;
 
     const rows = Array.isArray(calculado) ? calculado : [];
@@ -59,15 +59,16 @@ const AguinaldosModal = ({ open, onClose, onSubmit, model }) => {
                                 <AlertCircle size={14} className="text-amber-600 shrink-0" />
                                 <span className="text-[10px] font-bold text-amber-700">Planilla guardada para este período. Puede presionar Recalcular y luego Guardar para actualizarla.</span>
                             </div>
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                                 <button
                                     type="button"
-                                    onClick={() => setPreviewPeriodo({
+                                    onClick={() => setExportModalConfig({
                                         anio: calcAño,
                                         mes: calcMes,
-                                        departamento_id: calcDeptoId || undefined,
+                                        esAguinaldo: true,
+                                        filtro_departamento_id: calcDeptoId || undefined,
                                         departamento_nombre: deptos.find(d => String(d.id) === String(calcDeptoId))?.descripcion,
-                                        tipo: 'aguinaldo'
+                                        tipo: 'planilla'
                                     })}
                                     className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-indigo-50 text-indigo-700 rounded-lg font-bold text-[11px] transition-colors border border-indigo-200 shadow-sm"
                                 >
@@ -76,17 +77,33 @@ const AguinaldosModal = ({ open, onClose, onSubmit, model }) => {
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setPreviewPeriodo({
+                                    onClick={() => setExportModalConfig({
                                         anio: calcAño,
                                         mes: calcMes,
-                                        departamento_id: calcDeptoId || undefined,
+                                        esAguinaldo: true,
+                                        filtro_departamento_id: calcDeptoId || undefined,
                                         departamento_nombre: deptos.find(d => String(d.id) === String(calcDeptoId))?.descripcion,
-                                        tipo: 'aguinaldo-recibos'
+                                        tipo: 'recibos'
                                     })}
                                     className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-purple-50 text-purple-700 rounded-lg font-bold text-[11px] transition-colors border border-purple-200 shadow-sm"
                                 >
                                     <ReceiptText size={13} />
                                     <span>Ver PDF Recibos</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setExportModalConfig({
+                                        anio: calcAño,
+                                        mes: calcMes,
+                                        esAguinaldo: true,
+                                        filtro_departamento_id: calcDeptoId || undefined,
+                                        departamento_nombre: deptos.find(d => String(d.id) === String(calcDeptoId))?.descripcion,
+                                        tipo: 'csv'
+                                    })}
+                                    className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-sky-50 text-sky-700 rounded-lg font-bold text-[11px] transition-colors border border-sky-200 shadow-sm"
+                                >
+                                    <Download size={13} />
+                                    <span>Descargar CSV / TXT</span>
                                 </button>
                             </div>
                         </div>

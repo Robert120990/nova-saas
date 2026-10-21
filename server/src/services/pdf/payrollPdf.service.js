@@ -991,17 +991,26 @@ const generateAguinaldoPDF = async (data) => {
     const startX = 30;
     const contentWidth = 732;
     const items = data.items || [];
+    const branchList = Array.isArray(data.branch_ids) ? data.branch_ids : [];
+    const deptoList = Array.isArray(data.departamento_ids) ? data.departamento_ids : [];
     const company = data.company || {
         razon_social: data.company_name || 'EMPRESA REGISTRADA',
         nit: data.company_nit || '0000-000000-000-0',
         nrc: data.company_nrc || '000000-0'
     };
 
+    const distinctBranches = [...new Set(items.map(p => p.branch_id || 0))];
+    const getDeptoKey = (p) => (p.departamento_personal_id ? String(p.departamento_personal_id) : (p.departamento_nombre ? p.departamento_nombre.trim() : 'SIN_DEPTO'));
+    const distinctDeptos = [...new Set(items.map(getDeptoKey))];
+
+    const shouldGroupByDepto = deptoList.length > 1 || (deptoList.length === 0 && distinctDeptos.length > 1);
+    const shouldGroupByBranch = !shouldGroupByDepto && (branchList.length > 1 || (branchList.length === 0 && distinctBranches.length > 1));
+
     const title = 'PLANILLA DE AGUINALDOS';
     const periodText = data.periodo_label
         ? `CORRESPONDIENTE AL PERÍODO: ${data.periodo_label}`
         : `CORRESPONDIENTE AL EJERCICIO FISCAL ${data.año || new Date().getFullYear()}`;
-    const subtitle = data.departamento_label && data.departamento_label !== 'Todos'
+    const subtitle = (!shouldGroupByDepto && data.departamento_label && data.departamento_label !== 'Todos')
         ? `DEPARTAMENTO: ${data.departamento_label}`
         : null;
 
@@ -1028,37 +1037,93 @@ const generateAguinaldoPDF = async (data) => {
         doc.rect(startX, yPos, contentWidth, 14).fill('#f1f5f9');
         doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
         let x = startX + 2;
-        doc.text('Nº', x, yPos + 3.5, { width: colW.num, align: 'center' }); x += colW.num;
-        doc.text('CÓDIGO', x, yPos + 3.5, { width: colW.codigo }); x += colW.codigo;
-        doc.text('EMPLEADO', x, yPos + 3.5, { width: colW.nombre }); x += colW.nombre;
-        doc.text('CARGO / PUESTO', x, yPos + 3.5, { width: colW.cargo }); x += colW.cargo;
-        doc.text('F. INGRESO', x, yPos + 3.5, { width: colW.ingreso, align: 'center' }); x += colW.ingreso;
-        doc.text('F. BASE', x, yPos + 3.5, { width: colW.base, align: 'center' }); x += colW.base;
-        doc.text('D. ANT.', x, yPos + 3.5, { width: colW.dias - 2, align: 'right' }); x += colW.dias;
-        doc.text('D. LEY', x, yPos + 3.5, { width: colW.tabla - 2, align: 'right' }); x += colW.tabla;
-        doc.text('SUELDO B.', x, yPos + 3.5, { width: colW.sueldo - 3, align: 'right' }); x += colW.sueldo;
-        doc.text('AGUINALDO', x, yPos + 3.5, { width: colW.aguinaldo - 3, align: 'right' }); x += colW.aguinaldo;
-        doc.text('EXC. RENTA', x, yPos + 3.5, { width: colW.excedente - 3, align: 'right' }); x += colW.excedente;
-        doc.text('RET. RENTA', x, yPos + 3.5, { width: colW.renta - 3, align: 'right' }); x += colW.renta;
-        doc.text('RET. PGR', x, yPos + 3.5, { width: colW.procuraduria - 3, align: 'right' }); x += colW.procuraduria;
-        doc.text('LÍQUIDO', x, yPos + 3.5, { width: colW.recibir - 3, align: 'right' });
+        doc.text('Nº', x, yPos + 3.5, { width: colW.num, align: 'center', lineBreak: false }); x += colW.num;
+        doc.text('CÓDIGO', x, yPos + 3.5, { width: colW.codigo, lineBreak: false }); x += colW.codigo;
+        doc.text('EMPLEADO', x, yPos + 3.5, { width: colW.nombre, lineBreak: false }); x += colW.nombre;
+        const cargoHeader = shouldGroupByDepto
+            ? (distinctBranches.length > 1 ? 'CARGO / SUCURSAL' : 'CARGO / PUESTO')
+            : 'CARGO / DEPTO';
+        doc.text(cargoHeader, x, yPos + 3.5, { width: colW.cargo, lineBreak: false }); x += colW.cargo;
+        doc.text('F. INGRESO', x, yPos + 3.5, { width: colW.ingreso, align: 'center', lineBreak: false }); x += colW.ingreso;
+        doc.text('F. BASE', x, yPos + 3.5, { width: colW.base, align: 'center', lineBreak: false }); x += colW.base;
+        doc.text('D. ANT.', x, yPos + 3.5, { width: colW.dias - 2, align: 'right', lineBreak: false }); x += colW.dias;
+        doc.text('D. LEY', x, yPos + 3.5, { width: colW.tabla - 2, align: 'right', lineBreak: false }); x += colW.tabla;
+        doc.text('SUELDO B.', x, yPos + 3.5, { width: colW.sueldo - 3, align: 'right', lineBreak: false }); x += colW.sueldo;
+        doc.text('AGUINALDO', x, yPos + 3.5, { width: colW.aguinaldo - 3, align: 'right', lineBreak: false }); x += colW.aguinaldo;
+        doc.text('EXC. RENTA', x, yPos + 3.5, { width: colW.excedente - 3, align: 'right', lineBreak: false }); x += colW.excedente;
+        doc.text('RET. RENTA', x, yPos + 3.5, { width: colW.renta - 3, align: 'right', lineBreak: false }); x += colW.renta;
+        doc.text('RET. PGR', x, yPos + 3.5, { width: colW.procuraduria - 3, align: 'right', lineBreak: false }); x += colW.procuraduria;
+        doc.text('LÍQUIDO', x, yPos + 3.5, { width: colW.recibir - 3, align: 'right', lineBreak: false });
 
         doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, yPos + 14).lineTo(startX + contentWidth, yPos + 14).stroke();
+        return yPos + 18;
+    };
+
+    const renderDeptoBanner = (yPos, deptoName, count) => {
+        doc.rect(startX, yPos, contentWidth, 15).fill('#eff6ff');
+        doc.rect(startX, yPos, 3.5, 15).fill('#2563eb');
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#1e3a8a');
+        doc.text(`DEPARTAMENTO: ${deptoName.toUpperCase()}  (${count} ${count === 1 ? 'empleado' : 'empleados'})`, startX + 8, yPos + 4, { lineBreak: false });
         return yPos + 17;
     };
 
-    let y = drawTableHeader(doc.y + 4);
+    const renderBranchBanner = (yPos, branchName, count) => {
+        doc.rect(startX, yPos, contentWidth, 15).fill('#eef2ff');
+        doc.rect(startX, yPos, 3.5, 15).fill('#4f46e5');
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#312e81');
+        doc.text(`SUCURSAL: ${branchName.toUpperCase()}  (${count} ${count === 1 ? 'empleado' : 'empleados'})`, startX + 8, yPos + 4, { lineBreak: false });
+        return yPos + 17;
+    };
+
+    let y = doc.y + 4;
 
     if (items.length === 0) {
+        y = drawTableHeader(y);
         doc.fontSize(8.5).font('Helvetica').fillColor('#64748b');
-        doc.text('No se encontraron registros de aguinaldos para el período seleccionado.', startX, y + 10);
+        doc.text('No se encontraron registros de aguinaldos para los filtros seleccionados.', startX, y + 10, { lineBreak: false });
         y += 30;
     } else {
-        const grupos = new Map();
-        for (const item of items) {
-            const depto = item.departamento_nombre || 'Sin Depto.';
-            if (!grupos.has(depto)) grupos.set(depto, []);
-            grupos.get(depto).push(item);
+        let groupingMode = 'none';
+        const groups = [];
+
+        if (shouldGroupByDepto) {
+            groupingMode = 'depto';
+            const dMap = new Map();
+            for (const item of items) {
+                const dId = item.departamento_personal_id || (item.departamento_nombre ? item.departamento_nombre.trim() : 'SIN_DEPTO');
+                const dName = (item.departamento_nombre || 'SIN DEPARTAMENTO').trim();
+                if (!dMap.has(dId)) {
+                    const g = { id: dId, name: dName, items: [] };
+                    dMap.set(dId, g);
+                    groups.push(g);
+                }
+                dMap.get(dId).items.push(item);
+            }
+            groups.sort((a, b) => {
+                if (a.id === 0 || a.id === 'SIN_DEPTO') return 1;
+                if (b.id === 0 || b.id === 'SIN_DEPTO') return -1;
+                return a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
+            });
+        } else if (shouldGroupByBranch) {
+            groupingMode = 'branch';
+            const bMap = new Map();
+            for (const item of items) {
+                const bId = item.branch_id || 0;
+                const bName = (item.branch_nombre || 'SIN SUCURSAL').trim();
+                if (!bMap.has(bId)) {
+                    const g = { id: bId, name: bName, items: [] };
+                    bMap.set(bId, g);
+                    groups.push(g);
+                }
+                bMap.get(bId).items.push(item);
+            }
+        } else {
+            groupingMode = 'none';
+            groups.push({
+                id: 0,
+                name: deptoList.length === 1 && items[0]?.departamento_nombre ? items[0].departamento_nombre : '',
+                items
+            });
         }
 
         let totalSueldo = 0;
@@ -1069,25 +1134,53 @@ const generateAguinaldoPDF = async (data) => {
         let totalRecibir = 0;
         let globalIndex = 0;
 
-        for (const [depto, deptoItems] of grupos) {
-            if (grupos.size > 1) {
-                if (y > 510) {
+        const preMoneyWidth = colW.num + colW.codigo + colW.nombre + colW.cargo + colW.ingreso + colW.base + colW.dias + colW.tabla;
+
+        for (let gIdx = 0; gIdx < groups.length; gIdx++) {
+            const group = groups[gIdx];
+
+            if (groupingMode === 'depto') {
+                // Cada departamento inicia en una página diferente
+                if (gIdx > 0) {
                     doc.addPage();
                     reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
-                    y = drawTableHeader(doc.y + 4);
+                    y = doc.y + 4;
                 }
-                doc.rect(startX, y, contentWidth, 12.5).fill('#e2e8f0');
-                doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#1e293b');
-                doc.text(`DEPARTAMENTO: ${depto.toUpperCase()} (${deptoItems.length} EMPLEADOS)`, startX + 4, y + 2.5);
-                y += 15;
+                y = renderDeptoBanner(y, group.name, group.items.length);
+            } else if (groupingMode === 'branch') {
+                if (y > 470) {
+                    doc.addPage();
+                    reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+                    y = doc.y + 4;
+                }
+                y = renderBranchBanner(y, group.name, group.items.length);
             }
 
-            for (const item of deptoItems) {
+            y = drawTableHeader(y);
+
+            const subTotals = {
+                sueldo: 0,
+                aguinaldo: 0,
+                excedente: 0,
+                renta: 0,
+                procuraduria: 0,
+                recibir: 0
+            };
+
+            for (let idx = 0; idx < group.items.length; idx++) {
+                const item = group.items[idx];
                 globalIndex++;
-                if (y > 525) {
+
+                if (y > 530) {
                     doc.addPage();
                     reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
-                    y = drawTableHeader(doc.y + 4);
+                    y = doc.y + 4;
+                    if (groupingMode === 'depto') {
+                        y = renderDeptoBanner(y, group.name + ' (Continuación)', group.items.length);
+                    } else if (groupingMode === 'branch') {
+                        y = renderBranchBanner(y, group.name + ' (Continuación)', group.items.length);
+                    }
+                    y = drawTableHeader(y);
                 }
 
                 const sueldo = parseFloat(item.sueldo_base || 0);
@@ -1097,6 +1190,13 @@ const generateAguinaldoPDF = async (data) => {
                 const procuraduria = parseFloat(item.procuraduria || 0);
                 const recibir = parseFloat(item.monto_recibir || 0);
 
+                subTotals.sueldo += sueldo;
+                subTotals.aguinaldo += aguinaldo;
+                subTotals.excedente += excedente;
+                subTotals.renta += renta;
+                subTotals.procuraduria += procuraduria;
+                subTotals.recibir += recibir;
+
                 totalSueldo += sueldo;
                 totalAguinaldo += aguinaldo;
                 totalExcedente += excedente;
@@ -1104,51 +1204,99 @@ const generateAguinaldoPDF = async (data) => {
                 totalProcuraduria += procuraduria;
                 totalRecibir += recibir;
 
-                if (globalIndex % 2 === 0) {
-                    doc.rect(startX, y - 1.5, contentWidth, 12).fill('#f8fafc');
+                if (idx % 2 === 1) {
+                    doc.rect(startX, y - 1.5, contentWidth, 12.5).fill('#f8fafc');
                 }
 
                 doc.fontSize(7).font('Helvetica').fillColor('#1e293b');
                 let rx = startX + 2;
-                doc.text(String(globalIndex), rx, y, { width: colW.num, align: 'center' }); rx += colW.num;
-                doc.text(item.codigo || '', rx, y, { width: colW.codigo }); rx += colW.codigo;
+                doc.text(String(globalIndex), rx, y, { width: colW.num, align: 'center', lineBreak: false }); rx += colW.num;
+                doc.text(item.codigo || '', rx, y, { width: colW.codigo, lineBreak: false }); rx += colW.codigo;
                 const empNombre = `${item.nombres || ''} ${item.apellidos || ''}`.trim();
-                doc.text(empNombre.substring(0, 30), rx, y, { width: colW.nombre - 3, ellipsis: true }); rx += colW.nombre;
-                const cargoNombre = item.cargo_nombre || 'GENERAL';
-                doc.text(cargoNombre.substring(0, 17), rx, y, { width: colW.cargo - 3, ellipsis: true }); rx += colW.cargo;
-                doc.text(reportPdfHelper.formatDate(item.fecha_ingreso), rx, y, { width: colW.ingreso, align: 'center' }); rx += colW.ingreso;
-                doc.text(reportPdfHelper.formatDate(item.fecha_base), rx, y, { width: colW.base, align: 'center' }); rx += colW.base;
-                doc.text(String(item.dias_antiguedad || 0), rx, y, { width: colW.dias - 2, align: 'right' }); rx += colW.dias;
-                doc.text(String(item.dias_segun_tabla || 0), rx, y, { width: colW.tabla - 2, align: 'right' }); rx += colW.tabla;
-                doc.text(reportPdfHelper.fmt(sueldo), rx, y, { width: colW.sueldo - 3, align: 'right' }); rx += colW.sueldo;
-                doc.text(reportPdfHelper.fmt(aguinaldo), rx, y, { width: colW.aguinaldo - 3, align: 'right' }); rx += colW.aguinaldo;
-                doc.text(reportPdfHelper.fmt(excedente), rx, y, { width: colW.excedente - 3, align: 'right' }); rx += colW.excedente;
-                doc.text(reportPdfHelper.fmt(renta), rx, y, { width: colW.renta - 3, align: 'right' }); rx += colW.renta;
-                doc.text(reportPdfHelper.fmt(procuraduria), rx, y, { width: colW.procuraduria - 3, align: 'right' }); rx += colW.procuraduria;
-                doc.font('Helvetica-Bold').text(reportPdfHelper.fmt(recibir), rx, y, { width: colW.recibir - 3, align: 'right' });
+                doc.text(empNombre.substring(0, 30), rx, y, { width: colW.nombre - 3, ellipsis: true, lineBreak: false }); rx += colW.nombre;
+
+                let cargoDepto = item.cargo_nombre || item.departamento_nombre || 'GENERAL';
+                if (shouldGroupByDepto) {
+                    if (distinctBranches.length > 1 && item.branch_nombre) {
+                        cargoDepto = `${item.cargo_nombre || 'GENERAL'} • ${item.branch_nombre}`;
+                    } else {
+                        cargoDepto = item.cargo_nombre || 'GENERAL';
+                    }
+                }
+                doc.text(cargoDepto.substring(0, 17), rx, y, { width: colW.cargo - 3, ellipsis: true, lineBreak: false }); rx += colW.cargo;
+                doc.text(reportPdfHelper.formatDate(item.fecha_ingreso), rx, y, { width: colW.ingreso, align: 'center', lineBreak: false }); rx += colW.ingreso;
+                doc.text(reportPdfHelper.formatDate(item.fecha_base), rx, y, { width: colW.base, align: 'center', lineBreak: false }); rx += colW.base;
+                doc.text(String(item.dias_antiguedad || 0), rx, y, { width: colW.dias - 2, align: 'right', lineBreak: false }); rx += colW.dias;
+                doc.text(String(item.dias_segun_tabla || 0), rx, y, { width: colW.tabla - 2, align: 'right', lineBreak: false }); rx += colW.tabla;
+                doc.text(reportPdfHelper.fmt(sueldo), rx, y, { width: colW.sueldo - 3, align: 'right', lineBreak: false }); rx += colW.sueldo;
+                doc.text(reportPdfHelper.fmt(aguinaldo), rx, y, { width: colW.aguinaldo - 3, align: 'right', lineBreak: false }); rx += colW.aguinaldo;
+                doc.text(reportPdfHelper.fmt(excedente), rx, y, { width: colW.excedente - 3, align: 'right', lineBreak: false }); rx += colW.excedente;
+                doc.text(reportPdfHelper.fmt(renta), rx, y, { width: colW.renta - 3, align: 'right', lineBreak: false }); rx += colW.renta;
+                doc.text(reportPdfHelper.fmt(procuraduria), rx, y, { width: colW.procuraduria - 3, align: 'right', lineBreak: false }); rx += colW.procuraduria;
+                doc.font('Helvetica-Bold').text(reportPdfHelper.fmt(recibir), rx, y, { width: colW.recibir - 3, align: 'right', lineBreak: false });
+                y += 12;
+            }
+
+            // Subtotal for Group (if grouped by depto or branch)
+            if (groupingMode !== 'none') {
+                if (y > 515) {
+                    doc.addPage();
+                    reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+                    y = doc.y + 10;
+                }
+
+                doc.strokeColor('#cbd5e1').lineWidth(0.8).moveTo(startX, y).lineTo(startX + contentWidth, y).stroke();
+                y += 3;
+                doc.fontSize(7).font('Helvetica-Bold').fillColor('#1e293b');
+
+                const subtotalLabel = `SUBTOTAL ${group.name.toUpperCase()}:`;
+                doc.text(subtotalLabel, startX + 2, y, {
+                    width: preMoneyWidth,
+                    lineBreak: false
+                });
+
+                let tx = startX + 2 + preMoneyWidth;
+                doc.text(reportPdfHelper.fmt(subTotals.sueldo), tx, y, { width: colW.sueldo - 3, align: 'right', lineBreak: false }); tx += colW.sueldo;
+                doc.text(reportPdfHelper.fmt(subTotals.aguinaldo), tx, y, { width: colW.aguinaldo - 3, align: 'right', lineBreak: false }); tx += colW.aguinaldo;
+                doc.text(reportPdfHelper.fmt(subTotals.excedente), tx, y, { width: colW.excedente - 3, align: 'right', lineBreak: false }); tx += colW.excedente;
+                doc.text(reportPdfHelper.fmt(subTotals.renta), tx, y, { width: colW.renta - 3, align: 'right', lineBreak: false }); tx += colW.renta;
+                doc.text(reportPdfHelper.fmt(subTotals.procuraduria), tx, y, { width: colW.procuraduria - 3, align: 'right', lineBreak: false }); tx += colW.procuraduria;
+                doc.text(reportPdfHelper.fmt(subTotals.recibir), tx, y, { width: colW.recibir - 3, align: 'right', lineBreak: false });
+
+                y += 10;
+                doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, y).lineTo(startX + contentWidth, y).stroke();
                 y += 12;
             }
         }
 
-        // Totals row
-        if (y > 510) {
-            doc.addPage();
-            reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
-            y = doc.y + 10;
+        // Totals / Grand Totals row
+        if (groupingMode !== 'none') {
+            if (y > 480) {
+                doc.addPage();
+                reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+                y = doc.y + 10;
+            }
+        } else {
+            if (y > 515) {
+                doc.addPage();
+                reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+                y = doc.y + 10;
+            }
         }
 
         doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, y).lineTo(startX + contentWidth, y).stroke();
         y += 4;
         doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
-        doc.text('TOTALES GENERALES:', startX + 2, y);
+        const totalLabel = (groupingMode !== 'none') ? 'TOTAL GENERAL:' : 'TOTALES:';
+        doc.text(totalLabel, startX + 2, y, { lineBreak: false });
 
-        let tx = startX + colW.num + colW.codigo + colW.nombre + colW.cargo + colW.ingreso + colW.base + colW.dias + colW.tabla;
-        doc.text(reportPdfHelper.fmt(totalSueldo), tx, y, { width: colW.sueldo - 3, align: 'right' }); tx += colW.sueldo;
-        doc.text(reportPdfHelper.fmt(totalAguinaldo), tx, y, { width: colW.aguinaldo - 3, align: 'right' }); tx += colW.aguinaldo;
-        doc.text(reportPdfHelper.fmt(totalExcedente), tx, y, { width: colW.excedente - 3, align: 'right' }); tx += colW.excedente;
-        doc.text(reportPdfHelper.fmt(totalRenta), tx, y, { width: colW.renta - 3, align: 'right' }); tx += colW.renta;
-        doc.text(reportPdfHelper.fmt(totalProcuraduria), tx, y, { width: colW.procuraduria - 3, align: 'right' }); tx += colW.procuraduria;
-        doc.text(reportPdfHelper.fmt(totalRecibir), tx, y, { width: colW.recibir - 3, align: 'right' });
+        let tx = startX + 2 + preMoneyWidth;
+        doc.text(reportPdfHelper.fmt(totalSueldo), tx, y, { width: colW.sueldo - 3, align: 'right', lineBreak: false }); tx += colW.sueldo;
+        doc.text(reportPdfHelper.fmt(totalAguinaldo), tx, y, { width: colW.aguinaldo - 3, align: 'right', lineBreak: false }); tx += colW.aguinaldo;
+        doc.text(reportPdfHelper.fmt(totalExcedente), tx, y, { width: colW.excedente - 3, align: 'right', lineBreak: false }); tx += colW.excedente;
+        doc.text(reportPdfHelper.fmt(totalRenta), tx, y, { width: colW.renta - 3, align: 'right', lineBreak: false }); tx += colW.renta;
+        doc.text(reportPdfHelper.fmt(totalProcuraduria), tx, y, { width: colW.procuraduria - 3, align: 'right', lineBreak: false }); tx += colW.procuraduria;
+        doc.text(reportPdfHelper.fmt(totalRecibir), tx, y, { width: colW.recibir - 3, align: 'right', lineBreak: false });
 
         y += 18;
     }

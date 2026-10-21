@@ -54,10 +54,22 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
                 endpoint = '/api/rh/planilla-aguinaldos/pdf';
                 params = { año: anio, mes: mes || 12 };
                 if (departamento_id && departamento_id !== '0') params.departamento_id = departamento_id;
+                if (periodo?.branch_ids && periodo.branch_ids.length > 0) {
+                    params.branch_ids = Array.isArray(periodo.branch_ids) ? periodo.branch_ids.join(',') : periodo.branch_ids;
+                }
+                if (periodo?.departamento_ids && periodo.departamento_ids.length > 0) {
+                    params.departamento_ids = Array.isArray(periodo.departamento_ids) ? periodo.departamento_ids.join(',') : periodo.departamento_ids;
+                }
             } else if (tipo === 'aguinaldo-recibos') {
                 endpoint = '/api/rh/planilla-aguinaldos/recibos';
                 params = { año: anio, mes: mes || 12 };
                 if (departamento_id && departamento_id !== '0') params.departamento_id = departamento_id;
+                if (periodo?.branch_ids && periodo.branch_ids.length > 0) {
+                    params.branch_ids = Array.isArray(periodo.branch_ids) ? periodo.branch_ids.join(',') : periodo.branch_ids;
+                }
+                if (periodo?.departamento_ids && periodo.departamento_ids.length > 0) {
+                    params.departamento_ids = Array.isArray(periodo.departamento_ids) ? periodo.departamento_ids.join(',') : periodo.departamento_ids;
+                }
             } else if (isRecibos) {
                 endpoint = '/api/rh/planillas/recibos-masivos';
                 params = { anio, mes, quincena };
@@ -255,7 +267,13 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
                                 {isQuincena25
                                     ? `Ejercicio: ${anio}${departamento_nombre && departamento_nombre !== 'Todos' ? ' • Depto: ' + departamento_nombre : ' • Todos los Departamentos'}`
                                     : isAguinaldo
-                                        ? `Período: ${mesLabel} ${anio}${departamento_nombre && departamento_nombre !== 'Todos' ? ' • Depto: ' + departamento_nombre : ' • Todos los Departamentos'}`
+                                        ? `Período: ${mesLabel} ${anio}${
+                                            periodo?.departamento_ids && periodo.departamento_ids.length > 1
+                                                ? ` • ${periodo.departamento_ids.length} Deptos. (Páginas separadas)`
+                                                : (periodo?.departamento_ids && periodo.departamento_ids.length === 1
+                                                    ? ' • 1 Depto.'
+                                                    : (departamento_nombre && departamento_nombre !== 'Todos' ? ' • Depto: ' + departamento_nombre : ' • Todos los Departamentos'))
+                                        }`
                                         : `Período: ${mesLabel} ${anio} • ${quincenaLabel}${
                                             periodo?.departamento_ids && periodo.departamento_ids.length > 1
                                                 ? ` • ${periodo.departamento_ids.length} Deptos. (Páginas separadas)`

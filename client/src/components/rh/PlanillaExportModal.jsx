@@ -32,10 +32,12 @@ const PlanillaExportModal = ({ isOpen, onClose, periodo, onConfirm }) => {
     const [selectedDeptoIds, setSelectedDeptoIds] = useState([]);
     const [deptoSearch, setDeptoSearch] = useState('');
 
-    const anio = periodo?.anio || periodo?.periodo_anio;
+    const anio = periodo?.anio || periodo?.periodo_anio || periodo?.periodo_año || periodo?.año;
     const mes = periodo?.mes || periodo?.periodo_mes;
     const quincena = periodo?.quincena;
     const tipo = periodo?.tipo || 'planilla'; // 'planilla' | 'recibos' | 'csv'
+    const esAguinaldo = Boolean(periodo?.esAguinaldo);
+    const filtroDeptoId = periodo?.filtro_departamento_id || periodo?.departamento_id;
 
     // Fetch branches
     const { data: branchesResp } = useQuery({
@@ -78,11 +80,16 @@ const PlanillaExportModal = ({ isOpen, onClose, periodo, onConfirm }) => {
             setFormatoBancario('ambos');
             setAllBranchesSelected(true);
             setSelectedBranchIds([]);
-            setAllDeptosSelected(true);
-            setSelectedDeptoIds([]);
+            if (filtroDeptoId && String(filtroDeptoId) !== '0') {
+                setAllDeptosSelected(false);
+                setSelectedDeptoIds([Number(filtroDeptoId)]);
+            } else {
+                setAllDeptosSelected(true);
+                setSelectedDeptoIds([]);
+            }
             setDeptoSearch('');
         }
-    }, [isOpen]);
+    }, [isOpen, filtroDeptoId]);
 
     // Close on Escape key
     useEffect(() => {
@@ -199,6 +206,9 @@ const PlanillaExportModal = ({ isOpen, onClose, periodo, onConfirm }) => {
             anio,
             mes,
             quincena,
+            esAguinaldo,
+            filtro_departamento_id: filtroDeptoId,
+            departamento_nombre: periodo?.departamento_nombre,
             branch_ids,
             departamento_ids,
             formato,
@@ -212,12 +222,14 @@ const PlanillaExportModal = ({ isOpen, onClose, periodo, onConfirm }) => {
     if (!isOpen) return null;
 
     const mesLabel = MONTH_NAMES[parseInt(mes)] || `Mes ${mes}`;
-    const quincenaLabel = quincena === 'primera' ? '1ra Quincena' : '2da Quincena';
+    const quincenaLabel = esAguinaldo
+        ? 'Aguinaldos'
+        : (quincena === 'primera' ? '1ra Quincena' : '2da Quincena');
 
     const modalTitle = tipo === 'planilla'
-        ? 'Generar Planilla de Sueldos (PDF)'
+        ? (esAguinaldo ? 'Generar Planilla de Aguinaldos (PDF)' : 'Generar Planilla de Sueldos (PDF)')
         : tipo === 'recibos'
-            ? 'Generar Recibos de Pago (PDF)'
+            ? (esAguinaldo ? 'Generar Recibos de Aguinaldo (PDF)' : 'Generar Recibos de Pago (PDF)')
             : 'Exportar Archivo Bancario';
 
     const ActionIcon = tipo === 'planilla' 
@@ -276,7 +288,7 @@ const PlanillaExportModal = ({ isOpen, onClose, periodo, onConfirm }) => {
                 <div className="flex-1 overflow-y-auto p-5 space-y-5">
                     
                     {/* Format Toggle (Solo para Planilla) */}
-                    {tipo === 'planilla' && (
+                    {tipo === 'planilla' && !esAguinaldo && (
                         <div className="space-y-2 bg-slate-50/80 p-3.5 rounded-xl border border-slate-200/70">
                             <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                                 Formato de Planilla
