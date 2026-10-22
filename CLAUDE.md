@@ -107,6 +107,19 @@ MySQL migrations versioned as `migration_vN_<description>.{sql|js}` with one `ru
 - Frontend: Use `<Table />` with loading state, `<Pagination />`, search with 500ms debounce
 - TanStack Query: `queryKey: ['resource', search, page]`
 
+### Ordenamiento por Columna en Tablas (Sorting Standard) — OBLIGATORIO
+Toda tabla de datos del sistema (catálogos, listados, reportes e historiales) **DEBE** contar con ordenamiento interactivo por columnas utilizando `<Table />` (`client/src/components/ui/Table.jsx`):
+- **Estándar Visual**: Sigue exactamente la apariencia de Historial de Ventas (`SalesHistory.jsx`):
+  - Inactivo: `<ArrowUpDown size={11} className="text-slate-400 opacity-60 group-hover:opacity-100 shrink-0" />`
+  - Activo Ascendente: `<ArrowUp size={12} className="text-indigo-600 shrink-0" />`
+  - Activo Descendente: `<ArrowDown size={12} className="text-indigo-600 shrink-0" />`
+  - Badges contextuales de dirección (`px-1 py-0.5 rounded bg-indigo-50 text-indigo-600 text-[8.5px] font-extrabold border border-indigo-200/80`):
+    * Numéricos/Moneda: `Menor→Mayor` / `Mayor→Menor`
+    * Fechas: `Antiguas` / `Recientes`
+    * Texto: `A→Z` / `Z→A`
+- **Soporte Nativo en `<Table />`**: Ordena automáticamente en cliente (`data`) infiriendo el campo y tipo según la cabecera. Si el backend implementa ordenamiento paginado en base de datos, `<Table />` soporta modo controlado con `sortBy`, `sortDir` y `onSort`.
+- Las columnas de control (`Acciones`, `Opciones`, checkboxes de selección múltiple) se excluyen automáticamente del ordenamiento.
+
 ### Modularización Obligatoria de Pantallas en Frontend (Component-Driven Architecture, Máx. 350 Líneas) — OBLIGATORIO
 Toda nueva pantalla en `client/src/pages/<PageName>.jsx` (y cualquier refactorización de pantallas existentes) DEBE ser modular y NO debe exceder las **350 líneas de código**.
 La modularización en componentes separados dentro de `client/src/components/<modulo>/` es obligatoria cuando se cumpla CUALQUIERA de las siguientes condiciones:

@@ -26,4 +26,5 @@ Todos los métodos `get` deben soportar:
 ## 3. UI/UX
 - Los badges de **Estado** deben ser interactivos (si el negocio lo permite) para cambios rápidos sin abrir modales.
 - Las tablas deben usar el componente `<Table />` estándar con encabezados en mayúsculas y fuente negrita.
+- **Ordenamiento por Columna Obligatorio**: Toda tabla debe contar con ordenamiento interactivo por columnas utilizando `<Table />` con el estándar visual de Historial de Ventas (íconos `ArrowUpDown`/`ArrowUp`/`ArrowDown` y badges contextuales `A→Z`, `Menor→Mayor`, `Antiguas/Recientes`).
 - Los botones de acción deben incluir íconos claros (`Edit`, `Trash2`) con tooltips o colores distintivos.

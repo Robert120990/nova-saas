@@ -33,36 +33,28 @@ Todas las pantallas de tipo listado/catálogo (tablas con búsqueda y paginació
 | Botones de acción (editar/eliminar) | `p-1` con `size={15}`, gap entre botones: `gap-1` |
 | Estados vacío/cargando | `py-6 text-center` |
 
-**Ejemplo de estructura:**
-```jsx
-<div className="space-y-3">
-  <div className="flex items-center justify-between">
-    <div>
-      <h2 className="text-xl font-bold text-slate-900">Título</h2>
-      <p className="text-slate-500 text-[11px] font-medium">Subtítulo</p>
-    </div>
-    <button className="px-4 py-1.5 rounded-xl font-bold text-sm ...">
-      Nuevo
-    </button>
-  </div>
-  <div className="relative max-w-sm">
-    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
-    <input className="w-full pl-9 pr-3 py-1.5 rounded-xl text-xs font-medium ..." />
-  </div>
-  <Table
-    headers={[...]}
-    renderRow={(item) => (
-      <tr>
-        <td className="px-3 py-1 text-xs">...</td>
-        <td className="px-3 py-1 flex gap-1">
-          <button className="p-1 ..."><Edit size={15}/></button>
-          <button className="p-1 ..."><Trash2 size={15}/></button>
-        </td>
-      </tr>
-    )}
-  />
-</div>
-```
+### 3.1. Ordenamiento Interactivo por Columna (Sorting Obligatorio)
+
+Toda tabla de datos del sistema (catálogos, listados, historiales, etc.) **DEBE** implementar ordenamiento interactivo por columnas siguiendo el estándar visual de **Historial de Ventas**:
+
+1. **Componente Estándar `<Table />`:**
+   - `<Table />` (`client/src/components/ui/Table.jsx`) integra soporte nativo y automático de ordenamiento interactivo tanto en escritorio como en vista móvil (`renderCard`).
+   - Detecta e infiere automáticamente el campo y tipo de orden (`number`, `date`, `string`) a partir de la etiqueta del encabezado y los datos provistos.
+   - Las columnas de control (`Acciones`, `Opciones`, checkboxes de selección múltiple) se omiten automáticamente del ordenamiento.
+   - Si se requiere control manual o server-side (ordenamiento en base de datos para listados paginados), `<Table />` acepta las props controladas `sortBy`, `sortDir` y `onSort={(key, dir, type) => ...}`.
+
+2. **Estilo Visual e Íconos:**
+   - **Ícono inactivo:** `<ArrowUpDown size={11} className="text-slate-400 opacity-60 group-hover:opacity-100 shrink-0" />`
+   - **Ícono activo ascendente (asc):** `<ArrowUp size={12} className="text-indigo-600 shrink-0" />`
+   - **Ícono activo descendente (desc):** `<ArrowDown size={12} className="text-indigo-600 shrink-0" />`
+   - **Texto del encabezado activo:** `text-indigo-600 font-bold text-[10px] uppercase tracking-wider`
+   - **Texto del encabezado inactivo:** `text-slate-500 hover:text-slate-800 font-bold text-[10px] uppercase tracking-wider`
+   - **Badge contextual de dirección:** Toda columna activa muestra un badge indicador con la clase:
+     `px-1 py-0.5 rounded bg-indigo-50 text-indigo-600 text-[8.5px] font-extrabold normal-case tracking-normal border border-indigo-200/80`
+     * **Monetario / Numérico:** `Menor→Mayor` (asc) o `Mayor→Menor` (desc)
+     * **Fechas / Cronológico:** `Antiguas` (asc) o `Recientes` (desc)
+     * **Alfabético / Texto:** `A→Z` (asc) o `Z→A` (desc)
+
 
 ## 5. Estándares Tipográficos
 Para mantener la jerarquía visual solicitada por el usuario:
