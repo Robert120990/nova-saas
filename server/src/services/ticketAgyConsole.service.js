@@ -171,16 +171,19 @@ function buildAgyPlanningPrompt(ticket, model, planVersion = 1) {
         ticket.ai_notes ? `Directriz Técnica del Administrador (ai_notes): ${ticket.ai_notes}` : '',
         feedbackBlock,
         diagBlock,
-        `INSTRUCCIONES ESTRICTAS PARA AGY (FASE 1 - SOLO PLANIFICACIÓN):`,
-        `1. Inspecciona los archivos reales del repositorio relacionados con este ticket.`,
-        `2. NO modifiques ningún archivo todavía. Esta fase es EXCLUSIVAMENTE para generar el Plan de Ejecución que será enviado a Telegram.`,
-        `3. Estructura tu respuesta en Markdown con: 🎯 Diagnóstico de Causa Raíz, 📂 Archivos a Intervenir, 🛠️ Pasos del Plan de Ejecución y ✅ Validaciones.`,
-        `4. SI TIENES DUDAS DE CÓMO PROCEDER O REQUIERES QUE EL ADMINISTRADOR SELECCIONE UNA OPCIÓN: incluye una sección "❓ DUDAS / OPCIONES A ELEGIR", lista cada alternativa en su propia línea con el formato exacto:`,
-        `   [OPCION_1]: Descripción breve de la primera opción`,
-        `   [OPCION_2]: Descripción breve de la segunda opción`,
-        `   [OPCION_3]: Descripción breve de la tercera opción (si aplica)`,
-        `   y agrega la etiqueta [[REQUIERE_DECISION_AGY]] antes del cierre.`,
-        `5. Al finalizar tu respuesta, escribe en la última línea exactamente la marca: [[FIN_PLAN_AGY]]`
+        `INSTRUCCIONES ESTRICTAS PARA AGY (FASE 1 - PLANIFICACIÓN CONCISA Y HUMANA):`,
+        `1. Inspecciona los archivos reales del repositorio relacionados con este ticket. NO modifiques ningún archivo todavía.`,
+        `2. Redacta tu respuesta en ESPAÑOL, en LENGUAJE HUMANO, DIRECTO Y RESUMIDO (máximo 12 a 15 líneas en total).`,
+        `3. Prohibido incluir bloques de código extensos, volcados crudos de terminal o tecnicismos innecesarios.`,
+        `4. Estructura con estas secciones concisas:`,
+        `   🎯 Diagnóstico: 1 o 2 oraciones sencillas explicando la causa del problema.`,
+        `   🛠️ Solución propuesta: 2 o 3 viñetas concisas explicando qué se corregirá para el usuario.`,
+        `   📂 Componentes: 1 a 3 nombres de archivos o componentes clave a intervenir.`,
+        `5. SI REQUIERES QUE EL ADMIN ELIJA UNA OPCIÓN: incluye "❓ OPCIONES A ELEGIR:" con:`,
+        `   [OPCION_1]: Breve descripción humana de la primera opción`,
+        `   [OPCION_2]: Breve descripción humana de la segunda opción`,
+        `   y agrega [[REQUIERE_DECISION_AGY]] antes del cierre.`,
+        `6. Al finalizar tu respuesta, escribe en la última línea exactamente la marca: [[FIN_PLAN_AGY]]`
     ].filter(Boolean).join('\n');
 }
 
@@ -208,7 +211,8 @@ function buildAgyExecutionPrompt(ticket, model) {
         `1. Aplica todos los pasos del Plan de Ejecución aprobado en el repositorio.`,
         `2. Respeta estrictamente AGENTS.md (máximo 350 líneas por archivo, modales en archivos *Modal.jsx separados, dateUtils, Money).`,
         `3. El servidor ejecutará automáticamente build, git commit y git push al concluir.`,
-        `4. Al concluir, entrega un resumen claro de los archivos modificados y escribe en la última línea: [[FIN_EJECUCION_AGY]]`
+        `4. Al concluir, entrega un resumen CONCISO Y EN LENGUAJE HUMANO (máximo 3-4 líneas) explicando qué se solucionó y cuáles componentes se actualizaron.`,
+        `5. En la última línea escribe: [[FIN_EJECUCION_AGY]]`
     ].filter(Boolean).join('\n');
 }
 

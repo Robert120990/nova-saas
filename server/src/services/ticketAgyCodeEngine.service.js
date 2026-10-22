@@ -218,16 +218,19 @@ async function generateAiPlanFromCode(ticket, model, planVersion, proj, relatedF
     const snippets = readCandidateSnippets(proj.projectPath, relatedFiles, 5000);
     const codeContext = snippets.map((s) => `--- ARCHIVO: ${s.file} (${s.totalLines} líneas) ---\n${s.content}`).join('\n\n');
 
-    const systemPrompt = `Eres AGY, el arquitecto de software autónomo de SIPE. Tu tarea es analizar el ticket #${ticket.ticket_code} del proyecto ${proj.projectLabel} y generar un Plan de Ejecución técnico conciso y exacto en Markdown.`;
+    const systemPrompt = `Eres AGY, el arquitecto de software de SIPE. Tu tarea es analizar el ticket #${ticket.ticket_code} y redactar una propuesta de solución RESUMIDA, CLARA Y EN LENGUAJE HUMANO (máximo 12-15 líneas en total) para leer cómodamente en Telegram. Evita tecnicismos excesivos, código largo o jerga innecesaria.`;
     const userPrompt = [
-        `Ticket: #${ticket.ticket_code} | Proyecto: ${proj.projectLabel} (${proj.projectPath})`,
-        `Ruta reportada: ${ticket.page_url || 'N/A'} | Módulo: ${ticket.module_name || 'General'}`,
+        `Ticket: #${ticket.ticket_code} | Proyecto: ${proj.projectLabel}`,
+        `Ruta: ${ticket.page_url || 'N/A'} | Módulo: ${ticket.module_name || 'General'}`,
         `Asunto: ${ticket.subject}`,
         `Descripción: ${ticket.description}`,
         ticket.ai_notes ? `Directriz del Admin: ${ticket.ai_notes}` : '',
         `\nArchivos detectados:\n${relatedFiles.join('\n')}`,
         codeContext ? `\nExtracto de código actual:\n${codeContext}` : '',
-        `\nGenera el Plan v${planVersion} con las secciones: ### 🎯 1. Diagnóstico de Causa Raíz, ### 📂 2. Archivos a Intervenir, ### 🛠️ 3. Pasos Exactos de Código a Aplicar.`
+        `\nGenera el Plan v${planVersion} con:`,
+        `🎯 Diagnóstico: 1 o 2 oraciones sencillas explicando la causa del problema en lenguaje humano.`,
+        `🛠️ Solución propuesta: 2 a 3 viñetas concisas con las acciones a realizar de cara al usuario.`,
+        `📂 Componentes: 1 a 3 nombres de archivos o módulos clave.`
     ].filter(Boolean).join('\n');
 
     try {

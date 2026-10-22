@@ -1,5 +1,6 @@
 const telegramService = require('./telegram.service');
 const { getAgyServerSettings, extractAgyQuestionsAndOptions, sanitizeConsoleText } = require('./ticketAgyConsole.service');
+const { humanizeAndFormatAgyPlan, formatAgyExecutionResultForTelegram } = require('./ticketAgyFormatters');
 
 // chat_id -> { ticketId, ticketCode, techName, expiresAt }
 const pendingAgyFeedbackMap = new Map();
@@ -156,7 +157,7 @@ async function createTelegramLiveProgress(ticket, { mode = 'execute', model = 'g
                 telegramService.apiCall('editMessageReplyMarkup', {
                     chat_id: sourceChatId,
                     message_id: sourceMessageId,
-                    reply_markup: { inline_keyboard: [[{ text: '✅ Solución Ejecutada — Ticket Resuelto', callback_data: 'agy_noop' }]] }
+                    reply_markup: { inline_keyboard: [] }
                 }).catch(() => {});
             }
         }
@@ -169,32 +170,30 @@ async function sendAgyPlanToTelegram(ticket) {
     const chats = await getTechChatsForTicket(ticket.company_id, ticket.branch_id);
     if (!chats || chats.length === 0) return false;
 
-    const settings = await getAgyServerSettings();
     const version = ticket.agy_plan_version || 1;
-    const model = ticket.agy_model || settings.default_model || 'gemini-4-argon-high';
-    const rawPlan = sanitizeConsoleText(String(ticket.agy_plan_markdown || 'Sin contenido de plan.').replace('[[REQUIERE_DECISION_AGY]]', '').trim());
     const { requiresDecision, options } = extractAgyQuestionsAndOptions(ticket.agy_plan_markdown || '');
-    const planBody = rawPlan.slice(0, 2850);
+    const planBody = humanizeAndFormatAgyPlan(ticket, ticket.agy_plan_markdown);
 
     const headerTitle = requiresDecision
-        ? `❓ *AGY REQUIERE TU DECISIÓN / OPCIÓN (Plan v${version}) — #${escapeMd(ticket.ticket_code)}*`
-        : `🤖 *PLAN DE EJECUCIÓN AGY (v${version}) — #${escapeMd(ticket.ticket_code)}*`;
+        ? `❓ *AGY REQUIERE TU DECISIÓN (Plan v${version}) — #${escapeMd(ticket.ticket_code)}*`
+        : `🤖 *PROPUESTA DE SOLUCIÓN AGY (v${version}) — #${escapeMd(ticket.ticket_code)}*`;
 
     const footerHint = options.length > 0
-        ? `👇 *AGY detectó ${options.length} opciones posibles. Toca un botón para elegir la opción o escribe tu respuesta:*`
-        : (requiresDecision ? `👇 *AGY planteó una duda antes de ejecutar. Presiona "✍️ Responder Duda" o aprueba el plan:*` : `👇 *Selecciona una decisión para la Consola AGY:*`);
+        ? `👇 *Toca una opción para continuar o escribe tu indicación:*`
+        : (requiresDecision ? `👇 *Responde con tu preferencia o aprueba la propuesta:*` : `👇 *Revisa y autoriza la ejecución:*`);
 
     const isFromAdmin = String(ticket.source_system || '').toLowerCase().includes('admin.sipesv.com') || String(ticket.ticket_code || '').toUpperCase().startsWith('ADM-');
     const projectTag = isFromAdmin ? 'admin.sipesv.com (SIPE Admin)' : 'sys.sipesv.com (SIPE SaaS)';
 
     const msg =
-        `${headerTitle}\n` +
-        `🌐 *Proyecto:* \`${escapeMd(projectTag)}\`\n` +
-        `🖥️ *Entorno:* \`Consola AGY\`  |  🧠 *Modelo:* \`${escapeMd(model)}\`\n` +
+        `${headerTitle}\n\n` +
         `📌 *Asunto:* ${escapeMd(ticket.subject)}\n` +
-        `🏢 *Empresa:* ${escapeMd(ticket.company_name || 'Global')} · *Módulo:* ${escapeMd(ticket.module_name || 'General')}\n` +
-        (ticket.ai_notes ? `🎯 *Directriz IA:* ${escapeMd(ticket.ai_notes)}\n` : '') +
-        `\n━━━━━━━━━━━━━━━━━━━━\n${planBody}\n━━━━━━━━━━━━━━━━━━━━\n${footerHint}`;
+        `🏢 *Módulo:* ${escapeMd(ticket.module_name || 'General')} (\`${escapeMd(projectTag)}\`)\n` +
+        (ticket.ai_notes ? `🎯 *Directriz:* ${escapeMd(ticket.ai_notes)}\n` : '') +
+        `\n━━━━━━━━━━━━━━━━━━━━\n` +
+        `${planBody}\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `${footerHint}`;
 
     const replyMarkup = buildAgyPlanApprovalKeyboard(ticket.id, ticket.agy_plan_markdown || '');
     for (const chat of chats) {
@@ -209,16 +208,7 @@ async function notifyAgyExecutionResultToTelegram(ticket, summaryText, approvedB
     const chats = await getTechChatsForTicket(ticket.company_id, ticket.branch_id);
     if (!chats || chats.length === 0) return false;
 
-    const settings = await getAgyServerSettings();
-    const model = ticket.agy_model || settings.default_model || 'gemini-4-argon-high';
-    const msg =
-        `🚀 *EJECUCIÓN AGY COMPLETADA — #${escapeMd(ticket.ticket_code)} (RESUELTO)*\n` +
-        `🖥️ *Entorno:* \`Consola AGY\`  |  🧠 *Modelo:* \`${escapeMd(model)}\`\n` +
-        `👤 *Aprobado por:* ${escapeMd(approvedBy)}\n` +
-        `📌 *Asunto:* ${escapeMd(ticket.subject)}\n\n` +
-        `📝 *Resultado de Consola:*\n${sanitizeConsoleText(String(summaryText || '')).slice(0, 2500)}\n\n` +
-        `✅ _El ticket ha sido marcado automáticamente como RESUELTO. Solo usa el botón inferior si el usuario reitera el error:_`;
-
+    const msg = formatAgyExecutionResultForTelegram(ticket, summaryText, approvedBy);
     const replyMarkup = buildAgyPostExecutionKeyboard(ticket.id);
     for (const chat of chats) {
         await safeSendTelegramWithKeyboard(chat.chat_id, msg, replyMarkup);

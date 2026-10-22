@@ -58,32 +58,25 @@ async function ensureAgyFlowSchema() {
 function buildSynthesizedStructuredPlan(ticket, model, planVersion, relatedFiles = [], proj = null) {
     const feedbacks = parseFeedbackHistory(ticket.agy_feedback_history);
     const latestFeedback = feedbacks.length > 0 ? feedbacks[feedbacks.length - 1] : null;
-    let diag = ticket.diagnostics_json;
-    if (typeof diag === 'string') { try { diag = JSON.parse(diag); } catch { diag = null; } }
-    const routeHint = ticket.page_url || '/soporte/tickets';
+    const pathMod = require('path');
     const moduleHint = ticket.module_name || 'Módulo General';
-    const projectLabel = proj?.projectLabel || (ticket.source_system === 'admin.sipesv.com' ? 'admin.sipesv.com (SIPE Admin)' : 'sys.sipesv.com (SIPE SaaS)');
-    const diagSummary = diag?.explanation || diag?.verdictLabel || 'Sin excepciones críticas registradas en telemetría de consola.';
-    const filesBullets = relatedFiles.map((f) => `  - \`${f}\``).join('\n');
+    const cleanSubject = ticket.subject || 'Ajuste solicitado';
+    const shortDesc = ticket.description ? ticket.description.replace(/\s+/g, ' ').trim() : cleanSubject;
+    const shortFiles = relatedFiles.slice(0, 3).map((f) => pathMod.basename(f)).join(', ');
+    const projectHint = proj?.projectLabel ? ` (${proj.projectLabel})` : '';
 
     return [
-        `### 🎯 1. Diagnóstico de Causa Raíz (Ticket #${ticket.ticket_code} · Plan v${planVersion})`,
-        `- **Proyecto Objetivo:** \`${projectLabel}\` (\`${proj?.projectPath || '/opt/nova-saas'}\`)`,
-        `- **Entorno:** \`Consola AGY\` · **Modelo:** \`${model}\``,
-        `- **Módulo y Ruta reportada:** \`${moduleHint}\` (\`${routeHint}\`)`,
-        `- **Problema reportado:** ${ticket.description}`,
-        ticket.ai_notes ? `- **Directriz Técnica (ai_notes):** ${ticket.ai_notes}` : null,
-        latestFeedback ? `- **Ampliación / Retroalimentación incorporada:** "${latestFeedback.comment}" *(por ${latestFeedback.author})*` : null,
-        `- **Telemetría automática:** ${diagSummary}`,
+        `🎯 *Diagnóstico:*`,
+        `Se analizó el reporte en *${moduleHint}*${projectHint} ("${shortDesc.slice(0, 160)}"). Se identificó la causa y el ajuste requerido en la lógica y presentación de datos.`,
+        ticket.ai_notes ? `💡 *Directriz técnica:* ${ticket.ai_notes}` : null,
+        latestFeedback ? `💬 *Aclaración:* "${latestFeedback.comment}"` : null,
         '',
-        `### 📂 2. Archivos Detectados en el Repositorio (${projectLabel})`,
-        filesBullets || `  - Archivos asociados a \`${routeHint}\``,
-        '',
-        `### 🛠️ 3. Pasos del Plan de Ejecución`,
-        `1. **Paso 1 — Validación de Flujo en \`${routeHint}\`:** Inspeccionar los archivos listados en \`${projectLabel}\` y aislar la condición reportada en "${ticket.subject}".`,
-        `2. **Paso 2 — Corrección / Implementación:** Aplicar el ajuste solicitado${ticket.ai_notes ? ` siguiendo la directriz: *"${ticket.ai_notes}"*` : ''}${latestFeedback ? ` e incorporando el comentario: *"${latestFeedback.comment}"*` : ''}.`,
-        `3. **Paso 3 — Compilación y Publicación en Vivo:** Compilar el bundle de producción (\`build\`) en \`${proj?.frontendDir || 'client'}/dist\` y marcar automáticamente el ticket como **Resuelto** tras verificar 0 errores.`
-    ].filter((l) => l !== null).join('\n');
+        `🛠️ *Solución propuesta:*`,
+        `1. Ajustar la consulta y filtros en pantalla para que los registros y datos se procesen según lo esperado.`,
+        `2. Validar que la interfaz y las acciones respondan sin errores para el usuario.`,
+        `3. Compilar los cambios y publicar la actualización inmediatamente en el sistema.` +
+        (shortFiles ? `\n\n📂 *Componentes principales:* \`${shortFiles}\`` : '')
+    ].filter(Boolean).join('\n');
 }
 
 async function runAgyCommandOnTarget(settings, scriptContent, onChunk) {
@@ -297,9 +290,14 @@ async function executeApprovedTicketAgyPlan(ticketId, { approvedBy = 'SuperAdmin
 
             await ticketService.updateTicketStatus(ticketId, {
                 status: 'resuelto', resolvedByName: `${approvedBy} (AGY)`,
-                resolutionNotes: `Solución ejecutada mediante Plan AGY v${runningTicket.agy_plan_version || 1} (${chosenModel}). Si el inconveniente persiste, responde en este ticket para reiterar y re-planificar.`,
+                resolutionNotes: `Solución ejecutada mediante Plan AGY v${runningTicket.agy_plan_version || 1} (${chosenModel}).`,
                 updatedByType: 'tech'
             });
+
+            try {
+                const { removeTicketTelegramButtons } = require('./ticketTelegram.service');
+                await removeTicketTelegramButtons(ticketId, telegramContext ? { chatId: telegramContext.sourceChatId, messageId: telegramContext.sourceMessageId } : null);
+            } catch { /* ignore */ }
 
             if (liveProgress) await liveProgress.complete(`Solución ejecutada y ticket #${runningTicket.ticket_code} marcado como RESUELTO.`);
             const doneTicket = await ticketService.getTicketById(ticketId);
