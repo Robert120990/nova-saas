@@ -6,9 +6,13 @@ import { registerSW } from 'virtual:pwa-register'
 import { initSentry } from './config/sentry'
 import ErrorBoundary from './components/ui/ErrorBoundary'
 import { UpdateProvider } from './context/UpdateContext'
+import { setupAxiosRetry } from './utils/resilientAxios'
 
 // Initialize Sentry error tracking
 initSentry();
+
+// Initialize resilient Axios retry interceptor
+setupAxiosRetry();
 
 const isDev = import.meta.env.DEV;
 

@@ -8,6 +8,7 @@ const { logger, httpLogger } = require('./utils/logger');
 const authRoutes = require('./routes/auth.routes');
 const integrationContractRoutes = require('./routes/integrationContract.routes');
 const apiRoutes = require('./routes/api.routes');
+const idempotencyMiddleware = require('./middlewares/idempotency.middleware');
 const { syncAllCrtCertificates } = require('./utils/certSync');
 
 const app = express();
@@ -155,6 +156,7 @@ app.get(['/health', '/api/health'], (req, res) => {
     });
 });
 
+app.use('/api', idempotencyMiddleware);
 app.use('/api', apiRoutes);
 
 // Serve client built files in production with strict cache headers for SPA/PWA
@@ -219,19 +221,6 @@ process.on('uncaughtException', (err) => {
     logger.error({ err }, 'Uncaught Exception (no tumba el server)');
 });
 
-const gracefulShutdown = async () => {
-    logger.info('Iniciando cierre ordenado del servidor...');
-    try {
-        await mailQueue.close();
-    } catch (e) {
-        logger.error({ err: e.message }, 'Error cerrando mailQueue');
-    }
-    process.exit(0);
-};
-
-process.on('SIGTERM', gracefulShutdown);
-process.on('SIGINT', gracefulShutdown);
-
 const PORT = process.env.PORT || 4000;
 const server = http.createServer(app);
 
@@ -240,7 +229,7 @@ initWebSocket(server, { version: initialVersionInfo.version, commit: initialVers
 
 // Monitoreo de nuevas versiones para difusión en tiempo real vía WebSocket
 let lastBroadcastCommit = initialVersionInfo.commit;
-setInterval(() => {
+const versionWatcherInterval = setInterval(() => {
     const current = getAppVersionInfo();
     if (current.commit && current.commit !== 'unknown' && current.commit !== lastBroadcastCommit) {
         lastBroadcastCommit = current.commit;
@@ -248,6 +237,58 @@ setInterval(() => {
         setAppVersion({ version: current.version, commit: current.commit });
     }
 }, 10000);
+
+let isShuttingDown = false;
+const gracefulShutdown = async (signal) => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    logger.info({ signal }, 'Iniciando cierre ordenado (Graceful Shutdown) del servidor...');
+
+    const forceExitTimer = setTimeout(() => {
+        logger.error('Cierre forzado por exceder tiempo límite de 10s');
+        process.exit(1);
+    }, 10000);
+    forceExitTimer.unref();
+
+    clearInterval(versionWatcherInterval);
+
+    // 1. Dejar de aceptar nuevas conexiones HTTP pero drenar las activas
+    if (server.listening) {
+        if (typeof server.closeIdleConnections === 'function') {
+            server.closeIdleConnections();
+        }
+        await new Promise((resolve) => {
+            server.close((err) => {
+                if (err) logger.error({ err }, 'Error al cerrar servidor HTTP');
+                else logger.info('Servidor HTTP cerró recepción de nuevas conexiones. Peticiones activas drenadas.');
+                resolve();
+            });
+        });
+    }
+
+    // 2. Cerrar colas y workers
+    try {
+        await mailQueue.close();
+    } catch (e) {
+        logger.error({ err: e.message }, 'Error cerrando mailQueue');
+    }
+
+    // 3. Cerrar pool de base de datos
+    try {
+        const pool = require('./config/db');
+        await pool.end();
+        logger.info('Pool de conexiones MySQL cerrado exitosamente.');
+    } catch (e) {
+        logger.error({ err: e.message }, 'Error cerrando pool MySQL');
+    }
+
+    clearTimeout(forceExitTimer);
+    logger.info('Servidor apagado ordenadamente sin pérdida de datos.');
+    process.exit(0);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // Inicializar worker de notificaciones en segundo plano
 startWorker();
@@ -261,4 +302,7 @@ server.listen(PORT, () => {
     startEnergyAutoSyncCron();
     preloadHaciendaCatalogs();
     syncAllCrtCertificates();
+    if (typeof process.send === 'function') {
+        process.send('ready');
+    }
 });
