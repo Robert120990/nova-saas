@@ -19,11 +19,13 @@ import {
     Coins,
     Receipt,
     AlertCircle,
-    Building2
+    Building2,
+    Landmark
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
 import Money, { MoneyInput } from '../../components/ui/Money';
+import { HaciendaDeclarationModal } from '../../components/vatLiquidation';
 
 const MONTHS = [
     { value: '1', label: 'Enero' },
@@ -61,6 +63,7 @@ const VatBookLiquidation = () => {
     // Estado de la UI
     const [activeTab, setActiveTab] = useState('resumen');
     const [showConfig, setShowConfig] = useState(false);
+    const [showHaciendaModal, setShowHaciendaModal] = useState(false);
     const [isExporting, setIsExporting] = useState(null);
 
     // Consulta de sucursales
@@ -176,6 +179,16 @@ const VatBookLiquidation = () => {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2.5">
+                    <button
+                        onClick={() => setShowHaciendaModal(true)}
+                        disabled={isLoading || !data}
+                        className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white px-3.5 py-2 rounded-xl font-bold text-xs transition-all shadow-md shadow-indigo-600/20 active:scale-95 disabled:opacity-50 cursor-pointer"
+                        title="Ver casillas oficiales y guía para formularios F-07 y F-11 de Hacienda"
+                    >
+                        <Landmark size={15} />
+                        <span>Formularios Hacienda</span>
+                    </button>
+
                     <button
                         onClick={() => setShowConfig(!showConfig)}
                         className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold text-xs transition-all border ${
@@ -1160,6 +1173,12 @@ const VatBookLiquidation = () => {
                     <p className="text-sm font-semibold">No se encontraron datos para el período seleccionado.</p>
                 </div>
             )}
+            {/* Modal Guía de Declaración en Hacienda */}
+            <HaciendaDeclarationModal
+                isOpen={showHaciendaModal}
+                onClose={() => setShowHaciendaModal(false)}
+                data={data}
+            />
         </div>
     );
 };
