@@ -130,6 +130,15 @@ export default function Dashboard() {
         localStorage.setItem('active_dashboard_tab', tabId);
     };
 
+    // Registro de pestañas visitadas para carga perezosa y preservación en memoria (Keep-Alive)
+    const [visitedTabs, setVisitedTabs] = useState(() => (activeTab ? [activeTab] : ['general']));
+
+    useEffect(() => {
+        if (activeTab && !visitedTabs.includes(activeTab)) {
+            setVisitedTabs(prev => [...prev, activeTab]);
+        }
+    }, [activeTab, visitedTabs]);
+
     // Caso: sin permisos para ningún dashboard
     if (allowedDashboards.length === 0) {
         return (
@@ -195,15 +204,6 @@ export default function Dashboard() {
             </div>
         );
     }
-
-    // Registro de pestañas visitadas para carga perezosa y preservación en memoria (Keep-Alive)
-    const [visitedTabs, setVisitedTabs] = useState(() => (activeTab ? [activeTab] : ['general']));
-
-    useEffect(() => {
-        if (activeTab && !visitedTabs.includes(activeTab)) {
-            setVisitedTabs(prev => [...prev, activeTab]);
-        }
-    }, [activeTab, visitedTabs]);
 
     return (
         <div className="space-y-6">
