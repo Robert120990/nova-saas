@@ -137,6 +137,9 @@ const exportFiniquito = async (req, res) => {
                    e.departamento as empleado_departamento,
                    e.municipio as empleado_municipio,
                    e.distrito as empleado_distrito,
+                   COALESCE(dist_e.description, dist_c.description) as distrito_nombre,
+                   COALESCE(mun_e.description, mun_c.description) as municipio_nombre,
+                   COALESCE(dep_e.description, dep_c.description) as depto_nombre,
                    e.num_dui, e.num_nit,
                    e.fecha_ingreso, e.afp_id,
                    c.descripcion as cargo_nombre,
@@ -153,6 +156,12 @@ const exportFiniquito = async (req, res) => {
             JOIN rh_empleados e ON pl.empleado_id = e.id
             JOIN companies comp ON pl.company_id = comp.id
             LEFT JOIN rh_cargos c ON e.cargo_id = c.id
+            LEFT JOIN cat_008_distrito dist_e ON dist_e.code = e.distrito AND dist_e.dep_code = e.departamento
+            LEFT JOIN cat_013_municipio mun_e ON mun_e.code = e.municipio AND mun_e.dep_code = e.departamento
+            LEFT JOIN cat_012_departamento dep_e ON dep_e.code = e.departamento
+            LEFT JOIN cat_008_distrito dist_c ON dist_c.code = comp.distrito AND dist_c.dep_code = comp.departamento
+            LEFT JOIN cat_013_municipio mun_c ON mun_c.code = comp.municipio AND mun_c.dep_code = comp.departamento
+            LEFT JOIN cat_012_departamento dep_c ON dep_c.code = comp.departamento
             WHERE pl.id = ? AND pl.company_id = ?
         `, [id, req.company_id]);
 
@@ -190,16 +199,19 @@ const exportFiniquito = async (req, res) => {
             empleado_apellidos: p.empleado_apellidos,
             fecha_nacimiento: p.fecha_nacimiento,
             empleado_ocupacion: p.ocupacion || p.cargo_nombre || 'empleado(a)',
-            empleado_departamento: p.empleado_departamento || p.company_departamento,
-            empleado_municipio: p.empleado_municipio || p.company_municipio,
-            empleado_distrito: p.empleado_distrito || p.company_distrito,
+            empleado_departamento: p.depto_nombre || p.empleado_departamento || p.company_departamento,
+            empleado_municipio: p.municipio_nombre || p.empleado_municipio || p.company_municipio,
+            empleado_distrito: p.distrito_nombre || p.empleado_distrito || p.company_distrito,
+            distrito_nombre: p.distrito_nombre,
+            municipio_nombre: p.municipio_nombre,
+            depto_nombre: p.depto_nombre,
             cargo_nombre: p.cargo_nombre,
             num_dui: p.num_dui,
             num_nit: p.num_nit,
             patrono_nombre: patronoNombre,
             patrono_ocupacion: 'mayor de edad, estudiante',
-            patrono_domicilio: p.company_municipio || 'San Salvador',
-            patrono_departamento: p.company_departamento || 'San Salvador',
+            patrono_domicilio: p.municipio_nombre || p.distrito_nombre || 'San Salvador',
+            patrono_departamento: p.depto_nombre || p.company_departamento || 'San Salvador',
             patrono_dui: p.company_nit ? p.company_nit.substring(0, 10) : '',
             notario_nombre: notarioNombre || 'KARIN ARMANDO BATRES ANGEL',
             notario_domicilio: notarioDomicilio || 'San Martín',

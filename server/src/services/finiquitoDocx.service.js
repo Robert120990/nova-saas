@@ -31,11 +31,11 @@ async function generateFiniquitoDocx(data) {
         docParagraphs.push(
             new Paragraph({
                 alignment: AlignmentType.JUSTIFIED,
-                spacing: { after: 160, line: 276 }, // 1.15 line spacing
+                spacing: { after: 120, line: 240 },
                 children: [
                     new TextRun({
                         text: part.trim(),
-                        size: 22, // 11pt
+                        size: 20, // 10pt
                         font: 'Calibri'
                     })
                 ]
@@ -43,27 +43,29 @@ async function generateFiniquitoDocx(data) {
         );
     }
 
-    // Firma Trabajador (Página 1)
+    // Firma Trabajador (Página 1) - keepWithNext evita saltos indeseados
     docParagraphs.push(
         new Paragraph({
             alignment: AlignmentType.CENTER,
-            spacing: { before: 500, after: 80 },
+            keepWithNext: true,
+            spacing: { before: 350, after: 60 },
             children: [
                 new TextRun({
                     text: '____________________________________________',
-                    size: 22,
+                    size: 20,
                     font: 'Calibri'
                 })
             ]
         }),
         new Paragraph({
             alignment: AlignmentType.CENTER,
-            spacing: { after: 40 },
+            keepWithNext: true,
+            spacing: { after: 30 },
             children: [
                 new TextRun({
                     text: clauses.empName,
                     bold: true,
-                    size: 22,
+                    size: 20,
                     font: 'Calibri'
                 })
             ]
@@ -74,11 +76,11 @@ async function generateFiniquitoDocx(data) {
         docParagraphs.push(
             new Paragraph({
                 alignment: AlignmentType.CENTER,
-                spacing: { after: 200 },
+                spacing: { after: 160 },
                 children: [
                     new TextRun({
                         text: `DUI: ${clauses.empDui}`,
-                        size: 20,
+                        size: 18,
                         font: 'Calibri'
                     })
                 ]
@@ -115,57 +117,61 @@ async function generateFiniquitoDocx(data) {
         // Firmas Acta Notarial
         new Paragraph({
             alignment: AlignmentType.CENTER,
-            spacing: { before: 400, after: 60 },
+            keepWithNext: true,
+            spacing: { before: 350, after: 60 },
             children: [
                 new TextRun({
                     text: '____________________________________________',
-                    size: 22,
+                    size: 20,
                     font: 'Calibri'
                 })
             ]
         }),
         new Paragraph({
             alignment: AlignmentType.CENTER,
-            spacing: { after: 200 },
+            keepWithNext: true,
+            spacing: { after: 150 },
             children: [
                 new TextRun({
                     text: clauses.empName,
                     bold: true,
-                    size: 22,
+                    size: 20,
                     font: 'Calibri'
                 })
             ]
         }),
         new Paragraph({
             alignment: AlignmentType.CENTER,
-            spacing: { before: 300, after: 60 },
+            keepWithNext: true,
+            spacing: { before: 200, after: 60 },
             children: [
                 new TextRun({
                     text: '____________________________________________',
-                    size: 22,
+                    size: 20,
                     font: 'Calibri'
                 })
             ]
         }),
         new Paragraph({
             alignment: AlignmentType.CENTER,
-            spacing: { after: 40 },
+            keepWithNext: true,
+            spacing: { after: 30 },
             children: [
                 new TextRun({
                     text: `LIC. ${clauses.notarioNombre}`,
                     bold: true,
-                    size: 22,
+                    size: 20,
                     font: 'Calibri'
                 })
             ]
         }),
         new Paragraph({
             alignment: AlignmentType.CENTER,
-            spacing: { after: 200 },
+            spacing: { after: 180 },
             children: [
                 new TextRun({
                     text: 'Abogado y Notario',
-                    size: 20,
+                    size: 18,
                     font: 'Calibri'
                 })
             ]

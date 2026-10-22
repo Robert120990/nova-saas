@@ -110,10 +110,21 @@ function resolveDepartmentName(codeOrName) {
     return trimmed;
 }
 
-function resolveDistrictOrCity(data) {
-    if (data.distrito && isNaN(data.distrito)) return data.distrito;
-    if (data.municipio && isNaN(data.municipio)) return data.municipio;
-    if (data.ciudad) return data.ciudad;
+function resolveDistrictOrCity(data = {}) {
+    const candidates = [
+        data.distrito_nombre,
+        data.empleado_distrito,
+        data.distrito,
+        data.municipio_nombre,
+        data.empleado_municipio,
+        data.municipio,
+        data.ciudad
+    ];
+    for (const val of candidates) {
+        if (val && typeof val === 'string' && isNaN(val.trim())) {
+            return val.trim();
+        }
+    }
     return 'San Salvador';
 }
 
