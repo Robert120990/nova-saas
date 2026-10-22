@@ -280,7 +280,7 @@ const requestCheck = async (req, res) => {
         const companyId = req.company_id || req.user?.company_id;
 
         const [existing] = await pool.query(
-            `SELECT pc.*, p.nrc AS provider_nrc, p.nombre AS provider_nombre
+            `SELECT pc.*, p.nrc AS provider_nrc, p.nit AS provider_nit, p.nombre AS provider_nombre
              FROM purchase_checks pc
              LEFT JOIN providers p ON pc.provider_id = p.id
              WHERE pc.id = ? AND pc.company_id = ?`,
@@ -310,27 +310,51 @@ const requestCheck = async (req, res) => {
 
         const config = configs[0];
 
-        const nrc = (check.provider_nrc || '').replace(/\s/g, '');
-        const codProveedor = nrc;
+        const rrs = getRrsPool();
+        const cleanVal = (val) => (val || '').toString().replace(/[^a-zA-Z0-9]/g, '').trim();
+        const cNrc = cleanVal(check.provider_nrc);
+        const cNit = cleanVal(check.provider_nit);
+
+        let codProveedor = (check.provider_nrc || '').replace(/\s/g, '');
+        if (cNrc || cNit) {
+            try {
+                const [rrsProvs] = await rrs.query(
+                    `SELECT codigo FROM proveedores 
+                     WHERE id_empresa = ? AND (
+                         REPLACE(REPLACE(nrc, '-', ''), ' ', '') = ?
+                         OR REPLACE(REPLACE(nit, '-', ''), ' ', '') = ?
+                         OR REPLACE(REPLACE(codigo, '-', ''), ' ', '') = ?
+                     ) LIMIT 1`,
+                    [config.rrs_id_empresa, cNrc || '___', cNit || '___', cNrc || '___']
+                );
+                if (rrsProvs.length > 0 && rrsProvs[0].codigo) {
+                    codProveedor = rrsProvs[0].codigo.trim();
+                }
+            } catch (err) {
+                console.warn('[requestCheck] No se pudo verificar codigo en RRS proveedores:', err.message);
+            }
+        }
+
         const llave = `${check.id}`;
         const tipoDestino = check.destino === 'P' ? 'PISTA' : 'TIENDA';
+        const numCcf = check.documento ? String(check.documento).trim().slice(0, 20) : ' ';
         const fechaDate = check.fecha instanceof Date
             ? check.fecha.toISOString().split('T')[0]
             : String(check.fecha).substring(0, 10);
 
-        const rrs = getRrsPool();
         const conn = await rrs.getConnection();
         try {
             const [result] = await conn.execute(`
                 INSERT INTO solicitud_chq_contado
                     (id_empresa, fecha, cod_proveedor, monto, fecha_entrega, num_ccf, num_cheque,
                      llave_cheque, llave, cod_destino, tipo_destino, id_rubro)
-                VALUES (?, ?, ?, ?, ' ', ' ', ' ', ' ', ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ' ', ?, ' ', ' ', ?, ?, ?, ?)
             `, [
                 config.rrs_id_empresa,
                 fechaDate,
                 codProveedor,
                 parseFloat(check.monto) || 0,
+                numCcf,
                 llave,
                 config.cod_destino,
                 tipoDestino,

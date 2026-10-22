@@ -405,7 +405,7 @@ const requestQuedan = async (req, res) => {
         const companyId = req.company_id || req.user?.company_id;
 
         const [existing] = await pool.query(`
-            SELECT pq.*, p.nrc AS provider_nrc, p.nombre AS provider_nombre
+            SELECT pq.*, p.nrc AS provider_nrc, p.nit AS provider_nit, p.nombre AS provider_nombre
             FROM purchase_quedans pq
             LEFT JOIN providers p ON pq.provider_id = p.id
             WHERE pq.id = ? AND pq.company_id = ?
@@ -434,8 +434,31 @@ const requestQuedan = async (req, res) => {
 
         const config = configs[0];
 
-        const nrc = (quedan.provider_nrc || '').replace(/\s/g, '');
-        const codProveedor = nrc;
+        const rrs = getRrsPool();
+        const cleanVal = (val) => (val || '').toString().replace(/[^a-zA-Z0-9]/g, '').trim();
+        const cNrc = cleanVal(quedan.provider_nrc);
+        const cNit = cleanVal(quedan.provider_nit);
+
+        let codProveedor = (quedan.provider_nrc || '').replace(/\s/g, '');
+        if (cNrc || cNit) {
+            try {
+                const [rrsProvs] = await rrs.query(
+                    `SELECT codigo FROM proveedores 
+                     WHERE id_empresa = ? AND (
+                         REPLACE(REPLACE(nrc, '-', ''), ' ', '') = ?
+                         OR REPLACE(REPLACE(nit, '-', ''), ' ', '') = ?
+                         OR REPLACE(REPLACE(codigo, '-', ''), ' ', '') = ?
+                     ) LIMIT 1`,
+                    [config.rrs_id_empresa, cNrc || '___', cNit || '___', cNrc || '___']
+                );
+                if (rrsProvs.length > 0 && rrsProvs[0].codigo) {
+                    codProveedor = rrsProvs[0].codigo.trim();
+                }
+            } catch (err) {
+                console.warn('[requestQuedan] No se pudo verificar codigo en RRS proveedores:', err.message);
+            }
+        }
+
         const llave = `${config.rrs_id_empresa}-${quedan.id}`;
         const tipoDestino = (quedan.destino || 'T') === 'P' ? 'PISTA' : 'TIENDA';
         const fechaDate = quedan.fecha instanceof Date
@@ -446,8 +469,6 @@ const requestQuedan = async (req, res) => {
             'SELECT * FROM purchase_quedan_items WHERE quedan_id = ?',
             [id]
         );
-
-        const rrs = getRrsPool();
         const conn = await rrs.getConnection();
         try {
             await conn.execute(`
