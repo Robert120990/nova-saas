@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const telegramService = require('./telegram.service');
-const { broadcastToCompany } = require('./websocket.service');
+const notificationService = require('./notification.service');
+const { broadcastToCompany, sendToUser } = require('./websocket.service');
 const { revertCloseoutLubricantsInventory } = require('./gasCloseoutInventory.service');
 const { logCloseoutChange } = require('../controllers/gasCloseout/gasCloseoutUtils');
 
@@ -24,12 +25,98 @@ function formatDateSV(dateVal) {
 }
 
 /**
+ * Notifica inmediatamente al usuario que solicitó la reapertura (in-app, WebSocket y Telegram personal).
+ */
+async function notifyReopenResultToUser({ req, closeout, branchName, resolvedBy, isApproved }) {
+    if (!req?.requested_by) return;
+
+    const turnoNum = closeout?.numero_turno || '';
+    const actionCode = isApproved ? 'gas_closeout_reopen_approved' : 'gas_closeout_reopen_rejected';
+    const title = isApproved
+        ? `Reapertura de Turno #${turnoNum} Aprobada`
+        : `Reapertura de Turno #${turnoNum} Rechazada`;
+    const message = isApproved
+        ? `Tu solicitud para reabrir el Turno #${turnoNum}${branchName ? ` (${branchName})` : ''} fue aprobada por ${resolvedBy}. Ya puedes modificar el turno.`
+        : `Tu solicitud para reabrir el Turno #${turnoNum} fue rechazada por ${resolvedBy}.`;
+    const link = '/gas-station/historial-lecturas';
+
+    let notifId = null;
+
+    // 1. Guardar en bandeja de notificaciones in-app
+    try {
+        const [insertRes] = await pool.query(
+            `INSERT INTO notifications (company_id, user_id, rule_id, action_code, title, message, link)
+             VALUES (?, ?, NULL, ?, ?, ?, ?)`,
+            [req.company_id, req.requested_by, actionCode, title, message, link]
+        );
+        notifId = insertRes.insertId;
+    } catch (err) {
+        console.error('[ReopenRequest] Error guardando notificación in-app para el solicitante:', err.message);
+    }
+
+    // 2. Notificación en tiempo real vía WebSocket directo al usuario
+    try {
+        sendToUser(req.requested_by, 'new_notification', {
+            id: notifId,
+            action_code: actionCode,
+            title,
+            message,
+            link,
+            is_read: false,
+            created_at: new Date().toISOString()
+        });
+
+        sendToUser(req.requested_by, actionCode, {
+            closeoutId: req.closeout_id,
+            requestId: req.id,
+            numeroTurno: turnoNum,
+            branchId: req.branch_id,
+            resolvedBy,
+            isApproved,
+            title,
+            message
+        });
+    } catch (err) {
+        console.error('[ReopenRequest] Error enviando WS directo al solicitante:', err.message);
+    }
+
+    // 3. Notificar directamente por Telegram si el usuario solicitante tiene cuenta vinculada
+    try {
+        const [userRows] = await pool.query('SELECT username, nombre FROM users WHERE id = ?', [req.requested_by]);
+        const user = userRows[0];
+        if (user) {
+            const [userChats] = await pool.query(
+                `SELECT DISTINCT chat_id FROM telegram_chat_bindings
+                 WHERE ((username IS NOT NULL AND LOWER(username) = LOWER(?))
+                    OR (nombre IS NOT NULL AND LOWER(nombre) = LOWER(?)))
+                   AND (company_id = ? OR company_id IS NULL)
+                   AND receive_alerts = 1`,
+                [user.username || '', user.nombre || '', req.company_id]
+            );
+
+            const tgText = isApproved
+                ? `✅ *SOLICITUD DE REAPERTURA APROBADA*\n\n` +
+                  `Hola *${escapeMd(req.requested_by_name)}*, tu solicitud para reabrir el Turno *#${escapeMd(turnoNum)}*${branchName ? ` (${escapeMd(branchName)})` : ''} fue *APROBADA* por *${escapeMd(resolvedBy)}*.\n\n` +
+                  `Ya puedes ingresar al sistema y editar el turno.`
+                : `❌ *SOLICITUD DE REAPERTURA RECHAZADA*\n\n` +
+                  `Hola *${escapeMd(req.requested_by_name)}*, tu solicitud para reabrir el Turno *#${escapeMd(turnoNum)}* fue *RECHAZADA* por *${escapeMd(resolvedBy)}*.`;
+
+            for (const chat of userChats) {
+                if (req.resolved_chat_id && String(chat.chat_id) === String(req.resolved_chat_id)) continue;
+                await telegramService.sendMessage(chat.chat_id, tgText, { parse_mode: 'Markdown' }).catch(() => {});
+            }
+        }
+    } catch (err) {
+        console.error('[ReopenRequest] Error enviando Telegram al solicitante:', err.message);
+    }
+}
+
+/**
  * Envía la alerta interactiva de reapertura a los chats de Telegram autorizados.
  */
 async function sendReopenTelegramNotification({ requestId, closeout, companyId, branchId, userName, reason }) {
     const effectiveBranchId = closeout.branch_id || branchId || null;
 
-    // Obtener nombres de empresa y sucursal
     const [compRows] = await pool.query('SELECT razon_social FROM companies WHERE id = ?', [companyId]);
     const [brRows] = effectiveBranchId
         ? await pool.query('SELECT nombre FROM branches WHERE id = ?', [effectiveBranchId])
@@ -38,7 +125,6 @@ async function sendReopenTelegramNotification({ requestId, closeout, companyId, 
     const branchName = brRows[0]?.nombre || 'Sucursal';
     const fechaText = formatDateSV(closeout.fecha_turno);
 
-    // Buscar chats de Telegram autorizados para recibir solicitudes de reapertura
     let chats = [];
     const [settingsRows] = await pool.query('SELECT reopen_requests_active FROM telegram_settings WHERE id = 1');
     const reopenActive = settingsRows.length > 0 ? (settingsRows[0].reopen_requests_active !== 0) : true;
@@ -109,7 +195,6 @@ async function createReopenRequest({ closeoutId, companyId, branchId, userId, us
         throw new Error('Solo se puede solicitar la apertura de un cierre que esté cerrado.');
     }
 
-    // Verificar si ya existe una solicitud pendiente
     const [existing] = await pool.query(
         `SELECT id, reason, requested_by_name, created_at FROM gas_station_closeout_reopen_requests
          WHERE closeout_id = ? AND status = 'pending'
@@ -166,7 +251,6 @@ async function createReopenRequest({ closeoutId, companyId, branchId, userId, us
         reason
     });
 
-    // Notificar en tiempo real vía WebSocket a la empresa
     try {
         broadcastToCompany(companyId, 'gas_closeout_reopen_requested', {
             closeoutId,
@@ -189,7 +273,7 @@ async function createReopenRequest({ closeoutId, companyId, branchId, userId, us
 }
 
 /**
- * Aprueba una solicitud de reapertura y cambia el estado del cierre inmediatamente.
+ * Aprueba una solicitud de reapertura, cambia el estado del cierre y notifica inmediatamente al usuario.
  */
 async function approveReopenRequest({ requestId, resolvedBy = 'Administrador', chatId = null, messageId = null }) {
     const [requests] = await pool.query(
@@ -253,7 +337,30 @@ async function approveReopenRequest({ requestId, resolvedBy = 'Administrador', c
         [resolvedBy, chatId, requestId]
     );
 
-    // Notificar por WebSocket para actualización en tiempo real en la pantalla del usuario
+    const [brRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [closeout.branch_id]);
+    const branchName = brRows[0]?.nombre || 'Sucursal';
+
+    // 1. Notificar inmediatamente al usuario que hizo la solicitud (in-app, WS y Telegram personal)
+    await notifyReopenResultToUser({
+        req: { ...req, resolved_chat_id: chatId },
+        closeout,
+        branchName,
+        resolvedBy,
+        isApproved: true
+    });
+
+    // 2. Disparar reglas de notificación configuradas en la empresa
+    try {
+        notificationService.notify('gas_closeout_reopened', req.company_id, closeout.branch_id, {
+            turno: closeout.numero_turno,
+            fecha: formatDateSV(closeout.fecha_turno),
+            sucursal: branchName,
+            aprobado_por: resolvedBy,
+            solicitante: req.requested_by_name
+        });
+    } catch {}
+
+    // 3. Notificar por WebSocket para actualización en tiempo real en la pantalla de la empresa
     try {
         broadcastToCompany(req.company_id, 'gas_closeout_reopened', {
             closeoutId: req.closeout_id,
@@ -263,9 +370,7 @@ async function approveReopenRequest({ requestId, resolvedBy = 'Administrador', c
         });
     } catch {}
 
-    // Actualizar mensaje de Telegram si corresponde
-    const [brRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [closeout.branch_id]);
-    const branchName = brRows[0]?.nombre || 'Sucursal';
+    // 4. Actualizar mensaje en Telegram de los administradores
     const updateText =
         `✅ *SOLICITUD APROBADA*\n\n` +
         `El Turno *#${escapeMd(closeout.numero_turno)}* (${escapeMd(branchName)}) ha sido *REABIERTO* en el sistema inmediatamente.\n\n` +
@@ -293,7 +398,7 @@ async function approveReopenRequest({ requestId, resolvedBy = 'Administrador', c
 }
 
 /**
- * Rechaza una solicitud de reapertura.
+ * Rechaza una solicitud de reapertura y notifica inmediatamente al usuario solicitante.
  */
 async function rejectReopenRequest({ requestId, resolvedBy = 'Administrador', chatId = null, messageId = null }) {
     const [requests] = await pool.query(
@@ -314,6 +419,19 @@ async function rejectReopenRequest({ requestId, resolvedBy = 'Administrador', ch
         [resolvedBy, chatId, requestId]
     );
 
+    const [closeouts] = await pool.query('SELECT id, numero_turno, branch_id FROM gas_station_closeouts WHERE id = ?', [req.closeout_id]);
+    const closeout = closeouts[0] || { id: req.closeout_id, numero_turno: '', branch_id: req.branch_id };
+    const turnoNum = closeout?.numero_turno || '';
+
+    // Notificar inmediatamente al usuario que hizo la solicitud
+    await notifyReopenResultToUser({
+        req: { ...req, resolved_chat_id: chatId },
+        closeout,
+        branchName: '',
+        resolvedBy,
+        isApproved: false
+    });
+
     try {
         broadcastToCompany(req.company_id, 'gas_closeout_reopen_rejected', {
             closeoutId: req.closeout_id,
@@ -321,9 +439,6 @@ async function rejectReopenRequest({ requestId, resolvedBy = 'Administrador', ch
             rejectedBy: resolvedBy
         });
     } catch {}
-
-    const [closeouts] = await pool.query('SELECT numero_turno FROM gas_station_closeouts WHERE id = ?', [req.closeout_id]);
-    const turnoNum = closeouts[0]?.numero_turno || '';
 
     const rejectText =
         `❌ *SOLICITUD RECHAZADA*\n\n` +
@@ -350,7 +465,6 @@ async function rejectReopenRequest({ requestId, resolvedBy = 'Administrador', ch
 
 /**
  * Obtiene la última solicitud pendiente para un chat / empresa.
- * Si companyId es null (Administrador Global), busca en todas las empresas.
  */
 async function getLatestPendingForCompany(companyId = null, branchId = null) {
     let query = `SELECT * FROM gas_station_closeout_reopen_requests WHERE status = 'pending'`;

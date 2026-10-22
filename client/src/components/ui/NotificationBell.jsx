@@ -98,6 +98,9 @@ const NotificationBell = () => {
               window.__onTicketEvent(evt, data);
             }
           }
+          if (evt && (evt === 'gas_closeout_reopened' || evt === 'gas_closeout_reopen_approved' || evt === 'gas_closeout_reopen_rejected')) {
+            queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
+          }
           if (evt === 'new_notification') {
             queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
             if (isOpen) {
