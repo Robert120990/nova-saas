@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { Plus, Edit, Trash2, Search } from 'lucide-react';
 import Money from '../../ui/Money';
 import { useDirtyTracker } from '../../../hooks/useDirtyTracker';
+import { useFormDraft } from '../../../hooks/useFormDraft';
 import EmployeeSearchModal from '../../rh/EmployeeSearchModal';
 
 const fieldCls = "w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-[13px] font-medium";
@@ -92,10 +93,21 @@ const LiquidacionesScreen = ({ companyId }) => {
     // Otros descuentos
     const [otrosDescuentos, setOtrosDescuentos] = useState(0);
 
+    // Ultima planilla y horas extras
+    const [pagoUltimaPlanilla, setPagoUltimaPlanilla] = useState(0);
+    const [pagoHorasExtras, setPagoHorasExtras] = useState(0);
+
     // Calculated amounts
 
 
     useDirtyTracker('liquidaciones', isModalOpen && !!empleadoId);
+
+    const draftKey = companyId && empleadoId && !selected ? `draft_liq_${companyId}_${empleadoId}` : null;
+    const { clearDraft } = useFormDraft(draftKey, {
+        periodoAño, periodoMes, periodoIndemnizacion, periodoVacaciones, periodoAguinaldo,
+        diasIndemnizacion, diasVacaciones, diasAguinaldo, diasUltimos,
+        pagoUltimaPlanilla, pagoHorasExtras, otrosDescuentos, pagoCuotas, cuotas
+    }, Boolean(isModalOpen && empleadoId && !selected));
 
     // Auto-calc partial amounts (not editable)
     const sueldo = parseFloat(empleadoData?.sueldo_base || 0);
@@ -118,15 +130,23 @@ const LiquidacionesScreen = ({ companyId }) => {
         ? Number(selected.pago_ultimos_dias) : sueldo && diasUltimos > 0
         ? Math.round((sueldo / 30) * diasUltimos * 100) / 100 : 0;
 
-    const totalDevengado = totalIndemnizacion + totalVacaciones + totalAguinaldo + pagoUltimosDias;
-    const montoDeducciones = totalVacaciones + totalAguinaldo + pagoUltimosDias;
+    const totalDevengado = Math.round((totalIndemnizacion + totalVacaciones + totalAguinaldo + pagoUltimosDias + parseFloat(pagoUltimaPlanilla || 0) + parseFloat(pagoHorasExtras || 0)) * 100) / 100;
+    const montoDeducciones = Math.round((totalVacaciones + totalAguinaldo + pagoUltimosDias + parseFloat(pagoUltimaPlanilla || 0) + parseFloat(pagoHorasExtras || 0)) * 100) / 100;
 
     const { calculo, setCalculo, calculando, calculationError, calculationReady, retryCalculation } = useBenefitCalculation({
         url: '/api/rh/planilla-liquidaciones/calcular', companyId, open: isModalOpen, employeeId: empleadoId,
-        params: { empleado_id: empleadoId, vacaciones: totalVacaciones, aguinaldo: totalAguinaldo, ultimos_dias: pagoUltimosDias, monto: montoDeducciones },
+        params: {
+            empleado_id: empleadoId,
+            vacaciones: totalVacaciones,
+            aguinaldo: totalAguinaldo,
+            ultimos_dias: pagoUltimosDias,
+            ultima_planilla: parseFloat(pagoUltimaPlanilla || 0),
+            horas_extras: parseFloat(pagoHorasExtras || 0),
+            monto: montoDeducciones
+        },
         enabled: !loadingEmployee,
         storedKey: selected?.revision || selected?.id,
-        preserveSaved: !!selected && totalVacaciones === Number(selected.total_vacaciones) && totalAguinaldo === Number(selected.total_aguinaldo) && pagoUltimosDias === Number(selected.pago_ultimos_dias),
+        preserveSaved: !!selected && totalVacaciones === Number(selected.total_vacaciones) && totalAguinaldo === Number(selected.total_aguinaldo) && pagoUltimosDias === Number(selected.pago_ultimos_dias) && Number(pagoUltimaPlanilla) === Number(selected.pago_ultima_planilla || 0) && Number(pagoHorasExtras) === Number(selected.pago_horas_extras || 0),
         savedCalculation: selected ? {
             descuento_isss: Number(selected.descuento_isss), descuento_afp: Number(selected.descuento_afp), descuento_renta: Number(selected.descuento_renta),
             total_deducciones_auto: Number(selected.descuento_isss) + Number(selected.descuento_afp) + Number(selected.descuento_renta)
@@ -269,9 +289,14 @@ const LiquidacionesScreen = ({ companyId }) => {
     const saveContext = JSON.stringify([companyId, isModalOpen, selected?.id, empleadoId, periodoAño, periodoMes]);
     const saveScope = useRhPayrollRequest(saveContext);
     const mutation = useMutation({
-        mutationFn: ({ payload, id, company, request }) => {
+        mutationFn: ({ payload, id, company, request, idempotencyKey }) => {
             if (!request.isCurrent()) throw new Error('El contexto cambió antes de guardar.');
-            const config = { headers: { 'x-company-id': company } };
+            const config = {
+                headers: {
+                    'x-company-id': company,
+                    ...(idempotencyKey ? { 'x-idempotency-key': idempotencyKey } : {})
+                }
+            };
             return id ? axios.put(`/api/rh/planilla-liquidaciones/${id}`, payload, config) : axios.post('/api/rh/planilla-liquidaciones', payload, config);
         },
         onSuccess: async (_result, { id, request, payload }) => {
@@ -283,6 +308,7 @@ const LiquidacionesScreen = ({ companyId }) => {
             if (request.isCurrent()) { 
                 setIsConfirmInactivarOpen(false);
                 setIsModalOpen(false); 
+                clearDraft();
                 resetForm(); 
             }
             if (payload?.marcar_inactivo) {
@@ -329,6 +355,7 @@ const LiquidacionesScreen = ({ companyId }) => {
 
     const resetForm = () => {
         employeeScope.cancel();
+        clearDraft();
         setLoadingEmployee(false);
         setEmployeeError('');
         setIsEmpModalOpen(false);
@@ -338,6 +365,8 @@ const LiquidacionesScreen = ({ companyId }) => {
         setPeriodoIndemnizacion(emptyPeriod); setPeriodoVacaciones(emptyPeriod); setPeriodoAguinaldo(emptyPeriod);
         setDiasIndemnizacion(0); setDiasVacaciones(0); setDiasAguinaldo(0);
         setDiasUltimos(0);
+        setPagoUltimaPlanilla(0);
+        setPagoHorasExtras(0);
         setOtrosDescuentos(0);
         setPagoCuotas(false); setCuotas(1); setPagoPorCuota(0);
         setCalculo(null); setUltimaIndemnizacion(null);
@@ -367,6 +396,8 @@ const LiquidacionesScreen = ({ companyId }) => {
         setDiasVacaciones(item.dias_vacaciones || 0);
         setDiasAguinaldo(item.dias_aguinaldo || 0);
         setDiasUltimos(item.sueldo_base > 0 ? Math.round((parseFloat(item.pago_ultimos_dias || 0) * 30 / parseFloat(item.sueldo_base))) : 0);
+        setPagoUltimaPlanilla(parseFloat(item.pago_ultima_planilla || 0));
+        setPagoHorasExtras(parseFloat(item.pago_horas_extras || 0));
         setOtrosDescuentos(parseFloat(item.otros_descuentos) || 0);
         setPagoCuotas(!!item.pago_cuotas);
         setCuotas(item.cuotas || 1);
@@ -481,6 +512,8 @@ const LiquidacionesScreen = ({ companyId }) => {
             dias_aguinaldo: diasAguinaldo,
             ultimos_dias_laborados: toDateInput(selected?.ultimos_dias_laborados) || null,
             pago_ultimos_dias: pagoUltimosDias,
+            pago_ultima_planilla: parseFloat(pagoUltimaPlanilla) || 0,
+            pago_horas_extras: parseFloat(pagoHorasExtras) || 0,
             total_indemnizacion: totalIndemnizacion,
             total_vacaciones: totalVacaciones,
             total_aguinaldo: totalAguinaldo,
@@ -496,11 +529,14 @@ const LiquidacionesScreen = ({ companyId }) => {
             pago_por_cuota: pagoPorCuota,
             marcar_inactivo: !!marcarInactivo
         };
+        const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `idemp_${Date.now()}_${Math.random()}`;
         savingRef.current = true;
-        mutation.mutate({ payload, id: selected?.id, company: companyId, request: saveScope.begin() });
+        mutation.mutate({ payload, id: selected?.id, company: companyId, request: saveScope.begin(), idempotencyKey });
     };
 
-    const model = { calcDays, calculando, calculationError, calculationReady, calculo, closeModal, codigoInput, cuotas, diasAguinaldo, diasIndemnizacion, diasUltimos, diasVacaciones, empleadoData, empleadoId, employeeError, fieldCls, finiquitoMotivo, handleCodigoSearch, handleConfirmFiniquito, handleSubmit, isFiniquitoModalOpen, isModalOpen, labelCls, loadingEmployee, months, montoDeducciones, montoRecibir, mutation, otrosDescuentos, pagoCuotas, pagoPorCuota, pagoUltimosDias, periodoAguinaldo, periodoAño, periodoIndemnizacion, periodoMes, periodoVacaciones, retryCalculation, roCls, selected, setCodigoInput, setCuotas, setDiasAguinaldo, setDiasIndemnizacion, setDiasUltimos, setDiasVacaciones, setFiniquitoMotivo, setIsEmpModalOpen, setIsFiniquitoModalOpen, setOtrosDescuentos, setPagoCuotas, setPeriodoAguinaldo, setPeriodoAño, setPeriodoIndemnizacion, setPeriodoMes, setPeriodoVacaciones, sueldo, totalAguinaldo, totalDeducciones, totalDevengado, totalIndemnizacion, totalVacaciones, ultimaIndemnizacion, years };
+    const model = { calcDays, calculando, calculationError, calculationReady, calculo, closeModal, codigoInput, cuotas, diasAguinaldo, diasIndemnizacion, diasUltimos, diasVacaciones, empleadoData, empleadoId, employeeError, fieldCls, finiquitoMotivo, handleCodigoSearch, handleConfirmFiniquito, handleSubmit, isFiniquitoModalOpen, isModalOpen, labelCls, loadingEmployee, months, montoDeducciones, montoRecibir, mutation, otrosDescuentos, pagoCuotas, pagoHorasExtras, pagoPorCuota, pagoUltimaPlanilla, pagoUltimosDias, periodoAguinaldo, periodoAño, periodoIndemnizacion, periodoMes, periodoVacaciones, retryCalculation, roCls, selected, setCodigoInput, setCuotas, setDiasAguinaldo, setDiasIndemnizacion, setDiasUltimos, setDiasVacaciones, setFiniquitoMotivo, setIsEmpModalOpen, setIsFiniquitoModalOpen, setOtrosDescuentos, setPagoCuotas, setPagoHorasExtras, setPagoPorCuota, setPagoUltimaPlanilla, setPeriodoAguinaldo, setPeriodoAño, setPeriodoIndemnizacion, setPeriodoMes, setPeriodoVacaciones, sueldo, totalAguinaldo, totalDeducciones, totalDevengado, totalIndemnizacion, totalVacaciones, ultimaIndemnizacion, years };
 
     return (
         <div className="space-y-3 text-slate-900">
@@ -554,7 +590,19 @@ const LiquidacionesScreen = ({ companyId }) => {
                             <td className="px-3 py-1 text-xs font-bold text-slate-700"><Money value={item.total_indemnizacion} /></td>
                             <td className="px-3 py-1 text-xs font-bold text-slate-700"><Money value={item.total_vacaciones} /></td>
                             <td className="px-3 py-1 text-xs font-bold text-slate-700"><Money value={item.total_aguinaldo} /></td>
-                            <td className="px-3 py-1 text-xs font-bold text-slate-700"><Money value={item.total_devengado} /></td>
+                            <td className="px-3 py-1 text-xs font-bold text-slate-700">
+                                <Money value={item.total_devengado} />
+                                {(Number(item.pago_ultima_planilla || 0) > 0 || Number(item.pago_horas_extras || 0) > 0) && (
+                                    <div className="text-[9px] text-slate-400 font-normal flex flex-wrap gap-1">
+                                        {Number(item.pago_ultima_planilla || 0) > 0 && (
+                                            <span>Planilla: <Money value={item.pago_ultima_planilla} /></span>
+                                        )}
+                                        {Number(item.pago_horas_extras || 0) > 0 && (
+                                            <span>H.E.: <Money value={item.pago_horas_extras} /></span>
+                                        )}
+                                    </div>
+                                )}
+                            </td>
                             <td className="px-3 py-1 text-xs text-rose-600 font-bold"><Money value={item.total_deducciones} /></td>
                             <td className="px-3 py-1 text-xs font-bold text-emerald-600"><Money value={item.monto_recibir} /></td>
                             <td className="px-3 py-1 flex gap-1">

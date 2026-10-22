@@ -135,7 +135,7 @@ async function calculateVacaciones(pool, companyId, query) {
 
 async function calculateLiquidaciones(pool, companyId, query) {
 
-        const { empleado_id, monto, vacaciones, aguinaldo, ultimos_dias } = query;
+        const { empleado_id, monto, vacaciones, aguinaldo, ultimos_dias, ultima_planilla, pago_ultima_planilla, horas_extras, pago_horas_extras } = query;
         if (!empleado_id) {
             throw httpError(400, 'empleado_id es requerido');
         }
@@ -143,10 +143,12 @@ async function calculateLiquidaciones(pool, companyId, query) {
         const montoVacaciones = parseFloat(vacaciones) || 0;
         const montoAguinaldo = parseFloat(aguinaldo) || 0;
         const montoUltimosDias = parseFloat(ultimos_dias) || 0;
+        const montoUltimaPlanilla = parseFloat(ultima_planilla !== undefined ? ultima_planilla : pago_ultima_planilla) || 0;
+        const montoHorasExtras = parseFloat(horas_extras !== undefined ? horas_extras : pago_horas_extras) || 0;
 
-        // Base sujeta a ISSS y AFP: Vacaciones + Salarios pendientes (el aguinaldo e indemnización están exentos)
-        const baseCotizable = (vacaciones !== undefined || ultimos_dias !== undefined)
-            ? (montoVacaciones + montoUltimosDias)
+        // Base sujeta a ISSS y AFP: Vacaciones + Salarios pendientes + Última planilla + Horas extras (el aguinaldo e indemnización están exentos)
+        const baseCotizable = (vacaciones !== undefined || ultimos_dias !== undefined || ultima_planilla !== undefined || pago_ultima_planilla !== undefined || horas_extras !== undefined || pago_horas_extras !== undefined)
+            ? (montoVacaciones + montoUltimosDias + montoUltimaPlanilla + montoHorasExtras)
             : (parseFloat(monto) || 0);
 
         const today = new Date().toISOString().split('T')[0];

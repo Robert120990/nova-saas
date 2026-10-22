@@ -5,7 +5,7 @@ import { Search, Users, User, Loader2, Wallet, CheckCircle2, Calendar, TrendingU
 import Money, { MoneyInput } from '../../ui/Money';
 
 const LiquidacionesModal = ({ open, onClose, onSubmit, model }) => {
-    const { calcDays, calculando, calculationError, calculationReady, calculo, codigoInput, cuotas, diasAguinaldo, diasIndemnizacion, diasUltimos, diasVacaciones, empleadoData, empleadoId, employeeError, fieldCls, handleCodigoSearch, labelCls, loadingEmployee, months, montoDeducciones, montoRecibir, mutation, otrosDescuentos, pagoCuotas, pagoPorCuota, pagoUltimosDias, periodoAguinaldo, periodoAño, periodoIndemnizacion, periodoMes, periodoVacaciones, retryCalculation, roCls, selected, setCodigoInput, setCuotas, setDiasAguinaldo, setDiasIndemnizacion, setDiasUltimos, setDiasVacaciones, setIsEmpModalOpen, setOtrosDescuentos, setPagoCuotas, setPeriodoAguinaldo, setPeriodoAño, setPeriodoIndemnizacion, setPeriodoMes, setPeriodoVacaciones, sueldo, totalAguinaldo, totalDeducciones, totalDevengado, totalIndemnizacion, totalVacaciones, ultimaIndemnizacion, years } = model;
+    const { calcDays, calculando, calculationError, calculationReady, calculo, codigoInput, cuotas, diasAguinaldo, diasIndemnizacion, diasUltimos, diasVacaciones, empleadoData, empleadoId, employeeError, fieldCls, handleCodigoSearch, labelCls, loadingEmployee, months, montoDeducciones, montoRecibir, mutation, otrosDescuentos, pagoCuotas, pagoHorasExtras, pagoPorCuota, pagoUltimaPlanilla, pagoUltimosDias, periodoAguinaldo, periodoAño, periodoIndemnizacion, periodoMes, periodoVacaciones, retryCalculation, roCls, selected, setCodigoInput, setCuotas, setDiasAguinaldo, setDiasIndemnizacion, setDiasUltimos, setDiasVacaciones, setIsEmpModalOpen, setOtrosDescuentos, setPagoCuotas, setPagoHorasExtras, setPagoUltimaPlanilla, setPeriodoAguinaldo, setPeriodoAño, setPeriodoIndemnizacion, setPeriodoMes, setPeriodoVacaciones, sueldo, totalAguinaldo, totalDeducciones, totalDevengado, totalIndemnizacion, totalVacaciones, ultimaIndemnizacion, years } = model;
     if (!open) return null;
     const calculationStatus = calculationError || employeeError ? 'Cálculo no disponible' : 'Retenciones pendientes';
     return (<Modal isOpen={open} onClose={onClose}
@@ -248,6 +248,48 @@ const LiquidacionesModal = ({ open, onClose, onSubmit, model }) => {
                                                 </td>
                                                 <td data-label="Días" className="py-1 px-3 text-right tabular-nums">
                                                     <Money value={pagoUltimosDias} className="font-bold text-slate-800 text-[11px]" />
+                                                </td>
+                                            </tr>
+
+                                            {/* Pago Última Planilla */}
+                                            <tr className="hover:bg-slate-50/60 transition-colors bg-slate-50/30">
+                                                <td data-label="Concepto" className="py-1 px-3 text-slate-700 font-semibold whitespace-nowrap">
+                                                    Última Planilla
+                                                </td>
+                                                <td data-label="Desde" className="py-1 px-1.5 text-slate-400 text-[10px] italic" colSpan={3}>
+                                                    Salario pendiente de última planilla
+                                                </td>
+                                                <td data-label="Devengado" className="py-1 px-3 text-right tabular-nums">
+                                                    <div className="flex items-center justify-end gap-1">
+                                                        <span className="text-[11px] text-slate-400 font-medium">$</span>
+                                                        <MoneyInput
+                                                            value={pagoUltimaPlanilla || ''}
+                                                            onChange={e => setPagoUltimaPlanilla(parseFloat(e.target.value) || 0)}
+                                                            className="w-20 px-1.5 py-0.5 text-[11px] bg-white border border-slate-200 rounded text-right font-bold text-slate-800 focus:ring-1 focus:ring-indigo-500 outline-none"
+                                                            placeholder="0.00"
+                                                        />
+                                                    </div>
+                                                </td>
+                                            </tr>
+
+                                            {/* Pago Horas Extras */}
+                                            <tr className="hover:bg-slate-50/60 transition-colors bg-slate-50/30">
+                                                <td data-label="Concepto" className="py-1 px-3 text-slate-700 font-semibold whitespace-nowrap">
+                                                    Horas Extras
+                                                </td>
+                                                <td data-label="Desde" className="py-1 px-1.5 text-slate-400 text-[10px] italic" colSpan={3}>
+                                                    Remuneración por horas extraordinarias laboradas
+                                                </td>
+                                                <td data-label="Devengado" className="py-1 px-3 text-right tabular-nums">
+                                                    <div className="flex items-center justify-end gap-1">
+                                                        <span className="text-[11px] text-slate-400 font-medium">$</span>
+                                                        <MoneyInput
+                                                            value={pagoHorasExtras || ''}
+                                                            onChange={e => setPagoHorasExtras(parseFloat(e.target.value) || 0)}
+                                                            className="w-20 px-1.5 py-0.5 text-[11px] bg-white border border-slate-200 rounded text-right font-bold text-slate-800 focus:ring-1 focus:ring-indigo-500 outline-none"
+                                                            placeholder="0.00"
+                                                        />
+                                                    </div>
                                                 </td>
                                             </tr>
                                         </tbody>
@@ -494,6 +536,18 @@ const LiquidacionesModal = ({ open, onClose, onSubmit, model }) => {
                                         <span>Salarios Pendientes ({diasUltimos || 0}d)</span>
                                         <Money value={pagoUltimosDias} className="font-semibold text-white" />
                                     </div>
+                                    {Number(pagoUltimaPlanilla || 0) > 0 && (
+                                        <div className="flex justify-between items-center text-slate-300 text-[11px]">
+                                            <span>Última Planilla</span>
+                                            <Money value={pagoUltimaPlanilla} className="font-semibold text-white" />
+                                        </div>
+                                    )}
+                                    {Number(pagoHorasExtras || 0) > 0 && (
+                                        <div className="flex justify-between items-center text-slate-300 text-[11px]">
+                                            <span>Horas Extras</span>
+                                            <Money value={pagoHorasExtras} className="font-semibold text-white" />
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Modalidad de Cuotas (si está marcada) */}

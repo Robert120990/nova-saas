@@ -1,5 +1,4 @@
-import React from 'react';
-import { UserX, UserCheck, AlertTriangle, X, ShieldAlert } from 'lucide-react';
+import { UserX, UserCheck, X } from 'lucide-react';
 
 const ConfirmarInactivarModal = ({ open, onClose, onConfirm, empleado, isSaving = false }) => {
     if (!open) return null;

@@ -11,8 +11,8 @@ const definitions = {
     },
     liquidaciones: {
         table: 'rh_planilla_liquidaciones',
-        fields: ['empleado_id', 'periodo_año', 'periodo_mes', 'periodo_indemnizacion_desde', 'periodo_indemnizacion_hasta', 'periodo_vacaciones_desde', 'periodo_vacaciones_hasta', 'periodo_aguinaldo_desde', 'periodo_aguinaldo_hasta', 'dias_indemnizacion', 'dias_vacaciones', 'dias_aguinaldo', 'ultimos_dias_laborados', 'pago_ultimos_dias', 'total_indemnizacion', 'total_vacaciones', 'total_aguinaldo', ...commonAmounts, 'otros_descuentos', 'pago_cuotas', 'cuotas', 'pago_por_cuota'],
-        amounts: ['pago_ultimos_dias', 'total_indemnizacion', 'total_vacaciones', 'total_aguinaldo', ...commonAmounts, 'otros_descuentos', 'pago_por_cuota'],
+        fields: ['empleado_id', 'periodo_año', 'periodo_mes', 'periodo_indemnizacion_desde', 'periodo_indemnizacion_hasta', 'periodo_vacaciones_desde', 'periodo_vacaciones_hasta', 'periodo_aguinaldo_desde', 'periodo_aguinaldo_hasta', 'dias_indemnizacion', 'dias_vacaciones', 'dias_aguinaldo', 'ultimos_dias_laborados', 'pago_ultimos_dias', 'pago_ultima_planilla', 'pago_horas_extras', 'total_indemnizacion', 'total_vacaciones', 'total_aguinaldo', ...commonAmounts, 'otros_descuentos', 'pago_cuotas', 'cuotas', 'pago_por_cuota'],
+        amounts: ['pago_ultimos_dias', 'pago_ultima_planilla', 'pago_horas_extras', 'total_indemnizacion', 'total_vacaciones', 'total_aguinaldo', ...commonAmounts, 'otros_descuentos', 'pago_por_cuota'],
         days: ['dias_indemnizacion', 'dias_vacaciones', 'dias_aguinaldo'],
         periods: [['periodo_indemnizacion_desde', 'periodo_indemnizacion_hasta'], ['periodo_vacaciones_desde', 'periodo_vacaciones_hasta'], ['periodo_aguinaldo_desde', 'periodo_aguinaldo_hasta']]
     }
@@ -56,7 +56,7 @@ function validateBenefit(kind, body) {
     if (kind === 'vacaciones' && !['primera', 'segunda'].includes(body.quincena)) throw httpError(400, 'La quincena es inválida');
     if (kind === 'liquidaciones' && (!numeric(body.cuotas) || !Number.isSafeInteger(Number(body.cuotas)) || Number(body.cuotas) < 1)) throw httpError(400, 'El número de cuotas es inválido');
     const earnings = kind === 'vacaciones' ? Number(body.vacaciones_monto)
-        : ['total_indemnizacion', 'total_vacaciones', 'total_aguinaldo', 'pago_ultimos_dias'].reduce((sum, field) => sum + Number(body[field]), 0);
+        : ['total_indemnizacion', 'total_vacaciones', 'total_aguinaldo', 'pago_ultimos_dias', 'pago_ultima_planilla', 'pago_horas_extras'].reduce((sum, field) => sum + Number(body[field] || 0), 0);
     const deductions = ['descuento_isss', 'descuento_afp', 'descuento_renta'].reduce((sum, field) => sum + Number(body[field]), 0) + Number(body.otros_descuentos || 0);
     if (Math.abs(earnings - Number(body.total_devengado)) > 0.02 || Math.abs(deductions - Number(body.total_deducciones)) > 0.02
         || Math.abs(earnings - deductions - Number(body.monto_recibir)) > 0.02) {

@@ -90,6 +90,8 @@ const exportPDF = async (req, res) => {
             dias_aguinaldo: p.dias_aguinaldo,
             ultimos_dias_laborados: p.ultimos_dias_laborados,
             pago_ultimos_dias: p.pago_ultimos_dias,
+            pago_ultima_planilla: p.pago_ultima_planilla,
+            pago_horas_extras: p.pago_horas_extras,
             total_indemnizacion: p.total_indemnizacion,
             total_vacaciones: p.total_vacaciones,
             total_aguinaldo: p.total_aguinaldo,

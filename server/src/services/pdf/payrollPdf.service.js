@@ -312,6 +312,8 @@ const generateLiquidacionPDF = (data) => {
             const totalVacaciones = parseFloat(data.total_vacaciones || 0);
             const totalAguinaldo = parseFloat(data.total_aguinaldo || 0);
             const pagoUltimosDias = parseFloat(data.pago_ultimos_dias || 0);
+            const pagoUltimaPlanilla = parseFloat(data.pago_ultima_planilla || 0);
+            const pagoHorasExtras = parseFloat(data.pago_horas_extras || 0);
             const totalDevengado = parseFloat(data.total_devengado || 0);
 
             const descuentoISSS = parseFloat(data.descuento_isss || 0);
@@ -454,6 +456,12 @@ const generateLiquidacionPDF = (data) => {
             drawPercRow('Aguinaldo Proporcional', `${data.dias_aguinaldo || 0} días computados según Art. 198 CT`, totalAguinaldo);
             if (pagoUltimosDias > 0) {
                 drawPercRow('Últimos Días Laborados Pendientes', 'Salario ordinario devengado no cancelado', pagoUltimosDias);
+            }
+            if (pagoUltimaPlanilla > 0) {
+                drawPercRow('Pago Última Planilla', 'Salario devengado de período anterior', pagoUltimaPlanilla);
+            }
+            if (pagoHorasExtras > 0) {
+                drawPercRow('Pago Horas Extras', 'Remuneración por horas extraordinarias laboradas', pagoHorasExtras);
             }
 
             // Deducciones List
