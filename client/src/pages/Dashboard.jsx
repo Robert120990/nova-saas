@@ -196,8 +196,14 @@ export default function Dashboard() {
         );
     }
 
-    const currentDashboard = allowedDashboards.find(d => d.id === activeTab) || allowedDashboards[0];
-    const ActiveComponent = currentDashboard.component;
+    // Registro de pestañas visitadas para carga perezosa y preservación en memoria (Keep-Alive)
+    const [visitedTabs, setVisitedTabs] = useState(() => (activeTab ? [activeTab] : ['general']));
+
+    useEffect(() => {
+        if (activeTab && !visitedTabs.includes(activeTab)) {
+            setVisitedTabs(prev => [...prev, activeTab]);
+        }
+    }, [activeTab, visitedTabs]);
 
     return (
         <div className="space-y-6">
@@ -230,9 +236,21 @@ export default function Dashboard() {
                 </div>
             )}
 
-            {/* Renderizado dinámico del dashboard seleccionado */}
+            {/* Renderizado con Keep-Alive para conmutación instantánea (0ms) sin recargas */}
             <div>
-                <ActiveComponent />
+                {allowedDashboards.filter(dash => visitedTabs.includes(dash.id)).map((dash) => {
+                    const Component = dash.component;
+                    const isActive = dash.id === activeTab;
+                    return (
+                        <div
+                            key={dash.id}
+                            style={{ display: isActive ? 'block' : 'none' }}
+                            aria-hidden={!isActive}
+                        >
+                            <Component isActive={isActive} />
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );

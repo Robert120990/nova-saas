@@ -16,11 +16,18 @@ export default function CategorySalesChart() {
             if (branchId) params.append('branch_id', branchId);
             return (await axios.get(`/api/dashboard/category-sales?${params}`)).data;
         },
+        staleTime: 60000,
+        gcTime: 300000,
+        refetchOnWindowFocus: false,
         refetchInterval: 60000
     });
 
     const { data: branches = [] } = useQuery({
-        queryKey: ['branches'], queryFn: async () => (await axios.get('/api/branches')).data,
+        queryKey: ['branches'], 
+        queryFn: async () => (await axios.get('/api/branches')).data,
+        staleTime: 300000,
+        gcTime: 600000,
+        refetchOnWindowFocus: false
     });
 
     return (

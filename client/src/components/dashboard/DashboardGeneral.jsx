@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
@@ -23,11 +24,20 @@ import StatCard from './StatCard';
 
 export default function DashboardGeneral() {
     const { user } = useAuth();
+    const [forceKey, setForceKey] = useState(0);
 
-    const { data: stats, isLoading, refetch, isFetching } = useQuery({
-        queryKey: ['dashboard-general-stats', user?.company_id],
-        queryFn: async () => (await axios.get('/api/dashboard/general-stats')).data,
+    const { data: stats, isLoading, isFetching } = useQuery({
+        queryKey: ['dashboard-general-stats', user?.company_id, forceKey],
+        queryFn: async () => {
+            const url = forceKey > 0 
+                ? `/api/dashboard/general-stats?force=true&_k=${forceKey}` 
+                : '/api/dashboard/general-stats';
+            return (await axios.get(url)).data;
+        },
         enabled: !!user?.company_id,
+        staleTime: 60000,
+        gcTime: 300000,
+        refetchOnWindowFocus: false,
         refetchInterval: 60000
     });
 
@@ -56,7 +66,7 @@ export default function DashboardGeneral() {
                 </div>
                 <div className="flex items-center gap-3">
                     <button
-                        onClick={() => refetch()}
+                        onClick={() => setForceKey(k => k + 1)}
                         disabled={isFetching}
                         className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl border border-slate-200 transition-all flex items-center gap-2 shadow-sm"
                         title="Actualizar datos"

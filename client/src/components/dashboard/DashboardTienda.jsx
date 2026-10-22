@@ -18,11 +18,20 @@ import {
 export default function DashboardTienda() {
     const { user } = useAuth();
     const [period, setPeriod] = useState('month'); // 'today' | 'week' | 'month'
+    const [forceKey, setForceKey] = useState(0);
 
-    const { data: tiendaData, isLoading, refetch, isFetching } = useQuery({
-        queryKey: ['dashboard-tienda-stats', user?.company_id, period],
-        queryFn: async () => (await axios.get(`/api/dashboard/tienda-stats?period=${period}`)).data,
+    const { data: tiendaData, isLoading, isFetching } = useQuery({
+        queryKey: ['dashboard-tienda-stats', user?.company_id, period, forceKey],
+        queryFn: async () => {
+            const url = forceKey > 0 
+                ? `/api/dashboard/tienda-stats?period=${period}&force=true&_k=${forceKey}` 
+                : `/api/dashboard/tienda-stats?period=${period}`;
+            return (await axios.get(url)).data;
+        },
         enabled: !!user?.company_id,
+        staleTime: 60000,
+        gcTime: 300000,
+        refetchOnWindowFocus: false,
         refetchInterval: 60000
     });
 
@@ -58,7 +67,7 @@ export default function DashboardTienda() {
                 </div>
                 <div className="flex items-center gap-3">
                     <button
-                        onClick={() => refetch()}
+                        onClick={() => setForceKey(k => k + 1)}
                         disabled={isFetching}
                         className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl border border-slate-200 transition-all flex items-center gap-2 shadow-sm"
                         title="Actualizar datos de tienda"

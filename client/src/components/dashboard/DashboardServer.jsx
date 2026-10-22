@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { 
@@ -24,9 +25,19 @@ function formatUptime(seconds) {
 }
 
 export default function DashboardServer() {
-    const { data: serverData, isLoading, refetch, isFetching } = useQuery({
-        queryKey: ['dashboard-server-stats'],
-        queryFn: async () => (await axios.get('/api/dashboard/server-stats')).data,
+    const [forceKey, setForceKey] = useState(0);
+
+    const { data: serverData, isLoading, isFetching } = useQuery({
+        queryKey: ['dashboard-server-stats', forceKey],
+        queryFn: async () => {
+            const url = forceKey > 0 
+                ? `/api/dashboard/server-stats?force=true&_k=${forceKey}` 
+                : '/api/dashboard/server-stats';
+            return (await axios.get(url)).data;
+        },
+        staleTime: 10000,
+        gcTime: 60000,
+        refetchOnWindowFocus: false,
         refetchInterval: 15000 // Refresca cada 15 segundos para telemetría en vivo
     });
 
@@ -62,7 +73,7 @@ export default function DashboardServer() {
                 </div>
                 <div className="flex items-center gap-3">
                     <button
-                        onClick={() => refetch()}
+                        onClick={() => setForceKey(k => k + 1)}
                         disabled={isFetching}
                         className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl border border-slate-200 transition-all flex items-center gap-2 shadow-sm"
                         title="Escanear estado de servicios"
