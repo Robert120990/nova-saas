@@ -2,7 +2,7 @@
 
 > **GENERADO AUTOMÁTICAMENTE** — no editar a mano.
 > Regenerar con: `node scripts/generate-project-structure.js`
-> Última generación: 2026-10-17
+> Última generación: 2026-10-23
 >
 > Mapa exhaustivo de la estructura física del repositorio con la función de
 > cada archivo. Para reglas de negocio y convenciones ver AGENTS.md, CLAUDE.md
@@ -131,6 +131,7 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `auth.js` | verifyToken (JWT) y checkPermission: autenticación y permisos granulares por rol. |
 | `eggPermission.js` | Egg Permission. |
 | `eggReferences.js` | Egg References. |
+| `idempotency.middleware.js` | Idempotency.middleware. |
 | `tenant.js` | tenantMiddleware: aislamiento multi-empresa mediante header x-company-id. |
 | `validate.middleware.js` | Validate.middleware. |
 
@@ -155,6 +156,7 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 |---|---|
 | `ai.assistant.js` | Lógica conversacional del asistente IA: prompts, contexto y formateo de respuestas. |
 | `ai.service.js` | Clientes de modelos IA (OpenAI/Gemini) y generación SQL segura sobre DB_SCHEMA. |
+| `aiPromptBuilder.service.js` | Ai Prompt Builder.service. |
 | `audit.service.js` | Escritura estructurada de eventos en la bitácora de auditoría. |
 | `catalogCache.service.js` | Catalog Cache.service. |
 | `companyDteTest.service.js` | Company Dte Test.service. |
@@ -162,6 +164,7 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `condition.service.js` | Evaluador genérico de condiciones (evaluate/evaluateAll) usado por reglas de negocio. |
 | `crmQuotationDocx.service.js` | Crm Quotation Docx.service. |
 | `crmQuotationPdf.service.js` | Crm Quotation Pdf.service. |
+| `dashboardCache.service.js` | Dashboard Cache.service. |
 | `dte.service.js` | Cliente HTTP hacia dte-api: emitir, firmar, transmitir, contingencia e invalidación. |
 | `dteQueryFilters.js` | Filtros SQL reutilizables para consultas de documentos DTE. |
 | `eggAccess.service.js` | Egg Access.service. |
@@ -227,8 +230,14 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `telegramInvite.service.js` | Telegram Invite.service. |
 | `template.service.js` | Plantillas con variables (correo/documentos) y renderizado. |
 | `ticket.service.js` | Ticket.service. |
+| `ticketAgyCodeEngine.service.js` | Ticket Agy Code Engine.service. |
+| `ticketAgyConsole.service.js` | Ticket Agy Console.service. |
+| `ticketAgyFormatters.js` | Ticket Agy Formatters. |
+| `ticketAgyTelegram.service.js` | Ticket Agy Telegram.service. |
+| `ticketAgyWorkflow.service.js` | Ticket Agy Workflow.service. |
 | `ticketAiTaskBridge.service.js` | Ticket Ai Task Bridge.service. |
 | `ticketTelegram.service.js` | Ticket Telegram.service. |
+| `ticketTelegramMedia.service.js` | Ticket Telegram Media.service. |
 | `vatDeclarations.service.js` | Vat Declarations.service. |
 | `vatDeclarationsExcel.service.js` | Vat Declarations Excel.service. |
 | `vatDeclarationsPdf.service.js` | Vat Declarations Pdf.service. |
@@ -355,6 +364,7 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `telegram.controller.js` | Integración bot Telegram: alertas y notificaciones push. |
 | `terminal.controller.js` | Terminal.controller. |
 | `ticket.controller.js` | Ticket.controller. |
+| `ticketAgyFlow.controller.js` | Ticket Agy Flow.controller. |
 | `ticketAiBundle.controller.js` | Ticket Ai Bundle.controller. |
 | `tiendaVentas.controller.js` | Ventas de tienda/convenience diferenciadas de combustible. |
 | `topProductsReport.controller.js` | Top Products Report.controller. |
@@ -395,6 +405,7 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 |---|---|
 | `useBenefitCalculation.js` | Use Benefit Calculation. |
 | `useDirtyTracker.js` | Use Dirty Tracker. |
+| `useFormDraft.js` | Use Form Draft. |
 | `useMenuItems.js` | Construye el menú visible según permisos del rol autenticado. |
 | `useMoneyFormatter.js` | Use Money Formatter. |
 | `useQuincena25.js` | Use Quincena25. |
@@ -426,6 +437,7 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | `pdfPagination.js` | Pdf Pagination. |
 | `posCalculations.js` | Pos Calculations. |
 | `qzPrint.js` | Impresión física vía QZ Tray (tickets/facturas). |
+| `resilientAxios.js` | Resilient Axios. |
 | `rhPayrollRequestScope.js` | Rh Payroll Request Scope. |
 | `svfeValidators.js` | Svfe Validators. |
 | `ticketDiagnostics.js` | Ticket Diagnostics. |
@@ -516,6 +528,7 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 
 | Archivo | Descripción |
 |---|---|
+| `AiModeAndLogsSelector.jsx` | Ai Mode And Logs Selector. |
 | `aiTaskConstants.js` | Ai Task Constants. |
 | `AiTaskCreateModal.jsx` | Ai Task Create Modal. |
 | `AiTaskDetailModal.jsx` | Ai Task Detail Modal. |
@@ -796,6 +809,7 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 
 | Archivo | Descripción |
 |---|---|
+| `eggCalendarConstants.js` | Egg Calendar Constants. |
 | `EggSuggestionsClientsPanel.jsx` | Egg Suggestions Clients Panel. |
 | `index.js` | Index. |
 | `ProductionCalendarActionBar.jsx` | Production Calendar Action Bar. |
@@ -811,6 +825,7 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | `ProductionCalendarSection7.jsx` | Production Calendar Section7. |
 | `ProductionCalendarTacticalTab.jsx` | Production Calendar Tactical Tab. |
 | `ProductionCalendarTasksSection.jsx` | Production Calendar Tasks Section. |
+| `useEggCalendarActions.js` | Use Egg Calendar Actions. |
 | `useProductionCalendarModel.jsx` | Use Production Calendar Model. |
 
 **`client/src/components/egg/quality/`**
@@ -945,6 +960,13 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | `index.js` | Index. |
 | `KardexOriginModal.jsx` | Kardex Origin Modal. |
 | `TransferDetailModal.jsx` | Transfer Detail Modal. |
+
+**`client/src/components/inventory/tabs/`**
+
+| Archivo | Descripción |
+|---|---|
+| `AdjustmentHistoryTab.jsx` | Adjustment History Tab. |
+| `NewAdjustmentTab.jsx` | New Adjustment Tab. |
 
 **`client/src/components/layout/`**
 
@@ -1148,6 +1170,7 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 
 | Archivo | Descripción |
 |---|---|
+| `CustomerDiscountModal.jsx` | Customer Discount Modal. |
 | `DiagnosticoDteModal.jsx` | Diagnostico Dte Modal. |
 | `DteStatsModal.jsx` | Dte Stats Modal. |
 | `EditarClienteDteModal.jsx` | Editar Cliente Dte Modal. |
@@ -1209,6 +1232,7 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | `index.js` | Index. |
 | `QuickTicketModal.jsx` | Quick Ticket Modal. |
 | `ScreenshotAnnotatorModal.jsx` | Screenshot Annotator Modal. |
+| `TicketAgyFlowModal.jsx` | Ticket Agy Flow Modal. |
 | `TicketAiBundleModal.jsx` | Ticket Ai Bundle Modal. |
 | `TicketDetailModal.jsx` | Ticket Detail Modal. |
 | `TicketDiagnosticsPanel.jsx` | Ticket Diagnostics Panel. |
@@ -1266,6 +1290,15 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | `PercepcionesTab.jsx` | Percepciones Tab. |
 | `RetencionesEmitidasTab.jsx` | Retenciones Emitidas Tab. |
 | `RetencionesRecibidasTab.jsx` | Retenciones Recibidas Tab. |
+
+**`client/src/components/vatLiquidation/`**
+
+| Archivo | Descripción |
+|---|---|
+| `HaciendaDeclarationModal.jsx` | Hacienda Declaration Modal. |
+| `HaciendaF07Tab.jsx` | Hacienda F07 Tab. |
+| `HaciendaF11Tab.jsx` | Hacienda F11 Tab. |
+| `index.js` | Index. |
 
 #### `client/src/pages/`
 
@@ -1611,8 +1644,8 @@ oficiales viven en `cumplientoDTE/svfe-json-schemas/` y la firma en `services/si
 
 Patrón de nombres: `migration_v<N>_<descripcion>.{sql|js}` y un runner `run_migration_v<N>.js` por versión.
 
-- Rango de versiones detectado: **v2 → v297**
-- Total de archivos: **565** (193 .sql · 145 .js migración · 225 runners run_migration* · 2 .json · 0 otros)
+- Rango de versiones detectado: **v2 → v639**
+- Total de archivos: **579** (193 .sql · 152 .js migración · 232 runners run_migration* · 2 .json · 0 otros)
 
 > Los archivos NO se listan individualmente por su volumen: para conocer el esquema vigente usa
 > `SELECT ... FROM information_schema` o revisa `server/src/config/db.schema.js`,

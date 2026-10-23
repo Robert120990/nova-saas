@@ -9,8 +9,7 @@ const {
     formatDateDDMMYYYY,
     categorizeFuel,
     FUEL_TYPES,
-    formatCompanyReportMessage,
-    formatGroupSummaryMessage
+    formatCompanyReportMessage
 } = require('./telegramDailyBriefingHelper');
 
 /**
@@ -200,10 +199,24 @@ async function sendDailyBriefingForCompany(companyId, { targetDate = null, manua
  */
 async function sendAllDailyBriefings({ targetDate = null, manual = false } = {}) {
     if (!manual) {
-        const [settings] = await pool.query('SELECT daily_briefing_active FROM telegram_settings WHERE id = 1');
+        const [settings] = await pool.query('SELECT daily_briefing_active, daily_briefing_last_sent_date FROM telegram_settings WHERE id = 1');
         if (settings[0]?.daily_briefing_active === 0) {
             console.log('[DailyBriefing] Envío diario desactivado en telegram_settings. Omitiendo.');
-            return { skipped: true };
+            return { skipped: true, reason: 'Configuración inactiva' };
+        }
+
+        // Bloqueo distribuido atómico en MySQL para evitar envíos duplicados entre múltiples instancias/servidores
+        const executionDate = getElSalvadorDate(new Date());
+        const [lockResult] = await pool.query(
+            `UPDATE telegram_settings
+             SET daily_briefing_last_sent_date = ?
+             WHERE id = 1 AND (daily_briefing_last_sent_date IS NULL OR daily_briefing_last_sent_date != ?)`,
+            [executionDate, executionDate]
+        );
+
+        if (lockResult.affectedRows === 0) {
+            console.log(`[DailyBriefing] El reporte matutino de la fecha ${executionDate} ya fue procesado o enviado por otra instancia. Omitiendo.`);
+            return { skipped: true, reason: 'Already sent today' };
         }
     }
 
@@ -237,20 +250,7 @@ async function sendAllDailyBriefings({ targetDate = null, manual = false } = {})
         }
     }
 
-    // Si hay más de una empresa, enviar Consolidado General ÚNICAMENTE a chats corporativos globales (company_id IS NULL)
-    if (generatedReports.length > 1) {
-        const globalChats = await getAlertChatIds(null);
-        if (globalChats.length > 0) {
-            const groupMsg = formatGroupSummaryMessage(generatedReports, generatedReports[0].fechaDisplay);
-            for (const chatId of globalChats) {
-                try {
-                    await telegramService.sendMessage(chatId, groupMsg, { parse_mode: 'Markdown' });
-                } catch (err) {
-                    console.error(`[DailyBriefing] Error enviando consolidado a chat global ${chatId}:`, err.message);
-                }
-            }
-        }
-    }
+    // El consolidado del grupo ha sido desactivado a solicitud del usuario.
 
     return {
         success: true,
@@ -266,6 +266,12 @@ let cronInterval = null;
 let lastSentDate = null;
 
 function startDailyBriefingCron() {
+    // Si no estamos en producción y no se forzó el cron local, desactivar para no colisionar con el servidor VPS
+    if (process.env.NODE_ENV !== 'production' && process.env.TELEGRAM_DEV_CRON !== 'true') {
+        console.log('[DailyBriefing] Cron de Reporte Matutino desactivado en entorno local para evitar colisión con el servidor VPS (usar TELEGRAM_DEV_CRON=true en .env si se desea probar en local).');
+        return;
+    }
+
     if (cronInterval) return;
     console.log('[DailyBriefing] Cron de Reporte Matutino iniciado (7:00 AM El Salvador).');
 

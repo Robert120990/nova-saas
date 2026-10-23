@@ -70,15 +70,17 @@ function categorizeFuel(desc) {
 
 const FUEL_TYPES = ['Diesel', 'Regular', 'Súper', 'Ion Diesel'];
 
-function formatCompanyReportMessage({ companyName, fechaDisplay, branchResults, globalFuels, globalPistaGalones, globalPistaMonto, globalTiendaMonto, granTotal }) {
+function formatCompanyReportMessage({ companyName, fechaDisplay, branchResults }) {
     let msg = `🌅 *REPORTE DIARIO DE VENTAS — ${fechaDisplay}*\n`;
     msg += `🏢 *${companyName}*\n`;
     msg += `━━━━━━━━━━━━━━━━━━━━\n\n`;
 
-    for (const b of branchResults) {
+    for (let i = 0; i < branchResults.length; i++) {
+        const b = branchResults[i];
         msg += `📍 *${b.branchName}*\n`;
         if (b.totalSucursal === 0) {
-            msg += `  _(Sin ventas registradas en la fecha)_\n\n────────────────────\n\n`;
+            msg += `  _(Sin ventas registradas en la fecha)_\n\n`;
+            if (i < branchResults.length - 1) msg += `────────────────────\n\n`;
             continue;
         }
 
@@ -93,19 +95,11 @@ function formatCompanyReportMessage({ companyName, fechaDisplay, branchResults, 
         if (b.storeAmount > 0 || b.subtotalPistaGln === 0) {
             msg += `🏪 *Ventas Tienda:* *${fmtMoney(b.storeAmount)}*\n`;
         }
-        msg += `💰 *Total Sucursal:* *${fmtMoney(b.totalSucursal)}*\n\n────────────────────\n\n`;
+        msg += `💰 *Total Sucursal:* *${fmtMoney(b.totalSucursal)}*\n\n`;
+        if (i < branchResults.length - 1) msg += `────────────────────\n\n`;
     }
 
-    msg += `📊 *CONSOLIDADO EMPRESA*\n`;
-    msg += `⛽ *Combustibles:*\n`;
-    for (const ft of FUEL_TYPES) {
-        msg += `  • *${ft}:* ${fmtGln(globalFuels[ft].galones)} · ${fmtMoney(globalFuels[ft].monto)}\n`;
-    }
-    msg += `  ▸ *Total Pista:* *${fmtGln(globalPistaGalones)}* · *${fmtMoney(globalPistaMonto)}*\n`;
-    msg += `🏪 *Total Tiendas:* *${fmtMoney(globalTiendaMonto)}*\n`;
-    msg += `🏆 *GRAN TOTAL:* *${fmtMoney(granTotal)}*`;
-
-    return msg;
+    return msg.trimEnd();
 }
 
 function formatGroupSummaryMessage(reports, fechaDisplay) {
