@@ -1,27 +1,4 @@
-const {
-    mailerService,
-    pool,
-    dteService,
-    pdfService,
-    aiService,
-    path,
-    fs,
-    jwt,
-    getEffectiveProductId,
-    getLubricantCategoryIds,
-    isLubricantProduct,
-    excelService,
-    notificationService,
-    dteValidoExistsSql,
-    dteLatestColSql,
-    reportPdfHelper,
-    validateDocumentNumber,
-    isValidDocumentNumber,
-    dteTypeNames,
-    getDteTypeName,
-    FALLBACK_ACTIVIDAD,
-    resolveActividadOficial
-} = require('./salesUtils');
+const { jwt } = require('./salesUtils');
 
 const DTE_API_URL = process.env.DTE_API_URL || 'http://localhost:5000/api';
 const DTE_JWT_SECRET = process.env.DTE_JWT_SECRET || process.env.JWT_SECRET;
@@ -71,9 +48,10 @@ const stopContingency = async (req, res) => {
 
 const simulateOutage = async (req, res) => {
     try {
+        const token = jwt.sign({ id: req.user.id, username: req.user.username, company_id: req.company_id }, DTE_JWT_SECRET, { expiresIn: '1m' });
         const response = await fetch(`${DTE_API_URL}/contingency/simulate-outage`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'x-company-id': req.company_id },
             body: JSON.stringify(req.body)
         });
         const data = await response.json();
@@ -85,9 +63,10 @@ const simulateOutage = async (req, res) => {
 
 const triggerAutoClose = async (req, res) => {
     try {
+        const token = jwt.sign({ id: req.user.id, username: req.user.username, company_id: req.company_id }, DTE_JWT_SECRET, { expiresIn: '1m' });
         const response = await fetch(`${DTE_API_URL}/contingency/trigger-autoclose`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'x-company-id': req.company_id },
             body: JSON.stringify(req.body)
         });
         const data = await response.json();
@@ -139,7 +118,6 @@ const getRetornoStatus = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
-
 
 module.exports = {
     getContingencyStatus,
