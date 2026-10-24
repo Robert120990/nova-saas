@@ -17,6 +17,7 @@ import {
     Calendar
 } from 'lucide-react';
 import Money from '../../components/ui/Money';
+import Table from '../../components/ui/Table';
 import { useAuth } from '../../context/AuthContext';
 
 const PRESENTATION_WEIGHTS = {
@@ -582,124 +583,101 @@ export default function CustomerAgreements() {
                     </div>
                 </div>
 
-                {/* LISTA DE ACUERDOS */}
-                <div className="overflow-x-auto rounded-xl border border-slate-200">
-                    <table className="w-full text-left text-xs border-collapse">
-                        <thead>
-                            <tr className="bg-slate-50/75 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                                <th className="py-3 px-4">Cliente / Razón Social</th>
-                                <th className="py-3 px-4">Producto y Presentación</th>
-                                <th className="py-3 px-4 text-right">Precio Pactado ($/Lb)</th>
-                                <th className="py-3 px-4 text-right">Precio en POS ($/Unidad)</th>
-                                <th className="py-3 px-4 text-right">Volumen (Lbs/Mes)</th>
-                                <th className="py-3 px-4 text-center">Términos Pago</th>
-                                <th className="py-3 px-4 text-center">Vigencia</th>
-                                <th className="py-3 px-4 text-center">Estado</th>
-                                <th className="py-3 px-4 text-center">Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                            {isLoading ? (
-                                <tr>
-                                    <td colSpan="9" className="py-12 text-center text-slate-400 font-semibold">
-                                        Cargando acuerdos comerciales...
-                                    </td>
-                                </tr>
-                            ) : agreementsList.length === 0 ? (
-                                <tr>
-                                    <td colSpan="9" className="py-12 text-center text-slate-400">
-                                        <div className="flex flex-col items-center justify-center gap-2">
-                                            <Handshake className="w-8 h-8 text-slate-300" />
-                                            <span className="font-semibold text-slate-500">No se encontraron acuerdos comerciales</span>
-                                            <span className="text-[11px] text-slate-400">Presione "Nuevo Acuerdo" para pactar una tarifa con un cliente.</span>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ) : (
-                                (Array.isArray(agreementsList) ? agreementsList : []).map((agr) => (
-                                    <tr key={agr.id} className="hover:bg-slate-50/75 transition-colors">
-                                        <td className="py-3 px-4">
-                                            <div className="font-bold text-slate-900 text-[13px]">
-                                                {agr.customer_registered_name || agr.customer_name}
-                                            </div>
-                                            {agr.customer_nit && (
-                                                <div className="text-[10px] text-slate-400">
-                                                    NIT: {agr.customer_nit} {agr.customer_nrc ? `• NRC: ${agr.customer_nrc}` : ''}
-                                                </div>
-                                            )}
-                                        </td>
-                                        <td className="py-3 px-4">
-                                            <div className="font-bold text-slate-800">{agr.product_type}</div>
-                                            <div className="text-[11px] text-indigo-600 font-medium flex items-center gap-1">
-                                                <span>{agr.presentation}</span>
-                                                {agr.catalog_product_name && (
-                                                    <span className="text-[10px] text-slate-400 font-normal">
-                                                        ({agr.catalog_product_name})
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className="py-3 px-4 text-right">
-                                            <span className="font-mono font-bold text-slate-900">
-                                                ${parseFloat(agr.agreed_price_per_lb || 0).toFixed(4)}
-                                            </span>
-                                            <span className="text-[10px] text-slate-400 block">/ lb</span>
-                                        </td>
-                                        <td className="py-3 px-4 text-right">
-                                            <span className="font-black text-indigo-600 text-xs px-2 py-0.5 bg-indigo-50 border border-indigo-100 rounded-md">
-                                                <Money value={agr.agreed_unit_price} />
-                                            </span>
-                                            <span className="text-[10px] text-slate-400 block mt-0.5">/ unidad facturable</span>
-                                        </td>
-                                        <td className="py-3 px-4 text-right font-mono font-medium text-slate-700">
-                                            {parseFloat(agr.monthly_volume_lbs || 0) > 0
-                                                ? `${parseFloat(agr.monthly_volume_lbs).toLocaleString()} Lbs`
-                                                : <span className="text-slate-400 italic">No fijado</span>}
-                                        </td>
-                                        <td className="py-3 px-4 text-center">
-                                            <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md text-[11px] font-semibold">
-                                                {agr.payment_terms_days ? `${agr.payment_terms_days} días` : 'Contado'}
-                                            </span>
-                                        </td>
-                                        <td className="py-3 px-4 text-center">
-                                            {agr.valid_from || agr.valid_to ? (
-                                                <div className="text-[10px] font-semibold text-slate-600">
-                                                    <div>{agr.valid_from ? agr.valid_from.split('T')[0] : 'Inicio'}</div>
-                                                    <div className="text-slate-400">hasta {agr.valid_to ? agr.valid_to.split('T')[0] : 'Indefinido'}</div>
-                                                </div>
-                                            ) : (
-                                                <span className="text-[11px] text-slate-400 font-medium italic">Permanente</span>
-                                            )}
-                                        </td>
-                                        <td className="py-3 px-4 text-center">
-                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${agr.status === 'activo' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
-                                                {agr.status === 'activo' ? 'Activo' : 'Inactivo'}
-                                            </span>
-                                        </td>
-                                        <td className="py-3 px-4 text-center">
-                                            <div className="flex items-center justify-center gap-1.5">
-                                                <button
-                                                    onClick={() => openEditModal(agr)}
-                                                    className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
-                                                    title="Editar acuerdo y productos"
-                                                >
-                                                    <Edit2 className="w-4 h-4" />
-                                                </button>
-                                                <button
-                                                    onClick={() => handleDelete(agr.id, agr.customer_name)}
-                                                    className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
-                                                    title="Eliminar acuerdo comercial"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+                <Table
+                    headers={[
+                        'Cliente / Razón Social',
+                        'Producto y Presentación',
+                        { label: 'Precio Pactado ($/Lb)', className: 'text-right' },
+                        { label: 'Precio en POS ($/Unidad)', className: 'text-right' },
+                        { label: 'Volumen (Lbs/Mes)', className: 'text-right' },
+                        { label: 'Términos Pago', className: 'text-center' },
+                        { label: 'Vigencia', className: 'text-center' },
+                        { label: 'Estado', className: 'text-center' },
+                        { label: 'Acciones', className: 'text-center' }
+                    ]}
+                    data={agreementsList}
+                    isLoading={isLoading}
+                    renderRow={(agr) => (
+                        <tr key={agr.id} className="hover:bg-slate-50/75 transition-colors">
+                            <td className="py-3 px-4">
+                                <div className="font-bold text-slate-900 text-[13px]">
+                                    {agr.customer_registered_name || agr.customer_name}
+                                </div>
+                                {agr.customer_nit && (
+                                    <div className="text-[10px] text-slate-400">
+                                        NIT: {agr.customer_nit} {agr.customer_nrc ? `• NRC: ${agr.customer_nrc}` : ''}
+                                    </div>
+                                )}
+                            </td>
+                            <td className="py-3 px-4">
+                                <div className="font-bold text-slate-800">{agr.product_type}</div>
+                                <div className="text-[11px] text-indigo-600 font-medium flex items-center gap-1">
+                                    <span>{agr.presentation}</span>
+                                    {agr.catalog_product_name && (
+                                        <span className="text-[10px] text-slate-400 font-normal">
+                                            ({agr.catalog_product_name})
+                                        </span>
+                                    )}
+                                </div>
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                                <span className="font-mono font-bold text-slate-900">
+                                    ${parseFloat(agr.agreed_price_per_lb || 0).toFixed(4)}
+                                </span>
+                                <span className="text-[10px] text-slate-400 block">/ lb</span>
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                                <span className="font-black text-indigo-600 text-xs px-2 py-0.5 bg-indigo-50 border border-indigo-100 rounded-md">
+                                    <Money value={agr.agreed_unit_price} />
+                                </span>
+                                <span className="text-[10px] text-slate-400 block mt-0.5">/ unidad facturable</span>
+                            </td>
+                            <td className="py-3 px-4 text-right font-mono font-medium text-slate-700">
+                                {parseFloat(agr.monthly_volume_lbs || 0) > 0
+                                    ? `${parseFloat(agr.monthly_volume_lbs).toLocaleString()} Lbs`
+                                    : <span className="text-slate-400 italic">No fijado</span>}
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                                <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md text-[11px] font-semibold">
+                                    {agr.payment_terms_days ? `${agr.payment_terms_days} días` : 'Contado'}
+                                </span>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                                {agr.valid_from || agr.valid_to ? (
+                                    <div className="text-[10px] font-semibold text-slate-600">
+                                        <div>{agr.valid_from ? agr.valid_from.split('T')[0] : 'Inicio'}</div>
+                                        <div className="text-slate-400">hasta {agr.valid_to ? agr.valid_to.split('T')[0] : 'Indefinido'}</div>
+                                    </div>
+                                ) : (
+                                    <span className="text-[11px] text-slate-400 font-medium italic">Permanente</span>
+                                )}
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${agr.status === 'activo' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
+                                    {agr.status === 'activo' ? 'Activo' : 'Inactivo'}
+                                </span>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                                <div className="flex items-center justify-center gap-1.5">
+                                    <button
+                                        onClick={() => openEditModal(agr)}
+                                        className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                        title="Editar acuerdo y productos"
+                                    >
+                                        <Edit2 className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                        onClick={() => handleDelete(agr.id, agr.customer_name)}
+                                        className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                                        title="Eliminar acuerdo comercial"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    )}
+                />
             </div>
 
             {/* MODAL: NUEVO / EDITAR ACUERDO DE PRECIOS CON CLIENTE CON MÚLTIPLES PRODUCTOS */}

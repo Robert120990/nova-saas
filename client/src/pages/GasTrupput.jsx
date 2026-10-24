@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Modal from '../components/ui/Modal';
+import Table from '../components/ui/Table';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import { Plus, Edit, Trash2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 import Money, { MoneyInput } from '../components/ui/Money';
+import { formatDate } from '../utils/dateUtils';
 
 const GasTrupput = () => {
     const queryClient = useQueryClient();
@@ -35,6 +37,13 @@ const GasTrupput = () => {
     });
 
     const trupputList = trupputData?.data || [];
+
+    const enrichedList = useMemo(() => {
+        return trupputList.map(item => ({
+            ...item,
+            usado: (parseFloat(item.galones) || 0) - (parseFloat(item.galones_disponibles) || 0)
+        }));
+    }, [trupputList]);
 
     const mutation = useMutation({
         mutationFn: (data) => {
@@ -123,74 +132,67 @@ const GasTrupput = () => {
             </div>
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full table-cards">
-                        <thead>
-                            <tr className="text-[11px] font-bold text-slate-500 uppercase bg-slate-50">
-                                <th className="px-3 py-2 text-left">No.</th>
-                                <th className="px-3 py-2 text-left">Fecha</th>
-                                <th className="px-3 py-2 text-left">Cliente</th>
-                                <th className="px-3 py-2 text-left">NRC</th>
-                                <th className="px-3 py-2 text-right">Galones</th>
-                                <th className="px-3 py-2 text-right">Precio</th>
-                                <th className="px-3 py-2 text-right">Monto</th>
-                                <th className="px-3 py-2 text-right">Disponible</th>
-                                <th className="px-3 py-2 text-right">Usado</th>
-                                <th className="px-3 py-2 text-center">Acciones</th>
+                <Table
+                    headers={[
+                        { label: 'No.', className: 'px-3 py-2 text-left' },
+                        { label: 'Fecha', className: 'px-3 py-2 text-left' },
+                        { label: 'Cliente', className: 'px-3 py-2 text-left' },
+                        { label: 'NRC', className: 'px-3 py-2 text-left' },
+                        { label: 'Galones', className: 'px-3 py-2 text-right' },
+                        { label: 'Precio', className: 'px-3 py-2 text-right' },
+                        { label: 'Monto', className: 'px-3 py-2 text-right' },
+                        { label: 'Disponible', className: 'px-3 py-2 text-right' },
+                        { label: 'Usado', className: 'px-3 py-2 text-right' },
+                        { label: 'Acciones', className: 'px-3 py-2 text-center' }
+                    ]}
+                    data={enrichedList}
+                    isLoading={isLoading}
+                    emptyMessage="No se encontraron registros"
+                    renderRow={(item) => {
+                        const usado = item.usado;
+                        return (
+                            <tr key={item.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
+                                <td data-label="No." className="px-3 py-1">
+                                    <span className="font-mono font-bold text-xs text-indigo-600">{item.numero}</span>
+                                </td>
+                                <td data-label="Fecha" className="px-3 py-1">
+                                    <span className="text-xs text-slate-600">{item.fecha ? formatDate(item.fecha) : '—'}</span>
+                                </td>
+                                <td data-label="Cliente" className="px-3 py-1">
+                                    <span className="font-bold text-xs text-slate-900">{item.cliente_nombre || item.customer_nombre || '—'}</span>
+                                </td>
+                                <td data-label="NRC" className="px-3 py-1">
+                                    <span className="text-xs font-mono text-slate-500">{item.nrc || '-'}</span>
+                                </td>
+                                <td data-label="Galones" className="px-3 py-1 text-right">
+                                    <span className="font-mono font-bold text-xs text-slate-900">{parseFloat(item.galones).toFixed(4)}</span>
+                                </td>
+                                <td data-label="Precio" className="px-3 py-1 text-right">
+                                    <span className="font-mono text-xs text-slate-500"><Money value={item.precio} /></span>
+                                </td>
+                                <td data-label="Monto" className="px-3 py-1 text-right">
+                                    <span className="font-mono font-bold text-xs text-emerald-600"><Money value={item.monto} /></span>
+                                </td>
+                                <td data-label="Disponible" className="px-3 py-1 text-right">
+                                    <span className={`font-mono font-bold text-xs ${parseFloat(item.galones_disponibles) > 0 ? 'text-indigo-600' : 'text-slate-400'}`}>
+                                        {parseFloat(item.galones_disponibles).toFixed(4)}
+                                    </span>
+                                </td>
+                                <td data-label="Usado" className="px-3 py-1 text-right">
+                                    <span className={`font-mono font-bold text-xs ${usado > 0 ? 'text-amber-600' : 'text-slate-300'}`}>
+                                        {usado.toFixed(4)}
+                                    </span>
+                                </td>
+                                <td data-label="Acciones" className="px-3 py-1">
+                                    <div className="flex gap-1 justify-center">
+                                        <button onClick={() => handleEdit(item)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15}/></button>
+                                        <button onClick={() => handleDelete(item.id)} className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15}/></button>
+                                    </div>
+                                </td>
                             </tr>
-                        </thead>
-                        <tbody>
-                            {isLoading ? (
-                                <tr><td colSpan={10} className="px-3 py-6 text-center text-sm text-slate-400">Cargando...</td></tr>
-                            ) : trupputList.length === 0 ? (
-                                <tr><td colSpan={10} className="px-3 py-6 text-center text-sm text-slate-400">No se encontraron registros</td></tr>
-                            ) : trupputList.map(item => {
-                                const usado = parseFloat(item.galones) - parseFloat(item.galones_disponibles);
-                                return (
-                                    <tr key={item.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
-                                        <td data-label="No." className="px-3 py-1">
-                                            <span className="font-mono font-bold text-xs text-indigo-600">{item.numero}</span>
-                                        </td>
-                                        <td data-label="Fecha" className="px-3 py-1">
-                                            <span className="text-xs text-slate-600">{item.fecha ? new Date(item.fecha).toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}</span>
-                                        </td>
-                                        <td data-label="Cliente" className="px-3 py-1">
-                                            <span className="font-bold text-xs text-slate-900">{item.cliente_nombre || item.customer_nombre || '—'}</span>
-                                        </td>
-                                        <td data-label="NRC" className="px-3 py-1">
-                                            <span className="text-xs font-mono text-slate-500">{item.nrc || '-'}</span>
-                                        </td>
-                                        <td data-label="Galones" className="px-3 py-1 text-right">
-                                            <span className="font-mono font-bold text-xs text-slate-900">{parseFloat(item.galones).toFixed(4)}</span>
-                                        </td>
-                                        <td data-label="Precio" className="px-3 py-1 text-right">
-                                            <span className="font-mono text-xs text-slate-500"><Money value={item.precio} /></span>
-                                        </td>
-                                        <td data-label="Monto" className="px-3 py-1 text-right">
-                                            <span className="font-mono font-bold text-xs text-emerald-600"><Money value={item.monto} /></span>
-                                        </td>
-                                        <td data-label="Disponible" className="px-3 py-1 text-right">
-                                            <span className={`font-mono font-bold text-xs ${parseFloat(item.galones_disponibles) > 0 ? 'text-indigo-600' : 'text-slate-400'}`}>
-                                                {parseFloat(item.galones_disponibles).toFixed(4)}
-                                            </span>
-                                        </td>
-                                        <td data-label="Usado" className="px-3 py-1 text-right">
-                                            <span className={`font-mono font-bold text-xs ${usado > 0 ? 'text-amber-600' : 'text-slate-300'}`}>
-                                                {usado.toFixed(4)}
-                                            </span>
-                                        </td>
-                                        <td data-label="Acciones" className="px-3 py-1">
-                                            <div className="flex gap-1 justify-center">
-                                                <button onClick={() => handleEdit(item)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15}/></button>
-                                                <button onClick={() => handleDelete(item.id)} className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15}/></button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
+                        );
+                    }}
+                />
             </div>
 
             <Modal

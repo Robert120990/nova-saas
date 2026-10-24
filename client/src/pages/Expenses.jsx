@@ -39,6 +39,7 @@ import { useDirtyTracker } from '../hooks/useDirtyTracker';
 import { unwrapList } from '../utils/apiUtils';
 import ProviderModal from '../components/providers/ProviderModal';
 import ExpenseDetailModal from '../components/expenses/ExpenseDetailModal';
+import Table from '../components/ui/Table';
 import ExpensePeriodModal from '../components/expenses/ExpensePeriodModal';
 import { getTodayString, formatDate } from '../utils/dateUtils';
 
@@ -1535,203 +1536,183 @@ const Expenses = () => {
                     </div>
                 </div>
 
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                        <thead>
-                            <tr className="border-b border-slate-200/80 bg-slate-50/50">
-                                <th className="px-3 py-2.5 text-left text-[10px] font-black uppercase tracking-wider text-slate-500">Fecha</th>
-                                <th className="px-3 py-2.5 text-left text-[10px] font-black uppercase tracking-wider text-slate-500">Documento / Tipo</th>
-                                <th className="px-3 py-2.5 text-left text-[10px] font-black uppercase tracking-wider text-slate-500">Proveedor</th>
-                                <th className="px-3 py-2.5 text-right text-[10px] font-black uppercase tracking-wider text-slate-500">Gravadas</th>
-                                <th className="px-3 py-2.5 text-right text-[10px] font-black uppercase tracking-wider text-slate-500">IVA Crédito</th>
-                                <th className="px-3 py-2.5 text-right text-[10px] font-black uppercase tracking-wider text-slate-500">Total</th>
-                                <th className="px-3 py-2.5 text-center text-[10px] font-black uppercase tracking-wider text-slate-500">Estado</th>
-                                <th className="px-3 py-2.5 text-center text-[10px] font-black uppercase tracking-wider text-slate-500">Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {loadingHistory ? (
-                                <tr>
-                                    <td colSpan={8} className="px-4 py-8 text-center text-xs font-semibold text-slate-400">
-                                        Cargando gastos...
-                                    </td>
-                                </tr>
-                            ) : (!Array.isArray(expensesData?.data) || expensesData.data.length === 0) ? (
-                                <tr>
-                                    <td colSpan={8} className="px-4 py-12 text-center">
-                                        <Receipt size={32} className="mx-auto text-slate-300 mb-2" />
-                                        <p className="text-xs font-bold text-slate-500">No hay gastos registrados en este período.</p>
-                                        <p className="text-[11px] text-slate-400 mt-0.5">Haz clic en "+ Registrar Gasto" para ingresar un nuevo documento.</p>
-                                    </td>
-                                </tr>
-                            ) : (
-                                (Array.isArray(expensesData.data) ? expensesData.data : []).map((g) => {
-                                    const docTypeInfo = DOCUMENT_TYPES.find(d => d.code === g.tipo_documento_id) || {
-                                        code: g.tipo_documento_id,
-                                        name: g.tipo_documento_nombre || 'Gasto',
-                                        badge: g.tipo_documento_id,
-                                        badgeColor: 'bg-slate-100 text-slate-700 border-slate-200'
-                                    };
-                                    const isNC = g.tipo_documento_id === '09';
+                <Table
+                    headers={[
+                        'Fecha',
+                        'Documento / Tipo',
+                        'Proveedor',
+                        { label: 'Gravadas', className: 'text-right' },
+                        { label: 'IVA Crédito', className: 'text-right' },
+                        { label: 'Total', className: 'text-right' },
+                        { label: 'Estado', className: 'text-center' },
+                        'Acciones'
+                    ]}
+                    data={Array.isArray(expensesData?.data) ? expensesData.data : []}
+                    isLoading={loadingHistory}
+                    renderRow={(g) => {
+                        const docTypeInfo = DOCUMENT_TYPES.find(d => d.code === g.tipo_documento_id) || {
+                            code: g.tipo_documento_id,
+                            name: g.tipo_documento_nombre || 'Gasto',
+                            badge: g.tipo_documento_id,
+                            badgeColor: 'bg-slate-100 text-slate-700 border-slate-200'
+                        };
+                        const isNC = g.tipo_documento_id === '09';
 
-                                    return (
-                                        <tr key={g.id} className="hover:bg-slate-50/60 transition-colors">
-                                            <td className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap">
-                                                {formatDate(g.fecha)}
-                                            </td>
-                                            <td className="px-3 py-2.5 whitespace-nowrap">
-                                                <div className="flex items-center gap-1.5">
-                                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border ${docTypeInfo.badgeColor}`}>
-                                                        {docTypeInfo.code} {docTypeInfo.badge}
-                                                    </span>
-                                                    <span className="text-xs font-black text-slate-900">
-                                                        {(!g.numero_documento || ['S/N', 'SN', 'SIN NUMERO', 'S-N'].includes(String(g.numero_documento).toUpperCase())) && g.num_control && !['S/N', 'SN', 'SIN NUMERO', 'S-N'].includes(String(g.num_control).toUpperCase())
-                                                            ? g.num_control
-                                                            : (g.numero_documento || 'S/N')}
-                                                    </span>
-                                                </div>
-                                                {g.tipo_documento_id === '14' && (
-                                                    <div className="mt-0.5">
-                                                        {g.estado_dte === 'PROCESADO' ? (
-                                                            <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase bg-emerald-100 text-emerald-800 border border-emerald-300">
-                                                                DTE PROCESADO
-                                                            </span>
-                                                        ) : g.estado_dte === 'CONTINGENCIA' ? (
-                                                            <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase bg-amber-100 text-amber-800 border border-amber-300">
-                                                                DTE CONTINGENCIA
-                                                            </span>
-                                                        ) : g.estado_dte === 'RECHAZADO' ? (
-                                                            <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase bg-rose-100 text-rose-800 border border-rose-300">
-                                                                DTE RECHAZADO
-                                                            </span>
-                                                        ) : (
-                                                            <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase bg-slate-100 text-slate-600 border border-slate-200">
-                                                                DTE PENDIENTE
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                )}
-                                                {g.num_control && (
-                                                    <div className="text-[10px] text-slate-400 font-mono mt-0.5 truncate max-w-[180px]" title={g.num_control}>
-                                                        Ctrl: {g.num_control}
-                                                    </div>
-                                                )}
-                                                {g.documento_afectado && (
-                                                    <div className="text-[10px] text-rose-600 font-medium mt-0.5">
-                                                        Ref: {g.documento_afectado}
-                                                    </div>
-                                                )}
-                                            </td>
-                                            <td className="px-3 py-2.5 max-w-[220px]">
-                                                <div className="text-xs font-bold text-slate-900 truncate" title={g.provider_nombre}>
-                                                    {g.provider_nombre || 'Proveedor Genérico'}
-                                                </div>
-                                                <div className="text-[10px] text-slate-400 mt-0.5">
-                                                    {g.provider_nrc ? `NRC: ${g.provider_nrc}` : g.provider_nit ? `NIT: ${g.provider_nit}` : 'Sin registro'}
-                                                    {g.branch_nombre && <span className="ml-1.5 text-indigo-600">· {g.branch_nombre}</span>}
-                                                </div>
-                                            </td>
-                                            <td className="px-3 py-2.5 text-right text-xs font-semibold text-slate-700 whitespace-nowrap">
-                                                <Money value={g.total_gravada} />
-                                                {(parseFloat(g.total_nosujeta || 0) > 0 || parseFloat(g.total_exenta || 0) > 0) && (
-                                                    <div className="text-[10px] text-amber-600 font-medium">
-                                                        {parseFloat(g.total_nosujeta || 0) > 0 && <span>NS: <Money value={g.total_nosujeta} /> </span>}
-                                                        {parseFloat(g.total_exenta || 0) > 0 && <span>Ex: <Money value={g.total_exenta} /></span>}
-                                                    </div>
-                                                )}
-                                            </td>
-                                            <td className="px-3 py-2.5 text-right text-xs font-bold whitespace-nowrap">
-                                                {isNC ? (
-                                                    <span className="text-rose-600">-<Money value={g.iva} /></span>
-                                                ) : parseFloat(g.iva) > 0 ? (
-                                                    <span className="text-emerald-600"><Money value={g.iva} /></span>
-                                                ) : (
-                                                    <span className="text-slate-400">$ 0.00</span>
-                                                )}
-                                            </td>
-                                            <td className="px-3 py-2.5 text-right text-xs font-black text-slate-900 whitespace-nowrap">
-                                                {isNC ? (
-                                                    <span className="text-rose-600 font-black">-<Money value={Math.abs(parseFloat(g.monto_total))} /></span>
-                                                ) : (
-                                                    <Money value={g.monto_total} />
-                                                )}
-                                            </td>
-                                            <td className="px-3 py-2.5 text-center whitespace-nowrap">
-                                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                                                    g.status === 'ACTIVO' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
-                                                }`}>
-                                                    {g.status}
+                        return (
+                            <tr key={g.id} className="hover:bg-slate-50/60 transition-colors">
+                                <td className="px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap">
+                                    {formatDate(g.fecha)}
+                                </td>
+                                <td className="px-3 py-2.5 whitespace-nowrap">
+                                    <div className="flex items-center gap-1.5">
+                                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border ${docTypeInfo.badgeColor}`}>
+                                            {docTypeInfo.code} {docTypeInfo.badge}
+                                        </span>
+                                        <span className="text-xs font-black text-slate-900">
+                                            {(!g.numero_documento || ['S/N', 'SN', 'SIN NUMERO', 'S-N'].includes(String(g.numero_documento).toUpperCase())) && g.num_control && !['S/N', 'SN', 'SIN NUMERO', 'S-N'].includes(String(g.num_control).toUpperCase())
+                                                ? g.num_control
+                                                : (g.numero_documento || 'S/N')}
+                                        </span>
+                                    </div>
+                                    {g.tipo_documento_id === '14' && (
+                                        <div className="mt-0.5">
+                                            {g.estado_dte === 'PROCESADO' ? (
+                                                <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                                    DTE PROCESADO
                                                 </span>
-                                            </td>
-                                            <td className="px-3 py-2.5 text-center whitespace-nowrap">
-                                                <div className="flex items-center justify-center gap-1">
+                                            ) : g.estado_dte === 'CONTINGENCIA' ? (
+                                                <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase bg-amber-100 text-amber-800 border border-amber-300">
+                                                    DTE CONTINGENCIA
+                                                </span>
+                                            ) : g.estado_dte === 'RECHAZADO' ? (
+                                                <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase bg-rose-100 text-rose-800 border border-rose-300">
+                                                    DTE RECHAZADO
+                                                </span>
+                                            ) : (
+                                                <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase bg-slate-100 text-slate-600 border border-slate-200">
+                                                    DTE PENDIENTE
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
+                                    {g.num_control && (
+                                        <div className="text-[10px] text-slate-400 font-mono mt-0.5 truncate max-w-[180px]" title={g.num_control}>
+                                            Ctrl: {g.num_control}
+                                        </div>
+                                    )}
+                                    {g.documento_afectado && (
+                                        <div className="text-[10px] text-rose-600 font-medium mt-0.5">
+                                            Ref: {g.documento_afectado}
+                                        </div>
+                                    )}
+                                </td>
+                                <td className="px-3 py-2.5 max-w-[220px]">
+                                    <div className="text-xs font-bold text-slate-900 truncate" title={g.provider_nombre}>
+                                        {g.provider_nombre || 'Proveedor Genérico'}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 mt-0.5">
+                                        {g.provider_nrc ? `NRC: ${g.provider_nrc}` : g.provider_nit ? `NIT: ${g.provider_nit}` : 'Sin registro'}
+                                        {g.branch_nombre && <span className="ml-1.5 text-indigo-600">· {g.branch_nombre}</span>}
+                                    </div>
+                                </td>
+                                <td className="px-3 py-2.5 text-right text-xs font-semibold text-slate-700 whitespace-nowrap">
+                                    <Money value={g.total_gravada} />
+                                    {(parseFloat(g.total_nosujeta || 0) > 0 || parseFloat(g.total_exenta || 0) > 0) && (
+                                        <div className="text-[10px] text-amber-600 font-medium">
+                                            {parseFloat(g.total_nosujeta || 0) > 0 && <span>NS: <Money value={g.total_nosujeta} /> </span>}
+                                            {parseFloat(g.total_exenta || 0) > 0 && <span>Ex: <Money value={g.total_exenta} /></span>}
+                                        </div>
+                                    )}
+                                </td>
+                                <td className="px-3 py-2.5 text-right text-xs font-bold whitespace-nowrap">
+                                    {isNC ? (
+                                        <span className="text-rose-600">-<Money value={g.iva} /></span>
+                                    ) : parseFloat(g.iva) > 0 ? (
+                                        <span className="text-emerald-600"><Money value={g.iva} /></span>
+                                    ) : (
+                                        <span className="text-slate-400">$ 0.00</span>
+                                    )}
+                                </td>
+                                <td className="px-3 py-2.5 text-right text-xs font-black text-slate-900 whitespace-nowrap">
+                                    {isNC ? (
+                                        <span className="text-rose-600 font-black">-<Money value={Math.abs(parseFloat(g.monto_total))} /></span>
+                                    ) : (
+                                        <Money value={g.monto_total} />
+                                    )}
+                                </td>
+                                <td className="px-3 py-2.5 text-center whitespace-nowrap">
+                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                        g.status === 'ACTIVO' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                    }`}>
+                                        {g.status}
+                                    </span>
+                                </td>
+                                <td className="px-3 py-2.5 text-center whitespace-nowrap">
+                                    <div className="flex items-center justify-center gap-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleViewDetail(g)}
+                                            className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                                            title="Ver Detalle Completo"
+                                        >
+                                            <Eye size={15} />
+                                        </button>
+                                        {g.tipo_documento_id === '14' && (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleViewExpenseDtePdf(g.id)}
+                                                    className="p-1.5 text-slate-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
+                                                    title="Ver Representación Gráfica DTE-14 (PDF)"
+                                                >
+                                                    <FileText size={15} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDownloadExpenseJson(g.id, g.numero_documento)}
+                                                    className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                                                    title="Descargar JSON Oficial DTE"
+                                                >
+                                                    <Code size={15} />
+                                                </button>
+                                                {g.estado_dte !== 'PROCESADO' && g.status === 'ACTIVO' && (
                                                     <button
                                                         type="button"
-                                                        onClick={() => handleViewDetail(g)}
-                                                        className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                                        title="Ver Detalle Completo"
+                                                        onClick={() => handleEmitExpenseDte(g.id)}
+                                                        className="p-1.5 text-teal-600 hover:text-teal-700 hover:bg-teal-50 rounded-lg transition-colors cursor-pointer"
+                                                        title="Transmitir / Certificar DTE-14 ante Hacienda"
                                                     >
-                                                        <Eye size={15} />
+                                                        <Send size={15} />
                                                     </button>
-                                                    {g.tipo_documento_id === '14' && (
-                                                        <>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleViewExpenseDtePdf(g.id)}
-                                                                className="p-1.5 text-slate-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-                                                                title="Ver Representación Gráfica DTE-14 (PDF)"
-                                                            >
-                                                                <FileText size={15} />
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleDownloadExpenseJson(g.id, g.numero_documento)}
-                                                                className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-                                                                title="Descargar JSON Oficial DTE"
-                                                            >
-                                                                <Code size={15} />
-                                                            </button>
-                                                            {g.estado_dte !== 'PROCESADO' && g.status === 'ACTIVO' && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => handleEmitExpenseDte(g.id)}
-                                                                    className="p-1.5 text-teal-600 hover:text-teal-700 hover:bg-teal-50 rounded-lg transition-colors"
-                                                                    title="Transmitir / Certificar DTE-14 ante Hacienda"
-                                                                >
-                                                                    <Send size={15} />
-                                                                </button>
-                                                            )}
-                                                        </>
-                                                    )}
-                                                    {g.status === 'ACTIVO' && (
-                                                        <>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleEdit(g)}
-                                                                className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                                                title="Editar Gasto"
-                                                            >
-                                                                <Edit2 size={15} />
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleVoidExpense(g.id, g.numero_documento)}
-                                                                className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                                                                title="Anular Gasto"
-                                                            >
-                                                                <Trash2 size={15} />
-                                                            </button>
-                                                        </>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+                                                )}
+                                            </>
+                                        )}
+                                        {g.status === 'ACTIVO' && (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleEdit(g)}
+                                                    className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                                                    title="Editar Gasto"
+                                                >
+                                                    <Edit2 size={15} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleVoidExpense(g.id, g.numero_documento)}
+                                                    className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                                    title="Anular Gasto"
+                                                >
+                                                    <Trash2 size={15} />
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
+                                </td>
+                            </tr>
+                        );
+                    }}
+                />
 
                 <div className="pt-2">
                     <Pagination 

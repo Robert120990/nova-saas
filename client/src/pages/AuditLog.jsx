@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import Pagination from '../components/ui/Pagination';
-import { Search, Clock, ShieldAlert, Filter } from 'lucide-react';
+import Table from '../components/ui/Table';
+import { Search, ShieldAlert, Filter } from 'lucide-react';
 import { formatDateTime } from '../utils/dateUtils';
 
 const ENTITY_TYPES = [
@@ -94,102 +95,90 @@ const AuditLog = () => {
                     </div>
                 </div>
 
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                        <thead className="bg-slate-50 border-b border-slate-100">
-                            <tr className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                                <th className="px-3 py-1.5 w-36">Fecha/Hora</th>
-                                <th className="px-3 py-1.5">Usuario</th>
-                                <th className="px-3 py-1.5 w-24">Acción</th>
-                                <th className="px-3 py-1.5">Entidad</th>
-                                <th className="px-3 py-1.5">Descripción</th>
-                                <th className="px-3 py-1.5 w-20 text-right">Duración</th>
-                                <th className="px-3 py-1.5 w-28">IP</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-50">
-                            {rows.map((row) => (
-                                <React.Fragment key={row.id}>
-                                    <tr
-                                        className="hover:bg-slate-50/50 transition-colors cursor-pointer text-xs"
-                                        onClick={() => setExpandedRow(expandedRow === row.id ? null : row.id)}
-                                    >
-                                        <td className="px-3 py-1">
-                                            <span className="text-[10px] font-bold text-slate-600 whitespace-nowrap">
-                                                {formatDateTime(row.created_at)}
-                                            </span>
-                                        </td>
-                                        <td className="px-3 py-1">
-                                            <span className="text-[11px] font-bold text-slate-800">{row.username || '—'}</span>
-                                        </td>
-                                        <td className="px-3 py-1">
-                                            <span className={`inline-block px-1.5 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-wider ${getActionColor(row.action)}`}>
-                                                {row.action?.split(' ')[0] || row.action}
-                                            </span>
-                                        </td>
-                                        <td className="px-3 py-1">
-                                            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tight">
-                                                {row.entity_type}
-                                            </span>
-                                            {row.entity_id && (
-                                                <span className="text-[8px] text-slate-400 font-mono ml-1">#{row.entity_id}</span>
-                                            )}
-                                        </td>
-                                        <td className="px-3 py-1 max-w-xs">
-                                            <span className="text-[11px] text-slate-600 truncate block">{row.description || '—'}</span>
-                                        </td>
-                                        <td className="px-3 py-1 text-right">
-                                            {row.duration_ms != null && (
-                                                <span className={`text-[9px] font-bold ${row.duration_ms > 1000 ? 'text-rose-500' : 'text-slate-400'}`}>
-                                                    {row.duration_ms}ms
-                                                </span>
-                                            )}
-                                        </td>
-                                        <td className="px-3 py-1">
-                                            <span className="text-[9px] font-mono text-slate-400">{row.ip_address || '—'}</span>
-                                        </td>
-                                    </tr>
-                                    {expandedRow === row.id && (
-                                        <tr className="bg-slate-50/50">
-                                            <td colSpan={7} className="px-6 py-3">
-                                                <div className="grid grid-cols-2 gap-3 text-[11px]">
-                                                    <div>
-                                                        <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">ID</span>
-                                                        <p className="font-bold text-slate-700">{row.id}</p>
-                                                    </div>
-                                                    <div>
-                                                        <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Fecha Completa</span>
-                                                        <p className="font-bold text-slate-700">{formatDateTime(row.created_at)}</p>
-                                                    </div>
-                                                    <div>
-                                                        <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Usuario</span>
-                                                        <p className="font-bold text-slate-700">{row.username || 'Anónimo'} {row.user_id ? `(ID: ${row.user_id})` : ''}</p>
-                                                    </div>
-                                                    <div>
-                                                        <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Empresa / Sucursal</span>
-                                                        <p className="font-bold text-slate-700">Company #{row.company_id}{row.branch_id ? ` / Branch #${row.branch_id}` : ''}</p>
-                                                    </div>
-                                                    <div className="col-span-2">
-                                                        <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Descripción Completa</span>
-                                                        <p className="font-bold text-slate-700">{row.description || '—'}</p>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                        </tr>
+                <Table
+                    headers={[
+                        { label: 'Fecha/Hora', className: 'w-36' },
+                        'Usuario',
+                        { label: 'Acción', className: 'w-24', sortable: true },
+                        'Entidad',
+                        'Descripción',
+                        { label: 'Duración', className: 'w-20 text-right' },
+                        { label: 'IP', className: 'w-28' }
+                    ]}
+                    data={rows}
+                    isLoading={isLoading}
+                    renderRow={(row) => (
+                        <React.Fragment key={row.id}>
+                            <tr
+                                className="hover:bg-slate-50/50 transition-colors cursor-pointer text-xs"
+                                onClick={() => setExpandedRow(expandedRow === row.id ? null : row.id)}
+                            >
+                                <td className="px-3 py-1">
+                                    <span className="text-[10px] font-bold text-slate-600 whitespace-nowrap">
+                                        {formatDateTime(row.created_at)}
+                                    </span>
+                                </td>
+                                <td className="px-3 py-1">
+                                    <span className="text-[11px] font-bold text-slate-800">{row.username || '—'}</span>
+                                </td>
+                                <td className="px-3 py-1">
+                                    <span className={`inline-block px-1.5 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-wider ${getActionColor(row.action)}`}>
+                                        {row.action?.split(' ')[0] || row.action}
+                                    </span>
+                                </td>
+                                <td className="px-3 py-1">
+                                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tight">
+                                        {row.entity_type}
+                                    </span>
+                                    {row.entity_id && (
+                                        <span className="text-[8px] text-slate-400 font-mono ml-1">#{row.entity_id}</span>
                                     )}
-                                </React.Fragment>
-                            ))}
-                            {!isLoading && rows.length === 0 && (
-                                <tr><td colSpan={7} className="px-3 py-6 text-center text-slate-400 italic">No se encontraron registros</td></tr>
+                                </td>
+                                <td className="px-3 py-1 max-w-xs">
+                                    <span className="text-[11px] text-slate-600 truncate block">{row.description || '—'}</span>
+                                </td>
+                                <td className="px-3 py-1 text-right">
+                                    {row.duration_ms != null && (
+                                        <span className={`text-[9px] font-bold ${row.duration_ms > 1000 ? 'text-rose-500' : 'text-slate-400'}`}>
+                                            {row.duration_ms}ms
+                                        </span>
+                                    )}
+                                </td>
+                                <td className="px-3 py-1">
+                                    <span className="text-[9px] font-mono text-slate-400">{row.ip_address || '—'}</span>
+                                </td>
+                            </tr>
+                            {expandedRow === row.id && (
+                                <tr className="bg-slate-50/50">
+                                    <td colSpan={7} className="px-6 py-3">
+                                        <div className="grid grid-cols-2 gap-3 text-[11px]">
+                                            <div>
+                                                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">ID</span>
+                                                <p className="font-bold text-slate-700">{row.id}</p>
+                                            </div>
+                                            <div>
+                                                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Fecha Completa</span>
+                                                <p className="font-bold text-slate-700">{formatDateTime(row.created_at)}</p>
+                                            </div>
+                                            <div>
+                                                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Usuario</span>
+                                                <p className="font-bold text-slate-700">{row.username || 'Anónimo'} {row.user_id ? `(ID: ${row.user_id})` : ''}</p>
+                                            </div>
+                                            <div>
+                                                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Empresa / Sucursal</span>
+                                                <p className="font-bold text-slate-700">Company #{row.company_id}{row.branch_id ? ` / Branch #${row.branch_id}` : ''}</p>
+                                            </div>
+                                            <div className="col-span-2">
+                                                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Descripción Completa</span>
+                                                <p className="font-bold text-slate-700">{row.description || '—'}</p>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
                             )}
-                            {isLoading && (
-                                <tr><td colSpan={7} className="px-3 py-6 text-center">
-                                    <div className="flex items-center justify-center gap-3"><Clock size={18} className="animate-spin text-indigo-500" /><span className="text-xs font-bold text-slate-400">Cargando...</span></div>
-                                </td></tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+                        </React.Fragment>
+                    )}
+                />
 
                 <Pagination
                     currentPage={page}

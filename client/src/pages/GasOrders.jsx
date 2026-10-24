@@ -17,6 +17,7 @@ import {
     PackageCheck,
 } from 'lucide-react';
 import { formatDate } from '../utils/dateUtils';
+import Table from '../components/ui/Table';
 import {
     GasOrderConfirmSeenModal,
     GasOrderMethodModal,
@@ -341,136 +342,118 @@ export default function GasOrders() {
 
             {/* Orders Table */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                {isLoading ? (
-                    <div className="py-20 text-center text-slate-400 flex flex-col items-center justify-center gap-3">
-                        <RefreshCw className="w-8 h-8 animate-spin text-indigo-500" />
-                        <span className="text-xs font-medium text-slate-500">Cargando pedidos desde RRS...</span>
-                    </div>
-                ) : orders.length === 0 ? (
-                    <div className="py-20 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
-                        <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
-                            <Fuel className="w-6 h-6" />
-                        </div>
-                        <p className="text-sm font-semibold text-slate-700 mt-2">No se encontraron pedidos</p>
-                        <p className="text-xs text-slate-500 max-w-sm">
-                            {isUnconfigured
-                                ? 'Configure la estación de RRS en la configuración de gasolinera.'
-                                : statusFilter === 'PENDIENTE'
-                                ? 'No hay pedidos pendientes o vistos para la estación en este momento.'
-                                : 'No se encontraron resultados con los filtros aplicados.'}
-                        </p>
-                    </div>
-                ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse text-xs">
-                            <thead>
-                                <tr className="border-b border-slate-200 bg-slate-50/75 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                                    <th className="py-3 px-4">Pedido #</th>
-                                    <th className="py-3 px-4">Fecha</th>
-                                    <th className="py-3 px-4">Estado</th>
-                                    <th className="py-3 px-4 text-right">Diésel</th>
-                                    <th className="py-3 px-4 text-right">Regular</th>
-                                    <th className="py-3 px-4 text-right">Súper</th>
-                                    <th className="py-3 px-4 text-right">Total Gln</th>
-                                    <th className="py-3 px-4">Forma de Pago / Referencia</th>
-                                    <th className="py-3 px-4 text-center">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                                {orders.map((order) => {
-                                    const pDiesel = parseFloat(order.p_diesel) || 0;
-                                    const pRegular = parseFloat(order.p_regular) || 0;
-                                    const pSuper = parseFloat(order.p_super) || 0;
-                                    const totalGln = order.total_galones || 0;
-                                    const est = String(order.estado || '').toUpperCase();
+                <Table
+                    headers={[
+                        { label: 'Pedido #', className: 'py-3 px-4 font-bold text-slate-500 uppercase tracking-wider' },
+                        { label: 'Fecha', className: 'py-3 px-4 font-bold text-slate-500 uppercase tracking-wider' },
+                        { label: 'Estado', className: 'py-3 px-4 font-bold text-slate-500 uppercase tracking-wider' },
+                        { label: 'Diésel', className: 'py-3 px-4 text-right font-bold text-slate-500 uppercase tracking-wider' },
+                        { label: 'Regular', className: 'py-3 px-4 text-right font-bold text-slate-500 uppercase tracking-wider' },
+                        { label: 'Súper', className: 'py-3 px-4 text-right font-bold text-slate-500 uppercase tracking-wider' },
+                        { label: 'Total Gln', className: 'py-3 px-4 text-right font-bold text-slate-500 uppercase tracking-wider' },
+                        { label: 'Forma de Pago / Referencia', className: 'py-3 px-4 font-bold text-slate-500 uppercase tracking-wider' },
+                        { label: 'Acciones', className: 'py-3 px-4 text-center font-bold text-slate-500 uppercase tracking-wider' }
+                    ]}
+                    data={orders}
+                    isLoading={isLoading}
+                    emptyMessage={
+                        isUnconfigured
+                            ? 'Configure la estación de RRS en la configuración de gasolinera.'
+                            : statusFilter === 'PENDIENTE'
+                            ? 'No hay pedidos pendientes o vistos para la estación en este momento.'
+                            : 'No se encontraron resultados con los filtros aplicados.'
+                    }
+                    renderRow={(order) => {
+                        const pDiesel = parseFloat(order.p_diesel) || 0;
+                        const pRegular = parseFloat(order.p_regular) || 0;
+                        const pSuper = parseFloat(order.p_super) || 0;
+                        const totalGln = order.total_galones || 0;
+                        const est = String(order.estado || '').toUpperCase();
 
-                                    return (
-                                        <tr key={order.id} className="hover:bg-indigo-50/30 transition-colors">
-                                            <td className="py-3 px-4 font-mono font-bold text-indigo-600">
-                                                {order.numero || `#${order.id}`}
-                                            </td>
-                                            <td className="py-3 px-4 text-slate-600 whitespace-nowrap">
-                                                {formatDate(order.fecha)}
-                                            </td>
-                                            <td className="py-3 px-4 whitespace-nowrap">
-                                                {getStatusBadge(order.estado)}
-                                            </td>
-                                            <td className="py-3 px-4 text-right font-mono">
-                                                {pDiesel > 0 ? (
-                                                    <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-800 font-semibold">
-                                                        {formatNumber(pDiesel)}
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-slate-300">—</span>
-                                                )}
-                                            </td>
-                                            <td className="py-3 px-4 text-right font-mono">
-                                                {pRegular > 0 ? (
-                                                    <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-800 font-semibold">
-                                                        {formatNumber(pRegular)}
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-slate-300">—</span>
-                                                )}
-                                            </td>
-                                            <td className="py-3 px-4 text-right font-mono">
-                                                {pSuper > 0 ? (
-                                                    <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-800 font-semibold">
-                                                        {formatNumber(pSuper)}
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-slate-300">—</span>
-                                                )}
-                                            </td>
-                                            <td className="py-3 px-4 text-right font-mono font-bold text-indigo-700">
-                                                {formatNumber(totalGln)}
-                                            </td>
-                                            <td className="py-3 px-4 max-w-xs truncate text-slate-600" title={order.forma_pago}>
-                                                {order.forma_pago || '—'}
-                                            </td>
-                                            <td className="py-3 px-4 text-center">
-                                                <div className="inline-flex items-center justify-center gap-1">
-                                                    {/* Marcar como Visto: solo visible en PENDIENTE */}
-                                                    {est === 'PENDIENTE' && (
-                                                        <button
-                                                            onClick={() => setConfirmSeenOrder(order)}
-                                                            className="inline-flex items-center gap-1 px-2.5 py-1 text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
-                                                            title="Marcar pedido como visto"
-                                                        >
-                                                            <Eye className="w-3.5 h-3.5" />
-                                                            <span className="hidden sm:inline">Visto</span>
-                                                        </button>
-                                                    )}
+                        return (
+                            <tr key={order.id} className="hover:bg-indigo-50/30 transition-colors">
+                                <td className="py-3 px-4 font-mono font-bold text-indigo-600">
+                                    {order.numero || `#${order.id}`}
+                                </td>
+                                <td className="py-3 px-4 text-slate-600 whitespace-nowrap">
+                                    {formatDate(order.fecha)}
+                                </td>
+                                <td className="py-3 px-4 whitespace-nowrap">
+                                    {getStatusBadge(order.estado)}
+                                </td>
+                                <td className="py-3 px-4 text-right font-mono">
+                                    {pDiesel > 0 ? (
+                                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-800 font-semibold">
+                                            {formatNumber(pDiesel)}
+                                        </span>
+                                    ) : (
+                                        <span className="text-slate-300">—</span>
+                                    )}
+                                </td>
+                                <td className="py-3 px-4 text-right font-mono">
+                                    {pRegular > 0 ? (
+                                        <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-800 font-semibold">
+                                            {formatNumber(pRegular)}
+                                        </span>
+                                    ) : (
+                                        <span className="text-slate-300">—</span>
+                                    )}
+                                </td>
+                                <td className="py-3 px-4 text-right font-mono">
+                                    {pSuper > 0 ? (
+                                        <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-800 font-semibold">
+                                            {formatNumber(pSuper)}
+                                        </span>
+                                    ) : (
+                                        <span className="text-slate-300">—</span>
+                                    )}
+                                </td>
+                                <td className="py-3 px-4 text-right font-mono font-bold text-indigo-700">
+                                    {formatNumber(totalGln)}
+                                </td>
+                                <td className="py-3 px-4 max-w-xs truncate text-slate-600" title={order.forma_pago}>
+                                    {order.forma_pago || '—'}
+                                </td>
+                                <td className="py-3 px-4 text-center">
+                                    <div className="inline-flex items-center justify-center gap-1">
+                                        {/* Marcar como Visto: solo visible en PENDIENTE */}
+                                        {est === 'PENDIENTE' && (
+                                            <button
+                                                onClick={() => setConfirmSeenOrder(order)}
+                                                className="inline-flex items-center gap-1 px-2.5 py-1 text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                                                title="Marcar pedido como visto"
+                                            >
+                                                <Eye className="w-3.5 h-3.5" />
+                                                <span className="hidden sm:inline">Visto</span>
+                                            </button>
+                                        )}
 
-                                                    {/* Recibir Pedido: solo visible si el estado es VISTO */}
-                                                    {est === 'VISTO' && (
-                                                        <button
-                                                            onClick={() => handleInitiateReceive(order)}
-                                                            className="inline-flex items-center gap-1 px-2.5 py-1 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
-                                                            title="Recibir pedido y registrar descarga"
-                                                        >
-                                                            <PackageCheck className="w-3.5 h-3.5" />
-                                                            <span className="hidden sm:inline">Recibir</span>
-                                                        </button>
-                                                    )}
+                                        {/* Recibir Pedido: solo visible si el estado es VISTO */}
+                                        {est === 'VISTO' && (
+                                            <button
+                                                onClick={() => handleInitiateReceive(order)}
+                                                className="inline-flex items-center gap-1 px-2.5 py-1 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                                                title="Recibir pedido y registrar descarga"
+                                            >
+                                                <PackageCheck className="w-3.5 h-3.5" />
+                                                <span className="hidden sm:inline">Recibir</span>
+                                            </button>
+                                        )}
 
-                                                    {/* Ver Detalle */}
-                                                    <button
-                                                        onClick={() => setSelectedOrder(order)}
-                                                        className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                                                        title="Ver detalle del pedido"
-                                                    >
-                                                        <FileText className="w-4 h-4" />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
+                                        {/* Ver Detalle */}
+                                        <button
+                                            onClick={() => setSelectedOrder(order)}
+                                            className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                                            title="Ver detalle del pedido"
+                                        >
+                                            <FileText className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        );
+                    }}
+                />
             </div>
 
             {/* Modal: Confirm Marcar como Visto */}

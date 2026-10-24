@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { useConfirm } from '../context/ConfirmContext';
 import { Users, LogOut, Circle } from 'lucide-react';
 import { toast } from 'sonner';
+import Table from '../components/ui/Table';
+import { formatDateTime } from '../utils/dateUtils';
 
 const ConnectedUsers = () => {
     const confirm = useConfirm();
@@ -50,18 +52,6 @@ const ConnectedUsers = () => {
         }
     };
 
-    const formatDateTime = (dateStr) => {
-        if (!dateStr) return '-';
-        const d = new Date(dateStr);
-        if (isNaN(d.getTime())) return '-';
-        const dia = String(d.getDate()).padStart(2, '0');
-        const mes = String(d.getMonth() + 1).padStart(2, '0');
-        const anio = d.getFullYear();
-        const hora = String(d.getHours()).padStart(2, '0');
-        const min = String(d.getMinutes()).padStart(2, '0');
-        return `${dia}/${mes}/${anio} ${hora}:${min}`;
-    };
-
     const getElapsedText = (seconds) => {
         if (seconds < 60) return `${seconds}s`;
         const mins = Math.floor(seconds / 60);
@@ -76,6 +66,17 @@ const ConnectedUsers = () => {
     };
 
     const sessions = data?.sessions || [];
+
+    const enrichedSessions = useMemo(() => {
+        return sessions.map((session) => {
+            const elapsed = calcElapsed(session.logged_in_at);
+            return {
+                ...session,
+                elapsed,
+                estado_indicador: elapsed < 30 ? 1 : 0
+            };
+        });
+    }, [sessions, now]);
 
     return (
         <div className="space-y-6">
@@ -92,81 +93,68 @@ const ConnectedUsers = () => {
             </div>
 
             <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
-                {isLoading ? (
-                    <div className="p-12 text-center text-slate-400 font-medium">Cargando...</div>
-                ) : isError ? (
-                    <div className="p-12 text-center">
-                        <p className="text-rose-500 font-medium">Error al cargar: {error?.message || 'Error desconocido'}</p>
-                    </div>
-                ) : sessions.length === 0 ? (
-                    <div className="p-12 text-center text-slate-400 font-medium">No hay usuarios conectados</div>
-                ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full">
-                            <thead>
-                                <tr className="border-b border-slate-100">
-                                    <th className="text-[11px] font-bold text-slate-500 uppercase text-left px-6 py-4">Estado</th>
-                                    <th className="text-[11px] font-bold text-slate-500 uppercase text-left px-6 py-4">Usuario</th>
-                                    <th className="text-[11px] font-bold text-slate-500 uppercase text-left px-6 py-4">Nombre</th>
-                                    <th className="text-[11px] font-bold text-slate-500 uppercase text-left px-6 py-4">Sucursal</th>
-                                    <th className="text-[11px] font-bold text-slate-500 uppercase text-left px-6 py-4">IP</th>
-                                    <th className="text-[11px] font-bold text-slate-500 uppercase text-left px-6 py-4">Conectado desde</th>
-                                    <th className="text-[11px] font-bold text-slate-500 uppercase text-left px-6 py-4">Tiempo</th>
-                                    <th className="text-[11px] font-bold text-slate-500 uppercase text-left px-6 py-4">Acción</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {sessions.map((session) => {
-                                    const elapsed = calcElapsed(session.logged_in_at);
-                                    return (
-                                    <tr key={session.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
-                                        <td className="px-6 py-4">
-                                            <Circle
-                                                size={10}
-                                                className={elapsed < 30 ? 'text-emerald-500 fill-emerald-500' : 'text-amber-400 fill-amber-400'}
-                                            />
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span className="text-[13px] font-medium text-slate-900">{session.username}</span>
-                                            {session.is_own_session && (
-                                                <span className="ml-2 text-[10px] font-bold text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full">Tú</span>
-                                            )}
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span className="text-[13px] font-medium text-slate-700">{session.nombre || '-'}</span>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span className="text-[13px] font-medium text-slate-700">{session.branch_name || '-'}</span>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span className="text-[13px] font-mono text-slate-500">{session.ip_address || '-'}</span>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span className="text-[13px] font-medium text-slate-700">{formatDateTime(session.logged_in_at)}</span>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span className="text-[13px] font-medium text-slate-500">{getElapsedText(elapsed)}</span>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            {!session.is_own_session && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleTerminate(session)}
-                                                    disabled={terminateMutation.isPending}
-                                                    className="flex items-center gap-1.5 text-[12px] font-bold text-rose-500 hover:text-rose-700 disabled:opacity-50 transition-colors"
-                                                >
-                                                    <LogOut size={14} />
-                                                    Cerrar
-                                                </button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
+                <Table
+                    headers={[
+                        { label: 'Estado', className: 'text-left px-6 py-4', sortKey: 'estado_indicador' },
+                        { label: 'Usuario', className: 'text-left px-6 py-4' },
+                        { label: 'Nombre', className: 'text-left px-6 py-4' },
+                        { label: 'Sucursal', className: 'text-left px-6 py-4' },
+                        { label: 'IP', className: 'text-left px-6 py-4' },
+                        { label: 'Conectado desde', className: 'text-left px-6 py-4' },
+                        { label: 'Tiempo', className: 'text-left px-6 py-4', sortKey: 'elapsed', sortType: 'number' },
+                        { label: 'Acción', className: 'text-left px-6 py-4', sortable: false }
+                    ]}
+                    data={enrichedSessions}
+                    isLoading={isLoading}
+                    emptyMessage={isError ? `Error al cargar: ${error?.message || 'Error desconocido'}` : 'No hay usuarios conectados'}
+                    renderRow={(session) => {
+                        const elapsed = session.elapsed;
+                        return (
+                            <tr key={session.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                                <td className="px-6 py-4">
+                                    <Circle
+                                        size={10}
+                                        className={elapsed < 30 ? 'text-emerald-500 fill-emerald-500' : 'text-amber-400 fill-amber-400'}
+                                    />
+                                </td>
+                                <td className="px-6 py-4">
+                                    <span className="text-[13px] font-medium text-slate-900">{session.username}</span>
+                                    {session.is_own_session && (
+                                        <span className="ml-2 text-[10px] font-bold text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full">Tú</span>
+                                    )}
+                                </td>
+                                <td className="px-6 py-4">
+                                    <span className="text-[13px] font-medium text-slate-700">{session.nombre || '-'}</span>
+                                </td>
+                                <td className="px-6 py-4">
+                                    <span className="text-[13px] font-medium text-slate-700">{session.branch_name || '-'}</span>
+                                </td>
+                                <td className="px-6 py-4">
+                                    <span className="text-[13px] font-mono text-slate-500">{session.ip_address || '-'}</span>
+                                </td>
+                                <td className="px-6 py-4">
+                                    <span className="text-[13px] font-medium text-slate-700">{formatDateTime(session.logged_in_at)}</span>
+                                </td>
+                                <td className="px-6 py-4">
+                                    <span className="text-[13px] font-medium text-slate-500">{getElapsedText(elapsed)}</span>
+                                </td>
+                                <td className="px-6 py-4">
+                                    {!session.is_own_session && (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleTerminate(session)}
+                                            disabled={terminateMutation.isPending}
+                                            className="flex items-center gap-1.5 text-[12px] font-bold text-rose-500 hover:text-rose-700 disabled:opacity-50 transition-colors cursor-pointer"
+                                        >
+                                            <LogOut size={14} />
+                                            Cerrar
+                                        </button>
+                                    )}
+                                </td>
+                            </tr>
+                        );
+                    }}
+                />
             </div>
         </div>
     );

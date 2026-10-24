@@ -4,6 +4,7 @@ import axios from 'axios';
 import { AlertTriangle, Play, StopCircle, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import Modal from '../components/ui/Modal';
+import Table from '../components/ui/Table';
 import { formatDateTime } from '../utils/dateUtils';
 
 const CONTINGENCY_TYPES = {
@@ -126,55 +127,46 @@ const Contingency = () => {
                     </span>
                 </div>
                 <div className="w-full">
-                    <table className="w-full table-fixed text-left border-collapse">
-                        <thead className="bg-slate-50 border-b border-slate-100">
-                            <tr>
-                                <th className="w-12 px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center">ID</th>
-                                <th className="w-36 px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Inicio</th>
-                                <th className="w-36 px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Fin</th>
-                                <th className="w-48 px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tipo</th>
-                                <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Motivo</th>
-                                <th className="w-24 px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center">Estado</th>
+                    <Table
+                        headers={[
+                            { label: 'ID', className: 'w-14 text-center' },
+                            { label: 'Inicio', className: 'w-36' },
+                            { label: 'Fin', className: 'w-36' },
+                            { label: 'Tipo', className: 'w-48' },
+                            'Motivo',
+                            { label: 'Estado', className: 'w-24 text-center' }
+                        ]}
+                        data={history}
+                        renderRow={(row) => (
+                            <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
+                                <td className="px-3 py-2 text-[11px] font-mono font-bold text-slate-600 text-center truncate">
+                                    #{row.id}
+                                </td>
+                                <td className="px-3 py-2 text-xs font-bold text-slate-800 truncate" title={formatDateTime(row.fecha_inicio)}>
+                                    {formatDateTime(row.fecha_inicio)}
+                                </td>
+                                <td className="px-3 py-2 text-xs text-slate-600 truncate" title={row.fecha_fin ? formatDateTime(row.fecha_fin) : 'En curso...'}>
+                                    {row.fecha_fin ? formatDateTime(row.fecha_fin) : <span className="text-amber-600 font-bold">En curso...</span>}
+                                </td>
+                                <td className="px-3 py-2 text-xs font-medium text-slate-700 truncate" title={CONTINGENCY_TYPES[row.tipo_contingencia] || 'Tipo ' + row.tipo_contingencia}>
+                                    {CONTINGENCY_TYPES[row.tipo_contingencia] || 'Tipo ' + row.tipo_contingencia}
+                                </td>
+                                <td className="px-3 py-2 text-xs text-slate-500 truncate" title={row.motivo || '—'}>
+                                    {row.motivo || '—'}
+                                </td>
+                                <td className="px-3 py-2 text-center truncate">
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                        row.estado === 'OPEN' 
+                                            ? 'bg-amber-100 text-amber-800 border border-amber-200' 
+                                            : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    }`}>
+                                        {row.estado === 'OPEN' ? 'Activo' : 'Cerrado'}
+                                    </span>
+                                </td>
                             </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {history.map(row => (
-                                <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
-                                    <td className="px-3 py-2 text-[11px] font-mono font-bold text-slate-600 text-center truncate">
-                                        #{row.id}
-                                    </td>
-                                    <td className="px-3 py-2 text-xs font-bold text-slate-800 truncate" title={formatDateTime(row.fecha_inicio)}>
-                                        {formatDateTime(row.fecha_inicio)}
-                                    </td>
-                                    <td className="px-3 py-2 text-xs text-slate-600 truncate" title={row.fecha_fin ? formatDateTime(row.fecha_fin) : 'En curso...'}>
-                                        {row.fecha_fin ? formatDateTime(row.fecha_fin) : <span className="text-amber-600 font-bold">En curso...</span>}
-                                    </td>
-                                    <td className="px-3 py-2 text-xs font-medium text-slate-700 truncate" title={CONTINGENCY_TYPES[row.tipo_contingencia] || 'Tipo ' + row.tipo_contingencia}>
-                                        {CONTINGENCY_TYPES[row.tipo_contingencia] || 'Tipo ' + row.tipo_contingencia}
-                                    </td>
-                                    <td className="px-3 py-2 text-xs text-slate-500 truncate" title={row.motivo || '—'}>
-                                        {row.motivo || '—'}
-                                    </td>
-                                    <td className="px-3 py-2 text-center truncate">
-                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                                            row.estado === 'OPEN' 
-                                                ? 'bg-amber-100 text-amber-800 border border-amber-200' 
-                                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                        }`}>
-                                            {row.estado === 'OPEN' ? 'Activo' : 'Cerrado'}
-                                        </span>
-                                    </td>
-                                </tr>
-                            ))}
-                            {history.length === 0 && (
-                                <tr>
-                                    <td colSpan={6} className="px-3 py-8 text-center text-xs text-slate-400 italic">
-                                        Sin registros de contingencia
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
+                        )}
+                        emptyMessage="Sin registros de contingencia"
+                    />
                 </div>
             </div>
 

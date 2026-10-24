@@ -21,6 +21,7 @@ import {
     FileDown
 } from 'lucide-react';
 import Money from '../../components/ui/Money';
+import Table from '../../components/ui/Table';
 import PdfViewerModal from '../../components/ui/PdfViewerModal';
 import QuotationModal from '../../components/crm/QuotationModal';
 import SendEmailModal from '../../components/crm/SendEmailModal';
@@ -356,233 +357,215 @@ export default function CrmQuotations() {
 
             {/* Tabla de Cotizaciones */}
             <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse text-xs">
-                        <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
-                                <th className="py-3 px-4">N° Cotización</th>
-                                <th className="py-3 px-4">Emisión / Vence</th>
-                                <th className="py-3 px-4">Cliente / Contacto</th>
-                                <th className="py-3 px-4">Productos</th>
-                                <th className="py-3 px-4 text-right">Total ($)</th>
-                                <th className="py-3 px-4 text-center">Margen</th>
-                                <th className="py-3 px-4 text-center">Estado</th>
-                                <th className="py-3 px-4 text-center">Delicada</th>
-                                <th className="py-3 px-4">Asesor</th>
-                                <th className="py-3 px-4 text-right">Acciones</th>
+                <Table
+                    headers={[
+                        'N° Cotización',
+                        'Emisión / Vence',
+                        'Cliente / Contacto',
+                        'Productos',
+                        { label: 'Total ($)', className: 'text-right' },
+                        { label: 'Margen', className: 'text-center' },
+                        { label: 'Estado', className: 'text-center' },
+                        { label: 'Delicada', className: 'text-center' },
+                        'Asesor',
+                        { label: 'Acciones', className: 'text-right' }
+                    ]}
+                    data={quotations}
+                    isLoading={isLoading}
+                    renderRow={(q) => {
+                        const statusCfg = STATUS_CONFIG[q.status] || STATUS_CONFIG.borrador;
+                        const isDel = Boolean(q.is_delicate);
+
+                        return (
+                            <tr key={q.id} className="hover:bg-slate-50/80 transition-colors">
+                                {/* N° Cotización */}
+                                <td className="py-3 px-4 font-bold text-indigo-600">
+                                    {q.quote_number}
+                                </td>
+
+                                {/* Fechas */}
+                                <td className="py-3 px-4 text-slate-600">
+                                    <div className="font-semibold text-slate-800">
+                                        {q.date ? q.date.split('T')[0] : '---'}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400">
+                                        Vence: {q.expiration_date ? q.expiration_date.split('T')[0] : '---'}
+                                    </div>
+                                </td>
+
+                                {/* Cliente */}
+                                <td className="py-3 px-4">
+                                    <div className="font-bold text-slate-800 line-clamp-1">
+                                        {q.customer_name}
+                                    </div>
+                                    {q.customer_contact && (
+                                        <div className="text-[11px] text-slate-500">
+                                            Att: {q.customer_contact}
+                                        </div>
+                                    )}
+                                </td>
+
+                                {/* Productos */}
+                                <td className="py-3 px-4 text-slate-600 max-w-xs">
+                                    <div className="line-clamp-1 font-medium">
+                                        {q.products_summary || `${q.items_count} producto(s)`}
+                                    </div>
+                                    <span className="text-[10px] text-slate-400">
+                                        {q.items_count} ítem(s) cotizado(s)
+                                    </span>
+                                </td>
+
+                                {/* Total */}
+                                <td className="py-3 px-4 text-right font-black text-slate-800">
+                                    <Money amount={q.total} />
+                                </td>
+
+                                {/* Margen */}
+                                <td className="py-3 px-4 text-center">
+                                    <span className={`font-black ${
+                                        parseFloat(q.overall_margin_pct) <= 0
+                                            ? 'text-red-600'
+                                            : parseFloat(q.overall_margin_pct) < 15
+                                            ? 'text-amber-600'
+                                            : 'text-emerald-600'
+                                    }`}>
+                                        {parseFloat(q.overall_margin_pct).toFixed(1)}%
+                                    </span>
+                                </td>
+
+                                {/* Estado */}
+                                <td className="py-3 px-4 text-center">
+                                    <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${statusCfg.color}`}>
+                                        {statusCfg.label}
+                                    </span>
+                                </td>
+
+                                {/* Delicada */}
+                                <td className="py-3 px-4 text-center">
+                                    {isDel ? (
+                                        <span
+                                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-red-100 text-red-700 border border-red-200 cursor-help"
+                                            title={q.delicate_reason || 'Bajo costo o margen inferior al 15%'}
+                                        >
+                                            <ShieldAlert className="w-3 h-3" />
+                                            DELICADA
+                                        </span>
+                                    ) : (
+                                        <span className="text-slate-300 font-bold">—</span>
+                                    )}
+                                </td>
+
+                                {/* Asesor */}
+                                <td className="py-3 px-4 text-slate-600">
+                                    <div className="font-medium text-slate-700 line-clamp-1">
+                                        {q.signature_author_name || q.created_by_name || 'Raul Sosa'}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400">
+                                        {q.signature_data ? '✓ Con firma digital' : 'Sin firma'}
+                                    </div>
+                                </td>
+
+                                {/* Acciones */}
+                                <td className="py-3 px-4 text-right">
+                                    <div className="flex items-center justify-end gap-1">
+                                        {/* Ver PDF */}
+                                        <button
+                                            type="button"
+                                            onClick={() => handleViewPdf(q)}
+                                            className="p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-colors"
+                                            title="Ver PDF Oficial"
+                                        >
+                                            <Eye className="w-4 h-4" />
+                                        </button>
+
+                                        {/* Descargar Word (.docx) */}
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDownloadDocx(q)}
+                                            className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
+                                            title="Descargar Word (.docx) editable"
+                                        >
+                                            <FileDown className="w-4 h-4" />
+                                        </button>
+
+                                        {/* Enviar por Correo Electrónico */}
+                                        <button
+                                            type="button"
+                                            onClick={() => handleOpenEmailModal(q)}
+                                            className="p-1.5 text-sky-600 hover:text-sky-800 hover:bg-sky-50 rounded-lg transition-colors"
+                                            title="Enviar por Correo Electrónico"
+                                        >
+                                            <Mail className="w-4 h-4" />
+                                        </button>
+
+                                        {/* Compartir por WhatsApp */}
+                                        <button
+                                            type="button"
+                                            onClick={() => handleShareWhatsapp(q)}
+                                            className="p-1.5 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded-lg transition-colors"
+                                            title="Compartir por WhatsApp"
+                                        >
+                                            <Share2 className="w-4 h-4" />
+                                        </button>
+
+                                        {/* Convertir a Acuerdo CRM */}
+                                        {q.status !== 'aprobada' && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    if (window.confirm(`¿Convertir la cotización ${q.quote_number} en Acuerdo Comercial formal de CRM para ${q.customer_name}?`)) {
+                                                        convertMutation.mutate(q.id);
+                                                    }
+                                                }}
+                                                className="p-1.5 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded-lg transition-colors"
+                                                title="Aprobar y Convertir a Acuerdo de Precios CRM"
+                                            >
+                                                <Handshake className="w-4 h-4" />
+                                            </button>
+                                        )}
+
+                                        {/* Duplicar */}
+                                        <button
+                                            type="button"
+                                            onClick={() => duplicateMutation.mutate(q.id)}
+                                            className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+                                            title="Duplicar Cotización"
+                                        >
+                                            <Copy className="w-4 h-4" />
+                                        </button>
+
+                                        {/* Editar */}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setSelectedQuoteId(q.id);
+                                                setQuotationModalOpen(true);
+                                            }}
+                                            className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+                                            title="Editar"
+                                        >
+                                            <Edit2 className="w-4 h-4" />
+                                        </button>
+
+                                        {/* Eliminar */}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (window.confirm(`¿Eliminar la cotización ${q.quote_number}?`)) {
+                                                    deleteMutation.mutate(q.id);
+                                                }
+                                            }}
+                                            className="p-1.5 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                            title="Eliminar"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </td>
                             </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {isLoading ? (
-                                <tr>
-                                    <td colSpan="10" className="py-12 text-center text-slate-400 font-medium">
-                                        Cargando cotizaciones comerciales...
-                                    </td>
-                                </tr>
-                            ) : quotations.length === 0 ? (
-                                <tr>
-                                    <td colSpan="10" className="py-12 text-center text-slate-400 font-medium">
-                                        No se encontraron cotizaciones con los criterios seleccionados.
-                                    </td>
-                                </tr>
-                            ) : (
-                                quotations.map((q) => {
-                                    const statusCfg = STATUS_CONFIG[q.status] || STATUS_CONFIG.borrador;
-                                    const isDel = Boolean(q.is_delicate);
-
-                                    return (
-                                        <tr key={q.id} className="hover:bg-slate-50/80 transition-colors">
-                                            {/* N° Cotización */}
-                                            <td className="py-3 px-4 font-bold text-indigo-600">
-                                                {q.quote_number}
-                                            </td>
-
-                                            {/* Fechas */}
-                                            <td className="py-3 px-4 text-slate-600">
-                                                <div className="font-semibold text-slate-800">
-                                                    {q.date ? q.date.split('T')[0] : '---'}
-                                                </div>
-                                                <div className="text-[10px] text-slate-400">
-                                                    Vence: {q.expiration_date ? q.expiration_date.split('T')[0] : '---'}
-                                                </div>
-                                            </td>
-
-                                            {/* Cliente */}
-                                            <td className="py-3 px-4">
-                                                <div className="font-bold text-slate-800 line-clamp-1">
-                                                    {q.customer_name}
-                                                </div>
-                                                {q.customer_contact && (
-                                                    <div className="text-[11px] text-slate-500">
-                                                        Att: {q.customer_contact}
-                                                    </div>
-                                                )}
-                                            </td>
-
-                                            {/* Productos */}
-                                            <td className="py-3 px-4 text-slate-600 max-w-xs">
-                                                <div className="line-clamp-1 font-medium">
-                                                    {q.products_summary || `${q.items_count} producto(s)`}
-                                                </div>
-                                                <span className="text-[10px] text-slate-400">
-                                                    {q.items_count} ítem(s) cotizado(s)
-                                                </span>
-                                            </td>
-
-                                            {/* Total */}
-                                            <td className="py-3 px-4 text-right font-black text-slate-800">
-                                                <Money amount={q.total} />
-                                            </td>
-
-                                            {/* Margen */}
-                                            <td className="py-3 px-4 text-center">
-                                                <span className={`font-black ${
-                                                    parseFloat(q.overall_margin_pct) <= 0
-                                                        ? 'text-red-600'
-                                                        : parseFloat(q.overall_margin_pct) < 15
-                                                        ? 'text-amber-600'
-                                                        : 'text-emerald-600'
-                                                }`}>
-                                                    {parseFloat(q.overall_margin_pct).toFixed(1)}%
-                                                </span>
-                                            </td>
-
-                                            {/* Estado */}
-                                            <td className="py-3 px-4 text-center">
-                                                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${statusCfg.color}`}>
-                                                    {statusCfg.label}
-                                                </span>
-                                            </td>
-
-                                            {/* Delicada */}
-                                            <td className="py-3 px-4 text-center">
-                                                {isDel ? (
-                                                    <span
-                                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-red-100 text-red-700 border border-red-200 cursor-help"
-                                                        title={q.delicate_reason || 'Bajo costo o margen inferior al 15%'}
-                                                    >
-                                                        <ShieldAlert className="w-3 h-3" />
-                                                        DELICADA
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-slate-300 font-bold">—</span>
-                                                )}
-                                            </td>
-
-                                            {/* Asesor */}
-                                            <td className="py-3 px-4 text-slate-600">
-                                                <div className="font-medium text-slate-700 line-clamp-1">
-                                                    {q.signature_author_name || q.created_by_name || 'Raul Sosa'}
-                                                </div>
-                                                <div className="text-[10px] text-slate-400">
-                                                    {q.signature_data ? '✓ Con firma digital' : 'Sin firma'}
-                                                </div>
-                                            </td>
-
-                                            {/* Acciones */}
-                                            <td className="py-3 px-4 text-right">
-                                                <div className="flex items-center justify-end gap-1">
-                                                    {/* Ver PDF */}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleViewPdf(q)}
-                                                        className="p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-colors"
-                                                        title="Ver PDF Oficial"
-                                                    >
-                                                        <Eye className="w-4 h-4" />
-                                                    </button>
-
-                                                    {/* Descargar Word (.docx) */}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleDownloadDocx(q)}
-                                                        className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
-                                                        title="Descargar Word (.docx) editable"
-                                                    >
-                                                        <FileDown className="w-4 h-4" />
-                                                    </button>
-
-                                                    {/* Enviar por Correo Electrónico */}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleOpenEmailModal(q)}
-                                                        className="p-1.5 text-sky-600 hover:text-sky-800 hover:bg-sky-50 rounded-lg transition-colors"
-                                                        title="Enviar por Correo Electrónico"
-                                                    >
-                                                        <Mail className="w-4 h-4" />
-                                                    </button>
-
-                                                    {/* Compartir por WhatsApp */}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleShareWhatsapp(q)}
-                                                        className="p-1.5 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded-lg transition-colors"
-                                                        title="Compartir por WhatsApp"
-                                                    >
-                                                        <Share2 className="w-4 h-4" />
-                                                    </button>
-
-                                                    {/* Convertir a Acuerdo CRM */}
-                                                    {q.status !== 'aprobada' && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                if (window.confirm(`¿Convertir la cotización ${q.quote_number} en Acuerdo Comercial formal de CRM para ${q.customer_name}?`)) {
-                                                                    convertMutation.mutate(q.id);
-                                                                }
-                                                            }}
-                                                            className="p-1.5 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded-lg transition-colors"
-                                                            title="Aprobar y Convertir a Acuerdo de Precios CRM"
-                                                        >
-                                                            <Handshake className="w-4 h-4" />
-                                                        </button>
-                                                    )}
-
-                                                    {/* Duplicar */}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => duplicateMutation.mutate(q.id)}
-                                                        className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
-                                                        title="Duplicar Cotización"
-                                                    >
-                                                        <Copy className="w-4 h-4" />
-                                                    </button>
-
-                                                    {/* Editar */}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setSelectedQuoteId(q.id);
-                                                            setQuotationModalOpen(true);
-                                                        }}
-                                                        className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
-                                                        title="Editar"
-                                                    >
-                                                        <Edit2 className="w-4 h-4" />
-                                                    </button>
-
-                                                    {/* Eliminar */}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            if (window.confirm(`¿Eliminar la cotización ${q.quote_number}?`)) {
-                                                                deleteMutation.mutate(q.id);
-                                                            }
-                                                        }}
-                                                        className="p-1.5 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                                        title="Eliminar"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+                        );
+                    }}
+                />
 
                 {/* Paginación */}
                 {totalPages > 1 && (

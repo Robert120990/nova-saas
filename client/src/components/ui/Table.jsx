@@ -7,34 +7,80 @@ const LABEL_FIELD_MAP = {
     'nombre': ['nombre', 'name', 'nombre_comercial', 'razon_social'],
     'nombre / razon social': ['nombre', 'nombre_comercial', 'razon_social', 'name'],
     'cliente': ['customer_name', 'cliente', 'nombre_cliente', 'cliente_nombre', 'nombre'],
-    'proveedor': ['provider_name', 'proveedor', 'nombre_proveedor', 'proveedor_nombre', 'nombre'],
+    'cliente / razon social': ['customer_registered_name', 'customer_name', 'nombre_cliente', 'razon_social', 'nombre'],
+    'cliente / contacto': ['customer_name', 'contact_name', 'nombre_cliente', 'cliente'],
+    'proveedor': ['provider_nombre', 'provider_name', 'proveedor', 'nombre_proveedor', 'proveedor_nombre', 'nombre'],
     'empleado': ['empleado', 'employee_name', 'nombre_empleado', 'nombre'],
     'vendedor': ['seller_name', 'vendedor', 'nombre_vendedor', 'nombre'],
+    'asesor': ['creator_name', 'seller_name', 'asesor', 'vendedor'],
     'usuario': ['usuario', 'username', 'user_name', 'nombre_usuario', 'nombre'],
+    'solicitante': ['creator_name', 'creator_username', 'solicitante', 'usuario'],
     'responsable': ['responsable', 'responsible_name', 'usuario', 'nombre'],
     'fecha': ['fecha', 'date', 'fecha_emision', 'created_at', 'fh_procesamiento'],
-    'fecha / hora': ['fecha', 'fh_procesamiento', 'created_at', 'date'],
+    'fecha / hora': ['created_at', 'fecha', 'fh_procesamiento', 'date'],
+    'fecha/hora': ['created_at', 'fecha', 'fh_procesamiento', 'date'],
+    'inicio': ['fecha_inicio', 'inicio', 'fecha', 'created_at'],
+    'fin': ['fecha_fin', 'fin', 'fecha'],
+    'conectado desde': ['logged_in_at', 'connected_at', 'created_at'],
     'hora': ['hora', 'hora_emision', 'time'],
-    'vencimiento': ['vencimiento', 'fecha_vencimiento', 'due_date'],
+    'vencimiento': ['vencimiento', 'fecha_vencimiento', 'due_date', 'valid_until'],
     'vigencia desde': ['vigencia_desde', 'start_date', 'fecha_inicio'],
     'vigencia hasta': ['vigencia_hasta', 'end_date', 'fecha_fin'],
+    'vigencia': ['valid_from', 'vigencia_desde', 'fecha_inicio'],
+    'emision / vence': ['date', 'created_at', 'valid_until', 'fecha'],
     'f. entrega': ['fecha_entrega', 'delivery_date'],
     'fecha entrega': ['fecha_entrega', 'delivery_date'],
-    'total': ['total', 'total_pagar', 'monto_total', 'amount'],
+    'total': ['monto_total', 'total', 'total_pagar', 'amount'],
+    'total ($)': ['total', 'monto_total', 'total_pagar'],
+    'gravadas': ['total_gravada', 'monto_gravado', 'gravadas', 'total_gravado'],
+    'monto gravado': ['total_gravada', 'monto_gravado', 'gravadas', 'total_gravado'],
+    'iva credito': ['iva', 'iva_credito', 'monto_iva'],
+    'iva': ['iva', 'iva_credito', 'monto_iva'],
+    'retencion': ['retencion', 'iva_retenido', 'retencion_monto'],
+    'percepcion': ['percepcion', 'iva_percibido', 'percepcion_monto'],
+    'subtotal': ['subtotal', 'sub_total'],
     'monto': ['monto', 'total', 'amount', 'valor'],
     'precio': ['precio', 'price', 'precio_unitario', 'precio_final'],
     'precio final': ['precio_final', 'precio', 'price'],
+    'precio pactado': ['agreed_price_per_lb', 'agreed_unit_price'],
+    'precio pactado ($/lb)': ['agreed_price_per_lb', 'agreed_unit_price'],
+    'precio en pos': ['agreed_unit_price', 'agreed_price_per_lb'],
+    'precio en pos ($/unidad)': ['agreed_unit_price', 'agreed_price_per_lb'],
+    'valor descuento': ['discount_value', 'valor_descuento', 'descuento'],
     'costo': ['costo', 'cost', 'costo_unitario'],
     'saldo': ['saldo', 'balance'],
-    'disponible': ['disponible', 'available'],
+    'disponible': ['galones_disponibles', 'disponible', 'available'],
     'utilizado': ['utilizado', 'used'],
-    'estado': ['estado', 'status', 'dte_status', 'state'],
+    'usado': ['utilizado', 'used', 'galones_usados'],
+    'volumen': ['monthly_volume_lbs', 'volume'],
+    'volumen (lbs/mes)': ['monthly_volume_lbs', 'volume'],
+    'margen': ['overall_margin_pct', 'margin_pct', 'target_margin_pct', 'margen', 'margin'],
+    'delicada': ['is_delicate', 'delicada'],
+    'estado': ['status', 'estado', 'dte_status', 'state'],
     'estado mh': ['dte_status', 'estado', 'status'],
     'sucursal': ['branch_name', 'sucursal', 'branch', 'sucursal_nombre'],
     'categoria': ['categoria', 'category_name', 'categoria_nombre'],
-    'tipo': ['tipo', 'type', 'tipo_documento', 'tipo_dte'],
+    'tipo': ['tipo', 'type', 'tipo_documento', 'tipo_dte', 'tipo_contingencia'],
+    'prioridad': ['priority', 'prioridad'],
     'documento': ['documento', 'numero_documento', 'num_doc', 'numero_control'],
+    'documento / tipo': ['numero_documento', 'num_control', 'num_doc', 'documento', 'tipo_documento'],
+    'documento / no.': ['numero_documento', 'num_control', 'num_doc', 'documento'],
     'no. doc': ['num_doc', 'documento', 'numero_documento', 'numero_control'],
+    'no. documento': ['numero_documento', 'num_doc', 'documento', 'numero_control'],
+    'n° cotizacion': ['quote_number', 'numero', 'correlativo', 'id'],
+    'pedido #': ['numero', 'id', 'pedido_numero', 'correlativo'],
+    'asunto': ['subject', 'asunto'],
+    'asunto / modulo': ['subject', 'module_name', 'module', 'asunto'],
+    'modulo': ['module_name', 'module', 'modulo'],
+    'accion': ['action', 'accion'],
+    'entidad': ['entity_type', 'entidad', 'tabla'],
+    'duracion': ['duration_ms', 'duracion'],
+    'tiempo': ['duration_ms', 'logged_in_at', 'tiempo'],
+    'ip': ['ip_address', 'ip'],
+    'motivo': ['motivo', 'reason', 'descripcion'],
+    'producto': ['producto', 'product_name', 'nombre_producto', 'nombre'],
+    'producto y presentacion': ['product_type', 'presentation', 'catalog_product_name'],
+    'producto / codigo': ['product_name', 'product_code', 'nombre', 'codigo'],
     'n. quedan': ['num_quedan', 'correlativo', 'id'],
     'n. cheque': ['rrs_num_cheque', 'num_cheque', 'cheque'],
     'descripcion': ['descripcion', 'description', 'detalle'],
@@ -43,9 +89,16 @@ const LABEL_FIELD_MAP = {
     'cargo': ['cargo', 'position', 'nombre_cargo'],
     'items': ['items_count', 'total_items', 'items'],
     'id': ['id'],
-    'no.': ['id', 'correlativo', 'numero', 'no'],
-    'n°': ['id', 'correlativo', 'numero', 'no'],
-    'dias': ['dias', 'days', 'dias_credito'],
+    'no.': ['id', 'numero', 'correlativo', 'no'],
+    'n°': ['id', 'numero', 'correlativo', 'no'],
+    'dias': ['dias', 'days', 'dias_credito', 'payment_terms_days'],
+    'terminos pago': ['payment_terms_days', 'dias_credito', 'dias'],
+    'diesel': ['p_diesel', 'diesel'],
+    'regular': ['p_regular', 'regular'],
+    'super': ['p_super', 'super'],
+    'total gln': ['total_galones', 'galones'],
+    'galones': ['galones', 'total_galones', 'p_diesel'],
+    'forma de pago / referencia': ['forma_pago', 'referencia'],
     'nrc': ['nrc'],
     'nit': ['nit'],
     'dui': ['dui', 'numero_documento'],
@@ -53,11 +106,9 @@ const LABEL_FIELD_MAP = {
 
 const NON_SORTABLE_LABELS = new Set([
     'acciones',
-    'accion',
     'opciones',
-    'opcion',
     'actions',
-    'action',
+    'opcion',
     '',
     '#',
     'seleccionar'
@@ -104,7 +155,10 @@ const inferSortInfo = (headerLabel, sampleItem) => {
         clean.includes('fecha') ||
         clean.includes('vencimiento') ||
         clean.includes('vigencia') ||
-        clean.includes('hora')
+        clean.includes('hora') ||
+        clean.includes('inicio') ||
+        clean.includes('fin') ||
+        clean.includes('conectado')
     ) {
         type = 'date';
     } else if (
@@ -115,10 +169,23 @@ const inferSortInfo = (headerLabel, sampleItem) => {
         clean.includes('saldo') ||
         clean.includes('disponible') ||
         clean.includes('utilizado') ||
+        clean.includes('usado') ||
         clean.includes('galones') ||
+        clean.includes('diesel') ||
+        clean.includes('regular') ||
+        clean.includes('super') ||
+        clean.includes('volumen') ||
+        clean.includes('duracion') ||
         clean.includes('dias') ||
         clean.includes('%') ||
         clean.includes('porcentaje') ||
+        clean.includes('margen') ||
+        clean.includes('gravad') ||
+        clean.includes('iva') ||
+        clean.includes('retencion') ||
+        clean.includes('percepcion') ||
+        clean.includes('subtotal') ||
+        clean.includes('descuento') ||
         clean === 'id' ||
         clean === 'no.' ||
         clean === 'n°'
@@ -187,6 +254,7 @@ const Table = ({
     defaultSortBy = null,
     defaultSortDir = 'asc',
     sortable = true,
+    emptyMessage = 'No se encontraron registros',
 }) => {
     const isControlled = typeof onSort === 'function';
 
@@ -223,7 +291,7 @@ const Table = ({
         const trimmed = rawLabel.trim();
         const clean = cleanHeaderStr(trimmed);
 
-        if (NON_SORTABLE_LABELS.has(clean)) {
+        if (NON_SORTABLE_LABELS.has(clean) && !(isObj && h.sortable === true)) {
             return trimmed;
         }
 
@@ -317,7 +385,7 @@ const Table = ({
                         </div>
                     ) : (
                         <div className="px-4 py-8 text-center text-slate-400 italic text-sm">
-                            No se encontraron registros
+                            {emptyMessage}
                         </div>
                     )}
                 </div>
@@ -360,7 +428,7 @@ const Table = ({
                         ) : (
                             <tr>
                                 <td colSpan={headers.length} className="px-4 py-6 text-center text-slate-400 italic">
-                                    No se encontraron registros
+                                    {emptyMessage}
                                 </td>
                             </tr>
                         )}

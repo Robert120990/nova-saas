@@ -10,6 +10,7 @@ import { useTickets } from '../context/TicketContext';
 import { unwrapList, unwrapPagination } from '../utils/apiUtils';
 import { formatDateTime } from '../utils/dateUtils';
 import Pagination from '../components/ui/Pagination';
+import Table from '../components/ui/Table';
 import { TicketSummaryCards, TicketFiltersBar, TicketAiBundleModal, TicketAgyFlowModal } from '../components/tickets';
 
 const STATUS_CONFIG = {
@@ -178,143 +179,121 @@ const SupportTickets = () => {
                 onReset={handleResetFilters}
             />
 
-            <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                        <thead>
-                            <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                                <th className="py-3.5 px-4">Código</th>
-                                <th className="py-3.5 px-4">Asunto / Módulo</th>
-                                <th className="py-3.5 px-4">Tipo</th>
-                                <th className="py-3.5 px-4">Prioridad</th>
-                                <th className="py-3.5 px-4">Solicitante</th>
-                                <th className="py-3.5 px-4">Estado</th>
-                                <th className="py-3.5 px-4">Fecha</th>
-                                <th className="py-3.5 px-4 text-right">Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 text-[13px]">
-                            {isLoading ? (
-                                <tr>
-                                    <td colSpan={8} className="py-12 text-center text-slate-400 text-xs font-medium">
-                                        Cargando listado de tickets...
-                                    </td>
-                                </tr>
-                            ) : tickets.length === 0 ? (
-                                <tr>
-                                    <td colSpan={8} className="py-12 text-center">
-                                        <Ticket size={32} className="mx-auto text-slate-300 mb-2" />
-                                        <p className="text-sm font-bold text-slate-600">No se encontraron tickets de soporte</p>
-                                        <p className="text-xs text-slate-400 mt-0.5">
-                                            Usa el botón &ldquo;Nuevo Ticket con Captura&rdquo; o presiona Ctrl + K y escribe &ldquo;ticket&rdquo;.
-                                        </p>
-                                    </td>
-                                </tr>
-                            ) : (
-                                (Array.isArray(tickets) ? tickets : []).map((t) => {
-                                    const st = STATUS_CONFIG[t.status] || STATUS_CONFIG.abierto;
-                                    const StIcon = st.icon;
-                                    const inAi = Boolean(t.include_in_ai_prompt);
-                                    return (
-                                        <tr
-                                            key={t.id}
-                                            onClick={() => openTicketDetail(t.id)}
-                                            className={`hover:bg-slate-50/80 transition-colors cursor-pointer ${inAi ? 'bg-indigo-50/30' : ''}`}
-                                        >
-                                            <td className="py-3 px-4 whitespace-nowrap">
-                                                <div className="flex items-center gap-1.5">
-                                                    <span className={`font-mono text-xs font-extrabold px-2 py-0.5 rounded-lg border ${String(t.code || '').startsWith('ADM-') || String(t.source_system || '').includes('admin') ? 'text-purple-700 bg-purple-50 border-purple-200' : 'text-indigo-600 bg-indigo-50 border-indigo-100'}`}>
-                                                        {t.code}
-                                                    </span>
-                                                    {t.screenshot_url && (
-                                                        <ImageIcon size={14} className="text-slate-400" title="Contiene captura de pantalla WebP" />
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="py-3 px-4 max-w-xs sm:max-w-md">
-                                                <div className="flex items-center gap-1.5">
-                                                    <p className="font-bold text-slate-800 truncate">{t.subject}</p>
-                                                    {t.diagnostic_relevance === 'alta' && (
-                                                        <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-rose-100 text-rose-700 border border-rose-200" title="El diagnóstico automático detectó un error en navegador/servidor directamente relacionado">
-                                                            Error Log {t.diagnostic_score ? `${t.diagnostic_score}%` : ''}
-                                                        </span>
-                                                    )}
-                                                    {t.diagnostic_relevance === 'media' && (
-                                                        <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200" title="Posible error en consola/red vinculado">
-                                                            Log {t.diagnostic_score ? `${t.diagnostic_score}%` : ''}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <span className="text-[11px] text-slate-400 font-medium block truncate">
-                                                    {t.module_name || 'General'} {t.company_name ? `· ${t.company_name}` : ''}
-                                                    {t.ai_notes ? ` · 🎯 Nota IA: "${t.ai_notes}"` : ''}
-                                                </span>
-                                            </td>
-                                            <td className="py-3 px-4 whitespace-nowrap">
-                                                <span className="text-xs font-semibold text-slate-600">{TYPE_LABELS[t.type] || t.type}</span>
-                                            </td>
-                                            <td className="py-3 px-4 whitespace-nowrap">
-                                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${PRIORITY_BADGES[t.priority] || ''}`}>
-                                                    {t.priority}
-                                                </span>
-                                            </td>
-                                            <td className="py-3 px-4 whitespace-nowrap">
-                                                <span className="font-semibold text-slate-700 text-xs">{t.creator_name || t.creator_username}</span>
-                                            </td>
-                                            <td className="py-3 px-4 whitespace-nowrap">
-                                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${st.badge}`}>
-                                                    <StIcon size={12} />
-                                                    <span>{st.label}</span>
-                                                </span>
-                                            </td>
-                                            <td className="py-3 px-4 whitespace-nowrap text-xs text-slate-500">
-                                                {formatDateTime(t.created_at)}
-                                            </td>
-                                            <td className="py-3 px-4 whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
-                                                <div className="inline-flex items-center gap-1.5">
-                                                    {canManageTickets && t.status !== 'resuelto' && t.status !== 'cerrado' && t.agy_status !== 'completado' && (
-                                                        <>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => setAgyTicketId(t.id)}
-                                                                title="Aprobar ticket y ejecutar flujo en Consola AGY con aprobación por Telegram"
-                                                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-extrabold border bg-slate-900 hover:bg-slate-800 text-emerald-400 border-slate-700 transition-all cursor-pointer"
-                                                            >
-                                                                <Terminal size={13} />
-                                                                <span>{t.agy_plan_version ? `AGY v${t.agy_plan_version}` : 'AGY'}</span>
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => toggleAiMutation.mutate({ id: t.id, nextVal: !inAi })}
-                                                                title={inAi ? 'Incluido en el paquete de prompt para IA (clic para quitar)' : 'Incluir este ticket en el paquete de prompt para IA'}
-                                                                className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer ${
-                                                                    inAi
-                                                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                                                                        : 'bg-white hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 border-slate-200'
-                                                                }`}
-                                                            >
-                                                                <Bot size={13} />
-                                                                <span>{inAi ? 'En IA ✓' : 'IA'}</span>
-                                                            </button>
-                                                        </>
-                                                    )}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => openTicketDetail(t.id)}
-                                                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 text-xs font-bold transition-colors cursor-pointer"
-                                                    >
-                                                        <Eye size={13} />
-                                                        <span>Detalle</span>
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <Table
+                    headers={[
+                    'Código',
+                    'Asunto / Módulo',
+                    'Tipo',
+                    'Prioridad',
+                    'Solicitante',
+                    'Estado',
+                    'Fecha',
+                    { label: 'Acciones', className: 'text-right' }
+                ]}
+                data={tickets}
+                isLoading={isLoading}
+                renderRow={(t) => {
+                    const st = STATUS_CONFIG[t.status] || STATUS_CONFIG.abierto;
+                    const StIcon = st.icon;
+                    const inAi = Boolean(t.include_in_ai_prompt);
+                    return (
+                        <tr
+                            key={t.id}
+                            onClick={() => openTicketDetail(t.id)}
+                            className={`hover:bg-slate-50/80 transition-colors cursor-pointer ${inAi ? 'bg-indigo-50/30' : ''}`}
+                        >
+                            <td className="py-3 px-4 whitespace-nowrap">
+                                <div className="flex items-center gap-1.5">
+                                    <span className={`font-mono text-xs font-extrabold px-2 py-0.5 rounded-lg border ${String(t.code || '').startsWith('ADM-') || String(t.source_system || '').includes('admin') ? 'text-purple-700 bg-purple-50 border-purple-200' : 'text-indigo-600 bg-indigo-50 border-indigo-100'}`}>
+                                        {t.code}
+                                    </span>
+                                    {t.screenshot_url && (
+                                        <ImageIcon size={14} className="text-slate-400" title="Contiene captura de pantalla WebP" />
+                                    )}
+                                </div>
+                            </td>
+                            <td className="py-3 px-4 max-w-xs sm:max-w-md">
+                                <div className="flex items-center gap-1.5">
+                                    <p className="font-bold text-slate-800 truncate">{t.subject}</p>
+                                    {t.diagnostic_relevance === 'alta' && (
+                                        <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-rose-100 text-rose-700 border border-rose-200" title="El diagnóstico automático detectó un error en navegador/servidor directamente relacionado">
+                                            Error Log {t.diagnostic_score ? `${t.diagnostic_score}%` : ''}
+                                        </span>
+                                    )}
+                                    {t.diagnostic_relevance === 'media' && (
+                                        <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200" title="Posible error en consola/red vinculado">
+                                            Log {t.diagnostic_score ? `${t.diagnostic_score}%` : ''}
+                                        </span>
+                                    )}
+                                </div>
+                                <span className="text-[11px] text-slate-400 font-medium block truncate">
+                                    {t.module_name || 'General'} {t.company_name ? `· ${t.company_name}` : ''}
+                                    {t.ai_notes ? ` · 🎯 Nota IA: "${t.ai_notes}"` : ''}
+                                </span>
+                            </td>
+                            <td className="py-3 px-4 whitespace-nowrap">
+                                <span className="text-xs font-semibold text-slate-600">{TYPE_LABELS[t.type] || t.type}</span>
+                            </td>
+                            <td className="py-3 px-4 whitespace-nowrap">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${PRIORITY_BADGES[t.priority] || ''}`}>
+                                    {t.priority}
+                                </span>
+                            </td>
+                            <td className="py-3 px-4 whitespace-nowrap">
+                                <span className="font-semibold text-slate-700 text-xs">{t.creator_name || t.creator_username}</span>
+                            </td>
+                            <td className="py-3 px-4 whitespace-nowrap">
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${st.badge}`}>
+                                    <StIcon size={12} />
+                                    <span>{st.label}</span>
+                                </span>
+                            </td>
+                            <td className="py-3 px-4 whitespace-nowrap text-xs text-slate-500">
+                                {formatDateTime(t.created_at)}
+                            </td>
+                            <td className="py-3 px-4 whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
+                                <div className="inline-flex items-center gap-1.5">
+                                    {canManageTickets && t.status !== 'resuelto' && t.status !== 'cerrado' && t.agy_status !== 'completado' && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => setAgyTicketId(t.id)}
+                                                title="Aprobar ticket y ejecutar flujo en Consola AGY con aprobación por Telegram"
+                                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-extrabold border bg-slate-900 hover:bg-slate-800 text-emerald-400 border-slate-700 transition-all cursor-pointer"
+                                            >
+                                                <Terminal size={13} />
+                                                <span>{t.agy_plan_version ? `AGY v${t.agy_plan_version}` : 'AGY'}</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => toggleAiMutation.mutate({ id: t.id, nextVal: !inAi })}
+                                                title={inAi ? 'Incluido en el paquete de prompt para IA (clic para quitar)' : 'Incluir este ticket en el paquete de prompt para IA'}
+                                                className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer ${
+                                                    inAi
+                                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                                                        : 'bg-white hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 border-slate-200'
+                                                }`}
+                                            >
+                                                <Bot size={13} />
+                                                <span>{inAi ? 'En IA ✓' : 'IA'}</span>
+                                            </button>
+                                        </>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => openTicketDetail(t.id)}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 text-xs font-bold transition-colors cursor-pointer"
+                                    >
+                                        <Eye size={13} />
+                                        <span>Detalle</span>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    );
+                }}
+            />
 
                 <Pagination
                     currentPage={pagination.page || page}
