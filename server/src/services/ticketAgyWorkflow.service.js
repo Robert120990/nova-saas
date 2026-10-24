@@ -7,7 +7,7 @@ const {
     buildAgyExecutionPrompt, extractCleanAgyResult, buildRemoteShellScript,
     runSshInteractiveSession, runLocalInteractiveSession
 } = require('./ticketAgyConsole.service');
-const { generateAiPlanFromCode, applyAiCodePatchAndBuild } = require('./ticketAgyCodeEngine.service');
+const { generateAiPlanFromCode, applyAiCodePatchAndBuild, getGitDirtySet } = require('./ticketAgyCodeEngine.service');
 
 let schemaEnsured = false;
 
@@ -165,8 +165,9 @@ async function startTicketAgyPlanning(ticketId, { model = null, aiNotes = undefi
             }
 
             if (!planMarkdown) {
-                const aiPlan = await generateAiPlanFromCode(preparingTicket, chosenModel, nextVersion, proj, relatedFiles);
-                planMarkdown = aiPlan || buildSynthesizedStructuredPlan(preparingTicket, chosenModel, nextVersion, relatedFiles, proj);
+                const freshFiles = findRelatedRepoFiles({ ...preparingTicket, agy_execution_log: consoleTranscript }, proj.projectPath);
+                const aiPlan = await generateAiPlanFromCode(preparingTicket, chosenModel, nextVersion, proj, freshFiles);
+                planMarkdown = aiPlan || buildSynthesizedStructuredPlan(preparingTicket, chosenModel, nextVersion, freshFiles, proj);
                 consoleTranscript += `[AGY] Plan de ejecución v${nextVersion} (${proj.projectLabel}) generado exitosamente y enviado a Telegram.\n`;
             }
 
@@ -230,6 +231,7 @@ async function executeApprovedTicketAgyPlan(ticketId, { approvedBy = 'SuperAdmin
                 sourceChatId: telegramContext?.sourceChatId || null, sourceMessageId: telegramContext?.sourceMessageId || null
             });
 
+            const preExistingDirtySet = getGitDirtySet(proj.projectPath);
             const promptText = buildAgyExecutionPrompt(runningTicket, chosenModel);
             const endMarker = '[[FIN_EJECUCION_AGY]]';
             const script = buildRemoteShellScript({ projectPath: proj.projectPath, agyCommand: settings.agy_command, model: chosenModel, promptText, isPlanPhase: false, endMarker });
@@ -254,11 +256,11 @@ async function executeApprovedTicketAgyPlan(ticketId, { approvedBy = 'SuperAdmin
 
             const patchResult = await applyAiCodePatchAndBuild(runningTicket, proj, relatedFiles, (msg) => {
                 if (liveProgress) liveProgress.onConsoleChunk(msg);
-            });
+            }, preExistingDirtySet);
 
-            if (patchResult.modifiedFiles.length === 0 && !execOutput) {
+            if (patchResult.modifiedFiles.length === 0) {
                 const warnSummary = sanitizeConsoleText(
-                    `⚠️ El motor AGY inspeccionó ${relatedFiles.join(', ')} en ${proj.projectLabel}, pero no pudo aplicar cambios automáticos sin intervención adicional. Agrega una Directriz Técnica (ai_notes) más específica o aplica el cambio manualmente.`
+                    `⚠️ El motor AGY inspeccionó ${relatedFiles.join(', ')} en ${proj.projectLabel}, pero no se registraron modificaciones de código en disco. Agrega una Directriz Técnica (ai_notes) más específica o aplica el cambio manualmente.`
                 );
                 await pool.query(
                     `UPDATE support_tickets SET agy_status = 'esperando_aprobacion', agy_execution_log = CONCAT(COALESCE(agy_execution_log, ''), '\n=== AVISO EJECUCIÓN ===\n', ?), agy_updated_at = NOW() WHERE id = ?`,
@@ -271,13 +273,13 @@ async function executeApprovedTicketAgyPlan(ticketId, { approvedBy = 'SuperAdmin
                 return;
             }
 
-            const touchedList = patchResult.modifiedFiles.length > 0 ? patchResult.modifiedFiles : relatedFiles;
+            const touchedList = patchResult.modifiedFiles;
             const finalSummary = sanitizeConsoleText(
                 execOutput ||
                 [
                     `✅ Plan v${runningTicket.agy_plan_version || 1} ejecutado en ${proj.projectLabel} (${chosenModel}).`,
                     `• Archivos modificados: ${touchedList.join(', ')}`,
-                    patchResult.buildLog ? `• Compilación: ${patchResult.buildLog}` : null,
+                    patchResult.buildLog ? `• Compilación / Despliegue: ${patchResult.buildLog}` : null,
                     patchResult.gitLog ? `• Git Sync: ${patchResult.gitLog}` : null,
                     `• Estado del ticket actualizado automáticamente a RESUELTO.`
                 ].filter(Boolean).join('\n')

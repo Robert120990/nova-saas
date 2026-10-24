@@ -47,10 +47,14 @@ function sanitizeConsoleText(str = '') {
 }
 
 function resolveActiveProjectPath(configuredPath) {
+    const runningRoot = detectDefaultProjectRoot();
+    if (runningRoot && fs.existsSync(path.join(runningRoot, 'client')) && fs.existsSync(path.join(runningRoot, 'server'))) {
+        return runningRoot;
+    }
     if (configuredPath && fs.existsSync(configuredPath) && configuredPath !== '/var/www/SIPEWEBgas') {
         return configuredPath;
     }
-    return detectDefaultProjectRoot();
+    return runningRoot;
 }
 
 async function getAgyServerSettings() {
@@ -178,7 +182,7 @@ function buildAgyPlanningPrompt(ticket, model, planVersion = 1) {
         `4. Estructura con estas secciones concisas:`,
         `   🎯 Diagnóstico: 1 o 2 oraciones sencillas explicando la causa del problema.`,
         `   🛠️ Solución propuesta: 2 o 3 viñetas concisas explicando qué se corregirá para el usuario.`,
-        `   📂 Componentes: 1 a 3 nombres de archivos o componentes clave a intervenir.`,
+        `   📂 Componentes: 1 a 3 rutas relativas de archivos clave a intervenir.`,
         `5. SI REQUIERES QUE EL ADMIN ELIJA UNA OPCIÓN: incluye "❓ OPCIONES A ELEGIR:" con:`,
         `   [OPCION_1]: Breve descripción humana de la primera opción`,
         `   [OPCION_2]: Breve descripción humana de la segunda opción`,
@@ -218,18 +222,27 @@ function buildAgyExecutionPrompt(ticket, model) {
 
 function extractCleanAgyResult(rawTranscript, endMarker) {
     const clean = stripAnsiCodes(rawTranscript);
-    if (!clean || !clean.includes(endMarker)) return '';
-    const beforeMarker = clean.split(endMarker)[0].trim();
+    if (!clean) return '';
+    const afterBanner = clean.replace(/^[\s\S]*?=== CONSOLA AGY [^\n]*===\n?/, '').trim();
+    const candidate = endMarker && afterBanner.includes(endMarker)
+        ? afterBanner.split(endMarker)[0].trim()
+        : afterBanner;
     if (
-        beforeMarker.includes('error: /model takes no arguments') ||
-        beforeMarker.includes('jetski: no output produced') ||
-        beforeMarker.includes('headless mode cannot prompt for') ||
-        beforeMarker.includes('INSTRUCCIONES ESTRICTAS PARA AGY') ||
-        beforeMarker.includes('INSTRUCCIONES DE EJECUCIÓN:')
+        !candidate ||
+        candidate.length < 40 ||
+        candidate.includes('error: /model takes no arguments') ||
+        candidate.includes('jetski: no output produced') ||
+        candidate.includes('headless mode cannot prompt for') ||
+        candidate.includes('INSTRUCCIONES ESTRICTAS PARA AGY') ||
+        candidate.includes('INSTRUCCIONES DE EJECUCIÓN:') ||
+        candidate.startsWith('[AGY] Analizador de repositorio integrado')
     ) {
         return '';
     }
-    return beforeMarker;
+    if (!afterBanner.includes(endMarker) && !/(?:###|🎯|Diagnóstico|Resumen|Archivos)/i.test(candidate)) {
+        return '';
+    }
+    return candidate;
 }
 
 function buildRemoteShellScript({ projectPath, agyCommand, model, promptText, isPlanPhase, endMarker }) {
