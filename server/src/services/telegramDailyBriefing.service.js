@@ -48,13 +48,14 @@ async function generateDailyBriefingReport(companyId, targetDate = null, isUpdat
 
     // 3. Obtener lecturas de combustible de cierres de ese día (tanto cerrados/reabiertos como abiertos con lecturas)
     const [fuelRows] = await pool.query(
-        `SELECT c.branch_id, r.descripcion_producto,
+        `SELECT c.branch_id, r.descripcion_producto, p.tipo_combustible,
                 COALESCE(SUM(r.diferencia), 0) AS galones,
                 COALESCE(SUM(r.monto), 0) AS monto
          FROM gas_station_closeouts c
          JOIN gas_station_closeout_readings r ON r.closeout_id = c.id
+         LEFT JOIN products p ON p.id = r.product_id
          WHERE c.company_id = ? AND c.fecha_turno = ?
-         GROUP BY c.branch_id, r.descripcion_producto`,
+         GROUP BY c.branch_id, r.descripcion_producto, p.tipo_combustible`,
         [companyId, fechaReporte]
     );
 
@@ -77,7 +78,7 @@ async function generateDailyBriefingReport(companyId, targetDate = null, isUpdat
 
         const rows = fuelByBranch.get(branchId) || [];
         for (const r of rows) {
-            const cat = categorizeFuel(r.descripcion_producto);
+            const cat = categorizeFuel(r.descripcion_producto, r.tipo_combustible);
             const gln = parseFloat(r.galones) || 0;
             const mto = parseFloat(r.monto) || 0;
             if (fuels[cat]) {

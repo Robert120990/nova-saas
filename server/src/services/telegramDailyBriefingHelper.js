@@ -51,12 +51,18 @@ function fmtGln(galones) {
     return `${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} gln`;
 }
 
-function categorizeFuel(desc) {
+function categorizeFuel(desc, tipo = null) {
+    const t = Number(tipo);
+    if (t === 4) return 'Ion Diesel';
+    if (t === 1) return 'Regular';
+    if (t === 2) return 'Súper';
+    if (t === 3 || t === 5) return 'Diesel';
+
     const u = (desc || '').toUpperCase();
-    if (u.includes('ION') || u.includes('DIESEL ESPECIAL') || u.includes('V-POWER') || u.includes('PREMIUM DIESEL')) {
+    if (u.includes('ION') || u.includes('V-POWER') || u.includes('PREMIUM DIESEL')) {
         return 'Ion Diesel';
     }
-    if (u.includes('DIESEL') || u.includes('MASTER DIESEL')) {
+    if (u.includes('DIESEL') || u.includes('MASTER')) {
         return 'Diesel';
     }
     if (u.includes('SUPER') || u.includes('SÚPER') || u.includes('ESPECIAL')) {
@@ -93,6 +99,9 @@ function formatCompanyReportMessage({ companyName, fechaDisplay, branchResults, 
             msg += `⛽ *Combustibles (Pista):*\n`;
             for (const ft of FUEL_TYPES) {
                 if (b.fuels[ft]) {
+                    if (ft === 'Ion Diesel' && b.fuels[ft].galones === 0 && b.fuels[ft].monto === 0) {
+                        continue;
+                    }
                     msg += `  • *${ft}:* ${fmtGln(b.fuels[ft].galones)} · ${fmtMoney(b.fuels[ft].monto)}\n`;
                 }
             }
