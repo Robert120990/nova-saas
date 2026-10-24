@@ -53,13 +53,13 @@ function fmtGln(galones) {
 
 function categorizeFuel(desc) {
     const u = (desc || '').toUpperCase();
-    if (u.includes('ION') || u.includes('ESPECIAL') || u.includes('V-POWER') || u.includes('PREMIUM DIESEL')) {
+    if (u.includes('ION') || u.includes('DIESEL ESPECIAL') || u.includes('V-POWER') || u.includes('PREMIUM DIESEL')) {
         return 'Ion Diesel';
     }
     if (u.includes('DIESEL') || u.includes('MASTER DIESEL')) {
         return 'Diesel';
     }
-    if (u.includes('SUPER') || u.includes('SÚPER')) {
+    if (u.includes('SUPER') || u.includes('SÚPER') || u.includes('ESPECIAL')) {
         return 'Súper';
     }
     if (u.includes('REGULAR')) {
@@ -70,15 +70,20 @@ function categorizeFuel(desc) {
 
 const FUEL_TYPES = ['Diesel', 'Regular', 'Súper', 'Ion Diesel'];
 
-function formatCompanyReportMessage({ companyName, fechaDisplay, branchResults }) {
-    let msg = `🌅 *REPORTE DIARIO DE VENTAS — ${fechaDisplay}*\n`;
+function formatCompanyReportMessage({ companyName, fechaDisplay, branchResults, isUpdate = false }) {
+    let msg = isUpdate
+        ? `🔄 *ACTUALIZACIÓN DE VENTAS — ${fechaDisplay}*\n`
+        : `🌅 *REPORTE DIARIO DE VENTAS — ${fechaDisplay}*\n`;
     msg += `🏢 *${companyName}*\n`;
     msg += `━━━━━━━━━━━━━━━━━━━━\n\n`;
 
     for (let i = 0; i < branchResults.length; i++) {
         const b = branchResults[i];
         msg += `📍 *${b.branchName}*\n`;
-        if (b.totalSucursal === 0) {
+        if (b.shiftsSummary) {
+            msg += `  ${b.shiftsSummary}\n`;
+        }
+        if (b.totalSucursal === 0 && !b.shiftsSummary) {
             msg += `  _(Sin ventas registradas en la fecha)_\n\n`;
             if (i < branchResults.length - 1) msg += `────────────────────\n\n`;
             continue;
@@ -87,7 +92,12 @@ function formatCompanyReportMessage({ companyName, fechaDisplay, branchResults }
         if (b.subtotalPistaGln > 0) {
             msg += `⛽ *Combustibles (Pista):*\n`;
             for (const ft of FUEL_TYPES) {
-                msg += `  • *${ft}:* ${fmtGln(b.fuels[ft].galones)} · ${fmtMoney(b.fuels[ft].monto)}\n`;
+                if (b.fuels[ft]) {
+                    msg += `  • *${ft}:* ${fmtGln(b.fuels[ft].galones)} · ${fmtMoney(b.fuels[ft].monto)}\n`;
+                }
+            }
+            if (b.fuels['Otros']?.galones > 0 || b.fuels['Otros']?.monto > 0) {
+                msg += `  • *Otros:* ${fmtGln(b.fuels['Otros'].galones)} · ${fmtMoney(b.fuels['Otros'].monto)}\n`;
             }
             msg += `  ▸ *Subtotal Pista:* ${fmtGln(b.subtotalPistaGln)} · *${fmtMoney(b.subtotalPistaMonto)}*\n`;
         }
@@ -134,6 +144,20 @@ function formatGroupSummaryMessage(reports, fechaDisplay) {
     return msg;
 }
 
+async function getAlertChatIds(pool, companyId = null) {
+    if (companyId) {
+        const [chats] = await pool.query(
+            'SELECT DISTINCT chat_id FROM telegram_chat_bindings WHERE receive_alerts = 1 AND (company_id = ? OR company_id IS NULL)',
+            [companyId]
+        );
+        return chats.map(c => c.chat_id);
+    }
+    const [globalChats] = await pool.query(
+        'SELECT DISTINCT chat_id FROM telegram_chat_bindings WHERE receive_alerts = 1 AND company_id IS NULL'
+    );
+    return globalChats.map(c => c.chat_id);
+}
+
 module.exports = {
     getElSalvadorDate,
     getYesterdayElSalvador,
@@ -145,5 +169,6 @@ module.exports = {
     categorizeFuel,
     FUEL_TYPES,
     formatCompanyReportMessage,
-    formatGroupSummaryMessage
+    formatGroupSummaryMessage,
+    getAlertChatIds
 };

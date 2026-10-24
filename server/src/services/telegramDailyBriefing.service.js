@@ -9,13 +9,14 @@ const {
     formatDateDDMMYYYY,
     categorizeFuel,
     FUEL_TYPES,
-    formatCompanyReportMessage
+    formatCompanyReportMessage,
+    getAlertChatIds
 } = require('./telegramDailyBriefingHelper');
 
 /**
  * Consulta y formatea el reporte de ventas del día anterior para una empresa
  */
-async function generateDailyBriefingReport(companyId, targetDate = null) {
+async function generateDailyBriefingReport(companyId, targetDate = null, isUpdate = false) {
     const fechaReporte = normalizeDateStr(targetDate);
     const fechaDisplay = formatDateDDMMYYYY(fechaReporte);
 
@@ -30,14 +31,29 @@ async function generateDailyBriefingReport(companyId, targetDate = null) {
 
     if (branches.length === 0) return null;
 
-    // 2. Obtener lecturas de combustible de cierres de ese día
+    // 2. Obtener información de turnos registrados para la fecha
+    const [closeoutRows] = await pool.query(
+        `SELECT id, branch_id, numero_turno, estado
+         FROM gas_station_closeouts
+         WHERE company_id = ? AND fecha_turno = ?
+         ORDER BY branch_id, CAST(numero_turno AS UNSIGNED) ASC`,
+        [companyId, fechaReporte]
+    );
+
+    const closeoutsByBranch = new Map();
+    for (const c of closeoutRows) {
+        if (!closeoutsByBranch.has(c.branch_id)) closeoutsByBranch.set(c.branch_id, []);
+        closeoutsByBranch.get(c.branch_id).push(c);
+    }
+
+    // 3. Obtener lecturas de combustible de cierres de ese día (tanto cerrados/reabiertos como abiertos con lecturas)
     const [fuelRows] = await pool.query(
         `SELECT c.branch_id, r.descripcion_producto,
                 COALESCE(SUM(r.diferencia), 0) AS galones,
                 COALESCE(SUM(r.monto), 0) AS monto
          FROM gas_station_closeouts c
          JOIN gas_station_closeout_readings r ON r.closeout_id = c.id
-         WHERE c.company_id = ? AND c.fecha_turno = ? AND c.estado IN ('cerrado', 'reabierto')
+         WHERE c.company_id = ? AND c.fecha_turno = ?
          GROUP BY c.branch_id, r.descripcion_producto`,
         [companyId, fechaReporte]
     );
@@ -48,28 +64,16 @@ async function generateDailyBriefingReport(companyId, targetDate = null) {
         fuelByBranch.get(row.branch_id).push(row);
     }
 
-    // 3. Consultar ventas por sucursal
+    // 4. Consultar ventas por sucursal
     const branchResults = [];
-    const globalFuels = {
-        'Diesel': { galones: 0, monto: 0 },
-        'Regular': { galones: 0, monto: 0 },
-        'Súper': { galones: 0, monto: 0 },
-        'Ion Diesel': { galones: 0, monto: 0 }
-    };
-    let globalPistaGalones = 0;
-    let globalPistaMonto = 0;
-    let globalTiendaMonto = 0;
+    const emptyFuels = () => ({ 'Diesel': { galones: 0, monto: 0 }, 'Regular': { galones: 0, monto: 0 }, 'Súper': { galones: 0, monto: 0 }, 'Ion Diesel': { galones: 0, monto: 0 }, 'Otros': { galones: 0, monto: 0 } });
+    const globalFuels = emptyFuels();
+    let globalPistaGalones = 0, globalPistaMonto = 0, globalTiendaMonto = 0;
 
     for (const br of branches) {
         const branchId = br.id;
         const branchName = br.nombre;
-
-        const fuels = {
-            'Diesel': { galones: 0, monto: 0 },
-            'Regular': { galones: 0, monto: 0 },
-            'Súper': { galones: 0, monto: 0 },
-            'Ion Diesel': { galones: 0, monto: 0 }
-        };
+        const fuels = emptyFuels();
 
         const rows = fuelByBranch.get(branchId) || [];
         for (const r of rows) {
@@ -79,13 +83,15 @@ async function generateDailyBriefingReport(companyId, targetDate = null) {
             if (fuels[cat]) {
                 fuels[cat].galones += gln;
                 fuels[cat].monto += mto;
-                globalFuels[cat].galones += gln;
-                globalFuels[cat].monto += mto;
+                if (globalFuels[cat]) {
+                    globalFuels[cat].galones += gln;
+                    globalFuels[cat].monto += mto;
+                }
             }
         }
 
-        const subtotalPistaGln = FUEL_TYPES.reduce((acc, f) => acc + fuels[f].galones, 0);
-        const subtotalPistaMonto = FUEL_TYPES.reduce((acc, f) => acc + fuels[f].monto, 0);
+        const subtotalPistaGln = Object.values(fuels).reduce((acc, f) => acc + f.galones, 0);
+        const subtotalPistaMonto = Object.values(fuels).reduce((acc, f) => acc + f.monto, 0);
 
         // Ventas de Tienda
         let storeAmount = 0;
@@ -109,6 +115,20 @@ async function generateDailyBriefingReport(companyId, targetDate = null) {
         globalPistaMonto += subtotalPistaMonto;
         globalTiendaMonto += storeAmount;
 
+        // Resumen de estado de turnos de la sucursal
+        const bCloseouts = closeoutsByBranch.get(branchId) || [];
+        let shiftsSummary = null;
+        if (bCloseouts.length > 0) {
+            const openCount = bCloseouts.filter(x => x.estado === 'abierto').length;
+            const turnosList = bCloseouts.map(x => `T${x.numero_turno}${x.estado === 'abierto' ? ' (Abierto)' : ''}`).join(', ');
+
+            if (openCount > 0) {
+                shiftsSummary = `📋 *Turnos:* ${turnosList} · ⚠️ _(${openCount} turno(s) aún abierto(s))_`;
+            } else {
+                shiftsSummary = `📋 *Turnos cerrados:* ${bCloseouts.length} (${turnosList})`;
+            }
+        }
+
         branchResults.push({
             branchId,
             branchName,
@@ -116,13 +136,14 @@ async function generateDailyBriefingReport(companyId, targetDate = null) {
             subtotalPistaGln,
             subtotalPistaMonto,
             storeAmount,
-            totalSucursal
+            totalSucursal,
+            shiftsSummary
         });
     }
 
     const granTotal = globalPistaMonto + globalTiendaMonto;
 
-    // 4. Formatear mensaje para Telegram
+    // 5. Formatear mensaje para Telegram
     const message = formatCompanyReportMessage({
         companyName,
         fechaDisplay,
@@ -131,7 +152,8 @@ async function generateDailyBriefingReport(companyId, targetDate = null) {
         globalPistaGalones,
         globalPistaMonto,
         globalTiendaMonto,
-        granTotal
+        granTotal,
+        isUpdate
     });
 
     return {
@@ -145,34 +167,19 @@ async function generateDailyBriefingReport(companyId, targetDate = null) {
     };
 }
 
-async function getAlertChatIds(companyId = null) {
-    if (companyId) {
-        const [chats] = await pool.query(
-            'SELECT DISTINCT chat_id FROM telegram_chat_bindings WHERE receive_alerts = 1 AND (company_id = ? OR company_id IS NULL)',
-            [companyId]
-        );
-        return chats.map(c => c.chat_id);
-    }
-    // Global alerts only for multi-company consolidation
-    const [globalChats] = await pool.query(
-        'SELECT DISTINCT chat_id FROM telegram_chat_bindings WHERE receive_alerts = 1 AND company_id IS NULL'
-    );
-    return globalChats.map(c => c.chat_id);
-}
-
 /**
  * Envía el reporte a todos los chats autorizados de una empresa
  */
-async function sendDailyBriefingForCompany(companyId, { targetDate = null, manual = false } = {}) {
+async function sendDailyBriefingForCompany(companyId, { targetDate = null, manual = false, specificChatId = null, isUpdate = false } = {}) {
     if (!manual) {
         const [settings] = await pool.query('SELECT daily_briefing_active FROM telegram_settings WHERE id = 1');
         if (settings[0]?.daily_briefing_active === 0) return { skipped: true, reason: 'Configuración inactiva' };
     }
 
-    const report = await generateDailyBriefingReport(companyId, targetDate);
+    const report = await generateDailyBriefingReport(companyId, targetDate, isUpdate);
     if (!report?.message) return { success: false, message: 'No se encontraron sucursales para esta empresa.' };
 
-    const chatIds = await getAlertChatIds(companyId);
+    const chatIds = specificChatId ? [specificChatId] : await getAlertChatIds(pool, companyId);
     if (chatIds.length === 0) return { success: false, message: 'No hay chats de Telegram vinculados a esta empresa.' };
 
     let sentCount = 0;
@@ -197,7 +204,7 @@ async function sendDailyBriefingForCompany(companyId, { targetDate = null, manua
 /**
  * Envía el reporte de TODAS las empresas que operan estaciones de servicio / ventas
  */
-async function sendAllDailyBriefings({ targetDate = null, manual = false } = {}) {
+async function sendAllDailyBriefings({ targetDate = null, manual = false, isUpdate = false } = {}) {
     if (!manual) {
         const [settings] = await pool.query('SELECT daily_briefing_active, daily_briefing_last_sent_date FROM telegram_settings WHERE id = 1');
         if (settings[0]?.daily_briefing_active === 0) {
@@ -232,10 +239,10 @@ async function sendAllDailyBriefings({ targetDate = null, manual = false } = {})
 
     for (const c of companies) {
         try {
-            const report = await generateDailyBriefingReport(c.id, targetDate);
+            const report = await generateDailyBriefingReport(c.id, targetDate, isUpdate);
             if (report?.message) {
                 generatedReports.push(report);
-                const companyChats = await getAlertChatIds(c.id);
+                const companyChats = await getAlertChatIds(pool, c.id);
                 for (const chatId of companyChats) {
                     try {
                         await telegramService.sendMessage(chatId, report.message, { parse_mode: 'Markdown' });
@@ -250,8 +257,6 @@ async function sendAllDailyBriefings({ targetDate = null, manual = false } = {})
         }
     }
 
-    // El consolidado del grupo ha sido desactivado a solicitud del usuario.
-
     return {
         success: true,
         count: generatedReports.length,
@@ -260,20 +265,40 @@ async function sendAllDailyBriefings({ targetDate = null, manual = false } = {})
     };
 }
 
-// ============ Programador Cron (7:00 AM hora El Salvador) ============
+/**
+ * Revisa si alguna empresa tuvo cierres nocturnos finalizados tarde y envía la actualización
+ */
+async function checkAndSendFollowUpBriefings(targetDate = null) {
+    const fecha = normalizeDateStr(targetDate);
+    const [companiesWithLateCloseouts] = await pool.query(`
+        SELECT DISTINCT c.id, c.razon_social
+        FROM companies c
+        JOIN gas_station_closeouts co ON co.company_id = c.id
+        WHERE co.fecha_turno = ? AND co.closed_at >= CONCAT(CURDATE(), ' 08:00:00')
+    `, [fecha]);
 
+    for (const c of companiesWithLateCloseouts) {
+        try {
+            await sendDailyBriefingForCompany(c.id, { targetDate: fecha, manual: true, isUpdate: true });
+            await new Promise(r => setTimeout(r, 400));
+        } catch (e) {
+            console.error(`[DailyBriefing] Error en follow-up empresa ${c.id}:`, e.message);
+        }
+    }
+}
+
+// ============ Programador Cron (8:00 AM y seguimiento 9:30 AM hora El Salvador) ============
 let cronInterval = null;
 let lastSentDate = null;
+let lastFollowUpDate = null;
 
 function startDailyBriefingCron() {
-    // Si no estamos en producción y no se forzó el cron local, desactivar para no colisionar con el servidor VPS
     if (process.env.NODE_ENV !== 'production' && process.env.TELEGRAM_DEV_CRON !== 'true') {
-        console.log('[DailyBriefing] Cron de Reporte Matutino desactivado en entorno local para evitar colisión con el servidor VPS (usar TELEGRAM_DEV_CRON=true en .env si se desea probar en local).');
+        console.log('[DailyBriefing] Cron desactivado en local (usar TELEGRAM_DEV_CRON=true si se desea probar).');
         return;
     }
-
     if (cronInterval) return;
-    console.log('[DailyBriefing] Cron de Reporte Matutino iniciado (7:00 AM El Salvador).');
+    console.log('[DailyBriefing] Cron de Reporte Matutino iniciado (8:00 AM y seguimiento 9:30 AM El Salvador).');
 
     cronInterval = setInterval(async () => {
         try {
@@ -281,13 +306,23 @@ function startDailyBriefingCron() {
             const { hour: h, minute: m } = getElSalvadorTime(now);
             const currentDayStr = getElSalvadorDate(now);
 
-            if (h === 7 && m === 0 && lastSentDate !== currentDayStr) {
+            // 8:00 AM: Envío matutino principal
+            if (h === 8 && m === 0 && lastSentDate !== currentDayStr) {
                 lastSentDate = currentDayStr;
-                console.log(`[DailyBriefing] 7:00 AM alcanzado. Enviando reporte matutino de todas las empresas...`);
+                console.log(`[DailyBriefing] 8:00 AM alcanzado. Enviando reporte matutino de todas las empresas...`);
                 await sendAllDailyBriefings({ targetDate: getYesterdayElSalvador() });
             }
-            if (lastSentDate && lastSentDate !== currentDayStr && h < 7) {
+
+            // 9:30 AM: Seguimiento automático para turnos nocturnos cerrados tarde
+            if (h === 9 && m === 30 && lastFollowUpDate !== currentDayStr) {
+                lastFollowUpDate = currentDayStr;
+                console.log(`[DailyBriefing] 9:30 AM alcanzado. Verificando turnos cerrados tarde...`);
+                await checkAndSendFollowUpBriefings(getYesterdayElSalvador());
+            }
+
+            if (lastSentDate && lastSentDate !== currentDayStr && h < 8) {
                 lastSentDate = null;
+                lastFollowUpDate = null;
             }
         } catch (e) {
             console.error('[DailyBriefing] Error en cron:', e.message);
@@ -306,6 +341,7 @@ module.exports = {
     generateDailyBriefingReport,
     sendDailyBriefingForCompany,
     sendAllDailyBriefings,
+    checkAndSendFollowUpBriefings,
     startDailyBriefingCron,
     stopDailyBriefingCron
 };

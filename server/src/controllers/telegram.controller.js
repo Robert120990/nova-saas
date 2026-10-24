@@ -306,10 +306,11 @@ const updateDailyBriefingSetting = async (req, res) => {
 const testDailyBriefing = async (req, res) => {
     try {
         const isSuperAdmin = req.user?.role === 'SuperAdmin';
+        const targetDate = req.body?.targetDate || req.query?.targetDate || null;
         const result = isSuperAdmin
-            ? await telegramDailyBriefingService.sendAllDailyBriefings({ manual: true })
-            : await telegramDailyBriefingService.sendDailyBriefingForCompany(req.company_id, { manual: true });
-        if (result.success) return res.json({ success: true, message: result.message || 'Reporte de prueba enviado exitosamente a Telegram' });
+            ? await telegramDailyBriefingService.sendAllDailyBriefings({ manual: true, targetDate })
+            : await telegramDailyBriefingService.sendDailyBriefingForCompany(req.company_id, { manual: true, targetDate });
+        if (result.success) return res.json({ success: true, message: result.message || 'Reporte enviado exitosamente a Telegram' });
         res.status(400).json({ success: false, message: result.message || 'No se pudo enviar el reporte' });
     } catch (error) {
         console.error('Error testDailyBriefing:', error);

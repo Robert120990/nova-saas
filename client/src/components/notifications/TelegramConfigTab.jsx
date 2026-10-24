@@ -201,7 +201,7 @@ export default function TelegramConfigTab({ telegramStatus, branches = [], isSup
           <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 flex items-center justify-between">
             <div>
               <span className="text-xs font-bold text-slate-800 block">Reporte Matutino Diario</span>
-              <span className="text-[11px] text-slate-500">Envía resumen ejecutivo automático cada mañana a las 7:00 AM.</span>
+              <span className="text-[11px] text-slate-500">Envía resumen ejecutivo automático cada mañana a las 8:00 AM.</span>
             </div>
             <div className="flex items-center gap-2">
               <button

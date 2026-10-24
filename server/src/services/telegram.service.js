@@ -241,6 +241,15 @@ async function handleMessage(chatId, text, from) {
         const arg = trimmed.replace(/^\/alertas\s*/i, '');
         return handleAlertas(chatId, arg);
     }
+    if (trimmed.startsWith('/reporte')) {
+        const { sendDailyBriefingForCompany, sendAllDailyBriefings, getYesterdayElSalvador } = require('./telegramDailyBriefing.service');
+        const targetDate = trimmed.includes('hoy') ? null : getYesterdayElSalvador();
+        if (!state.companyId) {
+            await sendMessage(chatId, '📊 Generando reporte diario de ventas...');
+            return sendAllDailyBriefings({ targetDate, manual: true });
+        }
+        return sendDailyBriefingForCompany(state.companyId, { targetDate, manual: true, specificChatId: chatId });
+    }
 
     // Interceptar gestión de tickets de soporte (/tickets, /resolver, notas interactivas)
     try {
@@ -328,18 +337,9 @@ async function setBotToken(newToken) {
     memoryBotToken = newToken;
     botInfoCache = null;
     lastUpdateId = 0;
-    if (newToken) {
-        await startBot();
-    }
+    if (newToken) await startBot();
 }
 
 module.exports = {
-    sendMessage,
-    apiCall,
-    getMe,
-    startBot,
-    pollOnce,
-    splitText,
-    getBotToken,
-    setBotToken
+    sendMessage, apiCall, getMe, startBot, pollOnce, splitText, getBotToken, setBotToken
 };
