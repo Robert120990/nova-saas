@@ -1,5 +1,5 @@
 const { z } = require('zod');
-const { optionalString, requiredString } = require('./schemaHelpers');
+const { optionalString, requiredString, emptyToNullId } = require('./schemaHelpers');
 
 /**
  * Validation schemas for Sales & Invoicing (Ventas y Facturación)
@@ -146,12 +146,12 @@ const salesTiendaRrsSchema = z.object({
 
 const editDTEItemsSchema = z.object({
     items: z.array(z.object({
-        sales_item_id: z.coerce.number().int().positive().optional(),
+        sales_item_id: emptyToNullId,
         descripcion: z.string({ required_error: 'La descripción es requerida' })
             .trim().min(1, 'La descripción no puede estar vacía'),
-        cantidad: z.coerce.number().positive().optional(),
-        precio_unitario: z.coerce.number().min(0).optional()
-    }), { required_error: 'items es requerido' }).min(1, 'Debe incluir al menos un ítem')
+        cantidad: z.coerce.number().positive('La cantidad debe ser mayor a cero').optional().default(1),
+        precio_unitario: z.coerce.number().min(0).nullable().optional()
+    }), { required_error: 'items es requerido' })
 });
 
 module.exports = {

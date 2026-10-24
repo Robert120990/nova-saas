@@ -6,6 +6,7 @@
 module.exports = {
     ...require('./salesCore.controller'),
     ...require('./salesDte.controller'),
+    ...require('./salesEditDteItems.controller'),
     ...require('./salesContingencyAndRetorno.controller'),
     ...require('./salesReportsAndRtee.controller'),
     ...require('./salesIntegrityAudit.controller'),
