@@ -11,9 +11,9 @@ function categorizeFuel(item, readings = []) {
         if (match) name = String(match.descripcion_producto || match.prod_nombre || '').toUpperCase();
     }
     const tipo = Number(item?.tipo_combustible);
-    if (tipo === 5 || name.includes('ION') || name.includes('ESPECIAL')) return { key: 'ion_diesel', label: 'ION DIESEL' };
+    if (tipo === 4 || name.includes('ION') || name.includes('V-POWER') || name.includes('PREMIUM DIESEL')) return { key: 'ion_diesel', label: 'ION DIESEL' };
     if (tipo === 1 || name.includes('REGULAR')) return { key: 'regular', label: 'REGULAR' };
-    if (tipo === 2 || name.includes('SUPER')) return { key: 'super', label: 'SUPER' };
+    if (tipo === 2 || name.includes('SUPER') || name.includes('SÚPER') || (name.includes('ESPECIAL') && !name.includes('DIESEL'))) return { key: 'super', label: 'SUPER' };
     return { key: 'diesel', label: 'DIESEL' };
 }
 
