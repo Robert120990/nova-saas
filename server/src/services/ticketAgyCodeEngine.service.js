@@ -2,17 +2,10 @@ const fs = require('fs');
 const path = require('path');
 const { execSync, spawn } = require('child_process');
 const aiService = require('./ai.service');
+const { setAppVersion } = require('./websocket.service');
 
-const ADMIN_CANDIDATE_PATHS = [
-    process.env.AGY_ADMIN_PROJECT_PATH, '/var/www/sipeadmin', '/opt/sipeadmin',
-    '/home/sistemas/sipeadmin', '/home/sistemas/SIPEOFI', '/opt/SIPEOFI',
-    path.resolve(process.cwd(), '../../SIPEOFI'), path.resolve(process.cwd(), '../SIPEOFI'), 'c:/Proyects local/SIPEOFI'
-].filter(Boolean);
-
-const SAAS_CANDIDATE_PATHS = [
-    process.env.AGY_PROJECT_PATH, path.resolve(process.cwd(), '..'),
-    '/opt/nova-saas', '/var/www/SIPEWEBgas', '/home/sistemas/SIPEWEBgas', 'c:/Proyects local/SIPEWEBgas'
-].filter(Boolean);
+const ADMIN_CANDIDATE_PATHS = [process.env.AGY_ADMIN_PROJECT_PATH, '/var/www/sipeadmin', '/opt/sipeadmin', '/home/sistemas/sipeadmin', '/home/sistemas/SIPEOFI', '/opt/SIPEOFI', path.resolve(process.cwd(), '../../SIPEOFI'), path.resolve(process.cwd(), '../SIPEOFI'), 'c:/Proyects local/SIPEOFI'].filter(Boolean);
+const SAAS_CANDIDATE_PATHS = [process.env.AGY_PROJECT_PATH, path.resolve(process.cwd(), '..'), '/opt/nova-saas', '/var/www/SIPEWEBgas', '/home/sistemas/SIPEWEBgas', 'c:/Proyects local/SIPEWEBgas'].filter(Boolean);
 
 function isTicketFromAdminProject(ticket = {}) {
     const code = String(ticket.ticket_code || '').toUpperCase();
@@ -33,10 +26,8 @@ function resolveProjectForTicket(ticket = {}, settings = {}) {
             frontendDir: 'frontend', backendDir: 'backend', pm2AppName: 'sipeadmin-backend'
         };
     }
-
     const configured = settings?.project_path;
-    const candidates = [configured, ...SAAS_CANDIDATE_PATHS].filter(Boolean);
-    const foundSaas = candidates.find((c) => {
+    const foundSaas = [configured, ...SAAS_CANDIDATE_PATHS].filter(Boolean).find((c) => {
         try { return fs.existsSync(c) && fs.existsSync(path.join(c, 'client')); } catch { return false; }
     });
     return {
@@ -47,30 +38,13 @@ function resolveProjectForTicket(ticket = {}, settings = {}) {
 }
 
 const KNOWN_SAAS_ROUTE_FILES = {
-    '/ventas': [
-        'server/src/schemas/salesSchemas.js', 'server/src/controllers/sales/salesEditDteItems.controller.js',
-        'server/src/controllers/sales/salesDte.controller.js', 'client/src/pages/SalesHistory.jsx', 'client/src/pages/SalesTerminal.jsx'
-    ],
-    '/industrial/empaque': [
-        'client/src/components/egg/packaging/EggNewPackagingModal.jsx', 'client/src/components/egg/packaging/PackagingItemsSection.jsx',
-        'client/src/components/egg/packaging/EggEditPackagingModal.jsx', 'client/src/constants/eggIndustrialCatalogs.js', 'client/src/pages/EggIndustrial/Packaging.jsx'
-    ],
-    '/industrial/produccion': [
-        'client/src/components/egg/production/ProductionIsNewBatchModalOpenModal.jsx',
-        'client/src/constants/eggIndustrialCatalogs.js', 'client/src/pages/EggIndustrial/Production.jsx'
-    ],
-    '/industrial/calendario': [
-        'client/src/components/egg/productionCalendar/eggCalendarConstants.js',
-        'client/src/components/egg/productionCalendar/useProductionCalendarModel.jsx', 'client/src/pages/EggIndustrial/ProductionCalendar.jsx'
-    ],
-    '/ventas/descuentos': [
-        'client/src/pages/CustomerDiscounts.jsx', 'client/src/components/sales/CustomerDiscountModal.jsx',
-        'server/src/controllers/customerDiscount.controller.js', 'server/src/schemas/promoSchemas.js'
-    ],
-    '/inventario/movimientos': [
-        'client/src/pages/InventoryAdjustments.jsx', 'client/src/components/inventory/tabs/NewAdjustmentTab.jsx',
-        'server/src/controllers/inventoryAdjustment/inventoryAdjustmentCore.controller.js'
-    ]
+    '/branches': ['server/src/controllers/branch.controller.js', 'server/src/schemas/companySchemas.js', 'client/src/pages/Branches.jsx', 'client/src/components/branches/BranchModal.jsx'],
+    '/ventas': ['server/src/schemas/salesSchemas.js', 'server/src/controllers/sales/salesEditDteItems.controller.js', 'server/src/controllers/sales/salesDte.controller.js', 'client/src/pages/SalesHistory.jsx', 'client/src/pages/SalesTerminal.jsx'],
+    '/industrial/empaque': ['client/src/components/egg/packaging/EggNewPackagingModal.jsx', 'client/src/components/egg/packaging/PackagingItemsSection.jsx', 'client/src/components/egg/packaging/EggEditPackagingModal.jsx', 'client/src/constants/eggIndustrialCatalogs.js', 'client/src/pages/EggIndustrial/Packaging.jsx'],
+    '/industrial/produccion': ['client/src/components/egg/production/ProductionIsNewBatchModalOpenModal.jsx', 'client/src/constants/eggIndustrialCatalogs.js', 'client/src/pages/EggIndustrial/Production.jsx'],
+    '/industrial/calendario': ['client/src/components/egg/productionCalendar/eggCalendarConstants.js', 'client/src/components/egg/productionCalendar/useProductionCalendarModel.jsx', 'client/src/pages/EggIndustrial/ProductionCalendar.jsx'],
+    '/ventas/descuentos': ['client/src/pages/CustomerDiscounts.jsx', 'client/src/components/sales/CustomerDiscountModal.jsx', 'server/src/controllers/customerDiscount.controller.js', 'server/src/schemas/promoSchemas.js'],
+    '/inventario/movimientos': ['client/src/pages/InventoryAdjustments.jsx', 'client/src/components/inventory/tabs/NewAdjustmentTab.jsx', 'server/src/controllers/inventoryAdjustment/inventoryAdjustmentCore.controller.js']
 };
 
 const KNOWN_ADMIN_ROUTE_FILES = {
@@ -96,10 +70,8 @@ function findRouteMappedFiles(rootDir, pageUrl, isAdmin) {
     const matched = [];
     const cleanRoute = String(pageUrl).split('?')[0].trim();
     const routeMap = isAdmin ? KNOWN_ADMIN_ROUTE_FILES : KNOWN_SAAS_ROUTE_FILES;
-    if (routeMap[cleanRoute]) {
-        for (const rel of routeMap[cleanRoute]) {
-            if (fs.existsSync(path.join(rootDir, rel))) matched.push(rel);
-        }
+    for (const rel of (routeMap[cleanRoute] || [])) {
+        if (fs.existsSync(path.join(rootDir, rel))) matched.push(rel);
     }
     const srcBase = isAdmin ? 'frontend/src' : 'client/src';
     const routerFiles = isAdmin
@@ -112,21 +84,16 @@ function findRouteMappedFiles(rootDir, pageUrl, isAdmin) {
             const content = fs.readFileSync(rf, 'utf8');
             const importMap = {};
             const importRegex = /(?:const|let)\s+([A-Z][A-Za-z0-9_]*)\s*=.*import\(['"]\.\/([^'"]+)['"]\)|import\s+([A-Z][A-Za-z0-9_]*)\s+from\s+['"]\.\/([^'"]+)['"]/g;
-            let im = importRegex.exec(content);
-            while (im) {
+            for (let im = importRegex.exec(content); im; im = importRegex.exec(content)) {
                 const name = im[1] || im[3];
                 const relImport = im[2] || im[4];
                 if (name && relImport) importMap[name] = relImport;
-                im = importRegex.exec(content);
             }
-            for (const line of content.split('\n')) {
-                if (line.includes(cleanRoute)) {
-                    for (const raw of (line.match(/<([A-Z][A-Za-z0-9_]+)/g) || [])) {
-                        const compName = raw.replace('<', '');
-                        const candidates = [importMap[compName] ? `${srcBase}/${importMap[compName]}.jsx` : null, `${srcBase}/pages/${compName}.jsx`].filter(Boolean);
-                        for (const relCand of candidates) {
-                            if (fs.existsSync(path.join(rootDir, relCand))) matched.push(relCand);
-                        }
+            for (const line of content.split('\n').filter((l) => l.includes(cleanRoute))) {
+                for (const raw of (line.match(/<([A-Z][A-Za-z0-9_]+)/g) || [])) {
+                    const compName = raw.replace('<', '');
+                    for (const relCand of [importMap[compName] ? `${srcBase}/${importMap[compName]}.jsx` : null, `${srcBase}/pages/${compName}.jsx`].filter(Boolean)) {
+                        if (fs.existsSync(path.join(rootDir, relCand))) matched.push(relCand);
                     }
                 }
             }
@@ -138,21 +105,12 @@ function findRouteMappedFiles(rootDir, pageUrl, isAdmin) {
 function findSmartRelatedFiles(ticket, settings = {}) {
     const proj = resolveProjectForTicket(ticket, settings);
     const rootDir = proj.projectPath;
-    if (!fs.existsSync(rootDir)) {
-        return proj.isAdmin ? ['frontend/src/pages/DashboardLayout.jsx'] : ['client/src/pages/SupportTickets.jsx'];
-    }
-
+    if (!fs.existsSync(rootDir)) return proj.isAdmin ? ['frontend/src/pages/DashboardLayout.jsx'] : ['client/src/pages/SupportTickets.jsx'];
     const found = new Set([...extractExplicitFilesFromTicketText(ticket, rootDir), ...findRouteMappedFiles(rootDir, ticket.page_url, proj.isAdmin)]);
     const stopWords = new Set(['dashboard', 'soporte', 'reporte', 'reportes', 'general', 'modulo', 'sistema', 'error', 'problema', 'quitar', 'poner', 'agregar']);
-    const keywords = [
-        ...(String(ticket.page_url || '').split('/').filter(Boolean)),
-        ...(String(ticket.module_name || '').split(/\s+/)),
-        ...(String(ticket.subject || '').split(/\s+/))
-    ].map((k) => k.toLowerCase().replace(/[^a-z0-9]/g, '')).filter((k) => k.length >= 4 && !stopWords.has(k));
-
-    const dirsToScan = proj.isAdmin
-        ? ['frontend/src/pages', 'frontend/src/components', 'backend/routes', 'backend/services']
-        : ['client/src/pages', 'client/src/components', 'server/src/controllers', 'server/src/services', 'server/src/schemas'];
+    const keywords = [...(String(ticket.page_url || '').split('/').filter(Boolean)), ...(String(ticket.module_name || '').split(/\s+/)), ...(String(ticket.subject || '').split(/\s+/))]
+        .map((k) => k.toLowerCase().replace(/[^a-z0-9]/g, '')).filter((k) => k.length >= 4 && !stopWords.has(k));
+    const dirsToScan = proj.isAdmin ? ['frontend/src/pages', 'frontend/src/components', 'backend/routes', 'backend/services'] : ['client/src/pages', 'client/src/components', 'server/src/controllers', 'server/src/services', 'server/src/schemas'];
 
     const walk = (dir, depth = 0) => {
         if (depth > 2 || !fs.existsSync(dir) || found.size >= 6) return;
@@ -167,7 +125,6 @@ function findSmartRelatedFiles(ticket, settings = {}) {
             }
         } catch { /* ignore */ }
     };
-
     dirsToScan.forEach((d) => walk(path.join(rootDir, d), 0));
     if (found.size === 0) found.add(proj.isAdmin ? 'frontend/src/pages/DashboardLayout.jsx' : 'client/src/pages/SupportTickets.jsx');
     return Array.from(found).slice(0, 6);
@@ -208,6 +165,10 @@ async function generateAiPlanFromCode(ticket, model, planVersion, proj, relatedF
     } catch { return null; }
 }
 
+function getGitHeadCommit(rootDir) {
+    try { return execSync('git rev-parse HEAD', { cwd: rootDir, timeout: 5000, stdio: 'pipe' }).toString().trim(); } catch { return ''; }
+}
+
 function getGitDirtySet(rootDir) {
     const set = new Set();
     try {
@@ -220,45 +181,88 @@ function getGitDirtySet(rootDir) {
     return set;
 }
 
+function syncGitPullLatest(rootDir, onLog = () => {}) {
+    if (!fs.existsSync(rootDir)) return;
+    try {
+        const branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: rootDir, timeout: 5000, stdio: 'pipe' }).toString().trim() || 'main';
+        const remotes = execSync('git remote', { cwd: rootDir, timeout: 5000, stdio: 'pipe' }).toString().trim().split(/\s+/).filter(Boolean);
+        execSync('git fetch --all --prune', { cwd: rootDir, timeout: 20000, stdio: 'pipe' });
+        for (const rem of ['upstream', 'origin'].filter((r) => remotes.includes(r))) {
+            try {
+                execSync(`git pull --rebase --autostash ${rem} ${branch}`, { cwd: rootDir, timeout: 30000, stdio: 'pipe' });
+                onLog(`[AGY] 🔄 Repositorio sincronizado con últimos cambios de ${rem}/${branch}.\n`);
+                break;
+            } catch { /* continue */ }
+        }
+    } catch { /* ignore */ }
+}
+
+function computeAndBroadcastVersion(rootDir) {
+    try {
+        const commit = execSync('git rev-parse --short HEAD', { cwd: rootDir, timeout: 5000, stdio: 'pipe' }).toString().trim();
+        const count = parseInt(execSync('git rev-list --count HEAD', { cwd: rootDir, timeout: 5000, stdio: 'pipe' }).toString().trim(), 10);
+        const version = !isNaN(count) && count >= 1000 ? `v2.08.${String(count - 999).padStart(2, '0')}` : `v2.07.${String(count || 0).padStart(2, '0')}`;
+        setAppVersion({ version, commit });
+        return { version, commit };
+    } catch { return { version: null, commit: null }; }
+}
+
 function syncGitCommitAndPush(rootDir, ticket, modifiedFiles, onLog = () => {}) {
     const safeFiles = modifiedFiles.filter((f) => f && !f.includes('.env') && !f.endsWith('package-lock.json') && !f.endsWith('pnpm-lock.yaml'));
-    if (safeFiles.length === 0) return { commitHash: null, gitLog: '' };
     try {
-        const quotedFiles = safeFiles.map((f) => `"${f.replace(/"/g, '')}"`).join(' ');
-        execSync(`git add -- ${quotedFiles}`, { cwd: rootDir, timeout: 15000, stdio: 'pipe' });
-        const staged = execSync('git diff --cached --name-only', { cwd: rootDir, timeout: 8000, stdio: 'pipe' }).toString().trim();
-        if (!staged) return { commitHash: null, gitLog: '' };
-
-        const cleanSubject = String(ticket.subject || 'ajuste solicitado').replace(/["`$\\]/g, '').slice(0, 72);
-        execSync(`git -c user.name="AGY Server Bot" -c user.email="agy@sipesv.com" commit -m "fix(agy): resolver #${ticket.ticket_code} - ${cleanSubject}"`, { cwd: rootDir, timeout: 15000, stdio: 'pipe' });
+        if (safeFiles.length > 0) {
+            const quotedFiles = safeFiles.map((f) => `"${f.replace(/"/g, '')}"`).join(' ');
+            execSync(`git add -- ${quotedFiles}`, { cwd: rootDir, timeout: 15000, stdio: 'pipe' });
+            const staged = execSync('git diff --cached --name-only', { cwd: rootDir, timeout: 8000, stdio: 'pipe' }).toString().trim();
+            if (staged) {
+                const cleanSubject = String(ticket.subject || 'ajuste solicitado').replace(/["`$\\]/g, '').slice(0, 72);
+                execSync(`git -c user.name="AGY Server Bot" -c user.email="agy@sipesv.com" commit -m "fix(agy): resolver #${ticket.ticket_code} - ${cleanSubject}"`, { cwd: rootDir, timeout: 15000, stdio: 'pipe' });
+            }
+        }
         const commitHash = execSync('git rev-parse --short HEAD', { cwd: rootDir, timeout: 5000, stdio: 'pipe' }).toString().trim();
         const branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: rootDir, timeout: 5000, stdio: 'pipe' }).toString().trim() || 'main';
         const remotes = execSync('git remote', { cwd: rootDir, timeout: 5000, stdio: 'pipe' }).toString().trim().split(/\s+/).filter(Boolean);
         const pushedRemotes = [];
+        execSync('git fetch --all --prune', { cwd: rootDir, timeout: 20000, stdio: 'pipe' });
         for (const rem of ['upstream', 'origin'].filter((r) => remotes.includes(r))) {
             try {
-                execSync(`git pull --rebase ${rem} ${branch}`, { cwd: rootDir, timeout: 30000, stdio: 'pipe' });
+                execSync(`git pull --rebase --autostash ${rem} ${branch}`, { cwd: rootDir, timeout: 30000, stdio: 'pipe' });
                 execSync(`git push ${rem} ${branch}`, { cwd: rootDir, timeout: 30000, stdio: 'pipe' });
                 pushedRemotes.push(`${rem}/${branch}`);
-            } catch { /* ignore */ }
+            } catch (pushErr) {
+                onLog(`[AGY] ⚠️ Aviso push ${rem}/${branch}: ${pushErr.message?.slice(0, 120)}\n`);
+            }
         }
-        const gitLog = pushedRemotes.length > 0 ? `Commit ${commitHash} subido automáticamente a GitHub (${pushedRemotes.join(', ')}).` : `Commit local ${commitHash} registrado en el servidor.`;
+        const verInfo = computeAndBroadcastVersion(rootDir);
+        const gitLog = pushedRemotes.length > 0
+            ? `Commit ${commitHash} (${verInfo.version || ''}) subido a GitHub (${pushedRemotes.join(', ')}) y actualización notificada.`
+            : `Commit local ${commitHash} (${verInfo.version || ''}) registrado y notificado.`;
         onLog(`[AGY] 🚀 ${gitLog}\n`);
-        return { commitHash, gitLog };
+        return { commitHash, version: verInfo.version, gitLog };
     } catch (err) {
         const msg = `Aviso Git en servidor: ${err.message?.slice(0, 140)}`;
         onLog(`[AGY] ⚠️ ${msg}\n`);
-        return { commitHash: null, gitLog: msg };
+        return { commitHash: null, version: null, gitLog: msg };
     }
 }
 
-async function applyAiCodePatchAndBuild(ticket, proj, relatedFiles, onLog = () => {}, preExistingDirtySet = new Set()) {
+async function applyAiCodePatchAndBuild(ticket, proj, relatedFiles, onLog = () => {}, preExistingDirtySet = new Set(), preHeadCommit = '') {
     const rootDir = proj.projectPath;
     if (!fs.existsSync(rootDir)) return { modifiedFiles: [], buildSuccess: false, buildLog: '', gitLog: '' };
 
     const modifiedFiles = [];
     for (const f of getGitDirtySet(rootDir)) {
         if (!preExistingDirtySet.has(f) && !f.endsWith('package-lock.json') && !f.includes('.env')) modifiedFiles.push(f);
+    }
+    const postHeadCommit = getGitHeadCommit(rootDir);
+    if (preHeadCommit && postHeadCommit && preHeadCommit !== postHeadCommit) {
+        try {
+            const committedDiff = execSync(`git diff --name-only ${preHeadCommit}..${postHeadCommit}`, { cwd: rootDir, timeout: 8000, stdio: 'pipe' }).toString().trim();
+            for (const f of committedDiff ? committedDiff.split('\n') : []) {
+                const norm = f.trim().replace(/\\/g, '/');
+                if (norm && !modifiedFiles.includes(norm) && !norm.includes('.env')) modifiedFiles.push(norm);
+            }
+        } catch { /* ignore */ }
     }
 
     if (modifiedFiles.length === 0 && (aiService.deepseek || aiService.gemini)) {
@@ -298,20 +302,22 @@ async function applyAiCodePatchAndBuild(ticket, proj, relatedFiles, onLog = () =
         }
     }
 
+    if (modifiedFiles.length === 0) return { modifiedFiles: [], buildSuccess: false, buildLog: '', commitHash: null, gitLog: '' };
+
+    const { commitHash, version, gitLog } = syncGitCommitAndPush(rootDir, ticket, modifiedFiles, onLog);
     let buildSuccess = false;
     let buildLog = '';
     const frontendRel = proj.frontendDir;
     const frontendFull = path.join(rootDir, frontendRel);
-    const hasFrontendChanges = modifiedFiles.some((f) => f.startsWith(`${frontendRel}/`));
     const hasBackendChanges = modifiedFiles.some((f) => f.startsWith(`${proj.backendDir}/`));
 
-    if (hasFrontendChanges && fs.existsSync(frontendFull)) {
+    if (fs.existsSync(frontendFull)) {
         try {
-            onLog(`[AGY] Compilando frontend (${frontendRel}) para publicar cambios en producción...\n`);
+            onLog(`[AGY] Compilando frontend (${frontendRel}) con versión ${version || commitHash || ''} para lanzar actualización...\n`);
             const buildCmd = proj.isAdmin ? 'pnpm --filter frontend run build || npm --prefix frontend run build' : 'npm --prefix client run build || pnpm --filter client run build';
             execSync(buildCmd, { cwd: rootDir, timeout: 120000, stdio: 'pipe' });
             buildSuccess = true;
-            buildLog = `Frontend (${frontendRel}/dist) recompilado y publicado en vivo.`;
+            buildLog = `Frontend (${frontendRel}/dist) recompilado (${version || commitHash}) y actualización lanzada.`;
             onLog(`[AGY] ✅ ${buildLog}\n`);
         } catch (bErr) {
             buildLog = `Aviso al compilar frontend: ${bErr.message?.slice(0, 160)}`;
@@ -323,17 +329,17 @@ async function applyAiCodePatchAndBuild(ticket, proj, relatedFiles, onLog = () =
         buildLog = buildLog ? `${buildLog} Backend (${proj.pm2AppName}) recargado en vivo.` : `Backend (${proj.pm2AppName}) recargado en vivo.`;
         setTimeout(() => {
             try {
-                const child = spawn('sh', ['-c', `pm2 reload ${proj.pm2AppName} --update-env || true`], { cwd: rootDir, detached: true, stdio: 'ignore' });
+                const child = spawn('sh', ['-c', `pm2 reload ${proj.pm2AppName} --update-env || pm2 reload all --update-env || true`], { cwd: rootDir, detached: true, stdio: 'ignore' });
                 child.unref();
             } catch { /* ignore */ }
         }, 3000);
     }
 
-    const { commitHash, gitLog } = syncGitCommitAndPush(rootDir, ticket, modifiedFiles, onLog);
-    return { modifiedFiles, buildSuccess, buildLog, commitHash, gitLog };
+    return { modifiedFiles, buildSuccess, buildLog, commitHash, version, gitLog };
 }
 
 module.exports = {
     isTicketFromAdminProject, resolveProjectForTicket, findSmartRelatedFiles,
-    generateAiPlanFromCode, applyAiCodePatchAndBuild, syncGitCommitAndPush, getGitDirtySet
+    generateAiPlanFromCode, applyAiCodePatchAndBuild, syncGitCommitAndPush,
+    syncGitPullLatest, getGitDirtySet, getGitHeadCommit
 };

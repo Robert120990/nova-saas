@@ -7,7 +7,10 @@ const {
     buildAgyExecutionPrompt, extractCleanAgyResult, buildRemoteShellScript,
     runSshInteractiveSession, runLocalInteractiveSession
 } = require('./ticketAgyConsole.service');
-const { generateAiPlanFromCode, applyAiCodePatchAndBuild, getGitDirtySet } = require('./ticketAgyCodeEngine.service');
+const {
+    generateAiPlanFromCode, applyAiCodePatchAndBuild,
+    syncGitPullLatest, getGitDirtySet, getGitHeadCommit
+} = require('./ticketAgyCodeEngine.service');
 
 let schemaEnsured = false;
 
@@ -112,6 +115,7 @@ async function startTicketAgyPlanning(ticketId, { model = null, aiNotes = undefi
 
     const proj = resolveProjectForTicket(ticket, settings);
     const targetSettings = { ...settings, project_path: proj.projectPath };
+    syncGitPullLatest(proj.projectPath);
     const relatedFiles = findRelatedRepoFiles(ticket, proj.projectPath);
     const initLog = `[${new Date().toISOString()}] Iniciando análisis en Consola AGY...\n` +
         `→ Proyecto detectado: ${proj.projectLabel} (${proj.projectPath})\n` +
@@ -231,7 +235,9 @@ async function executeApprovedTicketAgyPlan(ticketId, { approvedBy = 'SuperAdmin
                 sourceChatId: telegramContext?.sourceChatId || null, sourceMessageId: telegramContext?.sourceMessageId || null
             });
 
+            syncGitPullLatest(proj.projectPath, (msg) => { if (liveProgress) liveProgress.onConsoleChunk(msg); });
             const preExistingDirtySet = getGitDirtySet(proj.projectPath);
+            const preHeadCommit = getGitHeadCommit(proj.projectPath);
             const promptText = buildAgyExecutionPrompt(runningTicket, chosenModel);
             const endMarker = '[[FIN_EJECUCION_AGY]]';
             const script = buildRemoteShellScript({ projectPath: proj.projectPath, agyCommand: settings.agy_command, model: chosenModel, promptText, isPlanPhase: false, endMarker });
@@ -256,7 +262,7 @@ async function executeApprovedTicketAgyPlan(ticketId, { approvedBy = 'SuperAdmin
 
             const patchResult = await applyAiCodePatchAndBuild(runningTicket, proj, relatedFiles, (msg) => {
                 if (liveProgress) liveProgress.onConsoleChunk(msg);
-            }, preExistingDirtySet);
+            }, preExistingDirtySet, preHeadCommit);
 
             if (patchResult.modifiedFiles.length === 0) {
                 const warnSummary = sanitizeConsoleText(
@@ -275,13 +281,11 @@ async function executeApprovedTicketAgyPlan(ticketId, { approvedBy = 'SuperAdmin
 
             const touchedList = patchResult.modifiedFiles;
             const finalSummary = sanitizeConsoleText(
-                execOutput ||
                 [
-                    `✅ Plan v${runningTicket.agy_plan_version || 1} ejecutado en ${proj.projectLabel} (${chosenModel}).`,
-                    `• Archivos modificados: ${touchedList.join(', ')}`,
+                    execOutput ? execOutput : `✅ Plan v${runningTicket.agy_plan_version || 1} ejecutado en ${proj.projectLabel} (${chosenModel}).`,
+                    `• Archivos actualizados: ${touchedList.join(', ')}`,
                     patchResult.buildLog ? `• Compilación / Despliegue: ${patchResult.buildLog}` : null,
-                    patchResult.gitLog ? `• Git Sync: ${patchResult.gitLog}` : null,
-                    `• Estado del ticket actualizado automáticamente a RESUELTO.`
+                    patchResult.gitLog ? `• Git Sync: ${patchResult.gitLog}` : null
                 ].filter(Boolean).join('\n')
             );
 
