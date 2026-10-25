@@ -83,11 +83,18 @@ const createBranch = asyncHandler(async (req, res) => {
     } else {
         data.remision_con_valores = 0;
     }
+    delete data.remove_logo;
     if (req.file) {
         data.logo_url = '/uploads/' + req.file.filename;
     }
     try {
         const [result] = await pool.query('INSERT INTO branches SET ?', [data]);
+        if (req.user?.id && result.insertId) {
+            await pool.query(
+                'INSERT IGNORE INTO usuario_sucursal (usuario_id, sucursal_id) VALUES (?, ?)',
+                [req.user.id, result.insertId]
+            ).catch(() => {});
+        }
         notificationService.notify('branch_created', req.company_id, result.insertId, {
             sucursal_id: result.insertId,
             nombre,

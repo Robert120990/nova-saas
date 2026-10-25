@@ -4,7 +4,7 @@
  */
 const { z } = require('zod');
 
-const { emptyToNull, requiredString } = require('./schemaHelpers');
+const { emptyToNull } = require('./schemaHelpers');
 
 // Email regex pattern
 const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
@@ -88,9 +88,11 @@ const branchCreateSchema = z.object({
     codigo_mh: emptyToNull.nullable().optional(),
     es_casa_matriz: z.coerce.number().optional().or(z.boolean()),
     omitir_digito_verificador: z.coerce.number().optional().or(z.boolean()),
+    remision_con_valores: z.coerce.number().optional().or(z.boolean()),
     discount_percentages: z.any().optional(),
     max_discount_amount: z.coerce.number().nullable().optional(),
-    max_discount_percentage: z.coerce.number().nullable().optional()
+    max_discount_percentage: z.coerce.number().nullable().optional(),
+    remove_logo: emptyToNull.nullable().optional()
 }).passthrough();
 
 const branchUpdateSchema = z.object({
@@ -112,9 +114,11 @@ const branchUpdateSchema = z.object({
     codigo_mh: emptyToNull.nullable().optional(),
     es_casa_matriz: z.coerce.number().optional().or(z.boolean()),
     omitir_digito_verificador: z.coerce.number().optional().or(z.boolean()),
+    remision_con_valores: z.coerce.number().optional().or(z.boolean()),
     discount_percentages: z.any().optional(),
     max_discount_amount: z.coerce.number().nullable().optional(),
-    max_discount_percentage: z.coerce.number().nullable().optional()
+    max_discount_percentage: z.coerce.number().nullable().optional(),
+    remove_logo: emptyToNull.nullable().optional()
 }).passthrough();
 
 module.exports = {
