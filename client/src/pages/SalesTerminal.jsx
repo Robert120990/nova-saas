@@ -104,6 +104,7 @@ const SalesTerminal = () => {
             return raw ? (JSON.parse(raw).customerBranchId || '') : '';
         } catch { return ''; }
     });
+    const [customerExemptOverride, setCustomerExemptOverride] = useState(null);
     const [sellerId, setSellerId] = useState(() => {
         try {
             const rawDraft = localStorage.getItem(DRAFT_KEY);
@@ -1011,6 +1012,7 @@ const SalesTerminal = () => {
 
     const handleCustomerSelect = (value, option) => {
         setCustomerId(value);
+        setCustomerExemptOverride(null);
         if (option) {
             setCustomersCache(prev => ({ ...prev, [option.id]: option }));
         }
@@ -1602,6 +1604,7 @@ const SalesTerminal = () => {
         setGeneralDiscountPercentage(null);
         setCustomerId('');
         setCustomerBranchId('');
+        setCustomerExemptOverride(null);
         setManualCustomerName('');
         setLinkedDocs([]);
         setActiveView('pos');
@@ -1621,6 +1624,7 @@ const SalesTerminal = () => {
         setGeneralDiscountPercentage(null);
         setCustomerId('');
         setCustomerBranchId('');
+        setCustomerExemptOverride(null);
         setManualCustomerName('');
         setLinkedDocs([]);
         setPayments([]);
@@ -1943,11 +1947,13 @@ const SalesTerminal = () => {
                 venta_exenta: 0,
                 tributos: []
             })) : cart.map((item, idx) => {
-                const isCustomerExento = Boolean(
-                    selectedCustomerData?.exento_iva === 1 ||
-                    selectedCustomerData?.exento_iva === true ||
-                    selectedCustomerData?.condicion_fiscal === 'exento IVA'
-                );
+                const isCustomerExento = customerExemptOverride !== null
+                    ? customerExemptOverride
+                    : Boolean(
+                        selectedCustomerData?.exento_iva === 1 ||
+                        selectedCustomerData?.exento_iva === true ||
+                        selectedCustomerData?.condicion_fiscal === 'exento IVA'
+                    );
                 const appliesFovial = selectedCustomerData ? (selectedCustomerData.aplica_fovial !== 0 && selectedCustomerData.aplica_fovial !== false) : true;
                 const appliesCotrans = selectedCustomerData ? (selectedCustomerData.aplica_cotrans !== 0 && selectedCustomerData.aplica_cotrans !== false) : true;
                 const ivaRate = parseFloat(taxSettings?.iva_rate || 13) / 100;
@@ -1972,8 +1978,9 @@ const SalesTerminal = () => {
                         const unitFuelTaxes = item.cantidad > 0 ? (itemFovial + itemCotrans) / item.cantidad : 0;
                         itemPrecioUnitario = Math.round(((item.precio - unitFuelTaxes) / (1 + ivaRate)) * 1000000) / 1000000;
                     } else {
-                        itemVentaExenta = Math.round((subtotal / (1 + ivaRate)) * 100) / 100;
-                        itemPrecioUnitario = Math.round((item.precio / (1 + ivaRate)) * 1000000) / 1000000;
+                        // En ventas exentas de mercadería general o servicios, el precio ingresado no se divide entre 1.13
+                        itemVentaExenta = subtotal;
+                        itemPrecioUnitario = item.precio;
                     }
                 } else if (!item.no_sujeto) {
                     itemVentaGravada = subtotal - itemFovial - itemCotrans;
@@ -2029,11 +2036,13 @@ const SalesTerminal = () => {
         let cotrans = 0;
         let totalItemDiscounts = 0;
 
-        const isCustomerExento = Boolean(
-            selectedCustomerData?.exento_iva === 1 ||
-            selectedCustomerData?.exento_iva === true ||
-            selectedCustomerData?.condicion_fiscal === 'exento IVA'
-        );
+        const isCustomerExento = customerExemptOverride !== null
+            ? customerExemptOverride
+            : Boolean(
+                selectedCustomerData?.exento_iva === 1 ||
+                selectedCustomerData?.exento_iva === true ||
+                selectedCustomerData?.condicion_fiscal === 'exento IVA'
+            );
         const appliesFovial = selectedCustomerData ? (selectedCustomerData.aplica_fovial !== 0 && selectedCustomerData.aplica_fovial !== false) : true;
         const appliesCotrans = selectedCustomerData ? (selectedCustomerData.aplica_cotrans !== 0 && selectedCustomerData.aplica_cotrans !== false) : true;
         const ivaRate = parseFloat(taxSettings?.iva_rate || 13) / 100;
@@ -2059,8 +2068,8 @@ const SalesTerminal = () => {
                     const fuelBaseSinIva = Math.round((fuelBaseConIva / (1 + ivaRate)) * 100) / 100;
                     exento += fuelBaseSinIva;
                 } else {
-                    const netSubtotal = Math.round((subtotal / (1 + ivaRate)) * 100) / 100;
-                    exento += netSubtotal;
+                    // En ventas exentas generales, el subtotal se toma íntegro sin deducir IVA
+                    exento += subtotal;
                 }
             } else if (tipoDte === '11') {
                 gravadoBruto += subtotal / (1 + ivaRate);
@@ -2157,7 +2166,7 @@ const SalesTerminal = () => {
             totalSujetoRetencion,
             totalIVAretenido
         };
-    }, [cart, generalDiscount, currentCompany, selectedCustomerData, tipoDte, taxSettings, linkedDocs]);
+    }, [cart, generalDiscount, currentCompany, selectedCustomerData, tipoDte, taxSettings, linkedDocs, customerExemptOverride]);
 
     const addToCart = (itemData, isCombo = false) => {
         const itemName = itemData.nombre || itemData.name;
@@ -2980,12 +2989,30 @@ const SalesTerminal = () => {
 
                                         <div className="flex flex-col col-span-2 sm:col-span-1 border-t border-indigo-100/30 pt-1">
                                             <span className="text-[8px] font-black text-indigo-400 uppercase tracking-tighter">Condición Fiscal</span>
-                                            <span className="text-[10px] font-bold truncate uppercase" title={selectedCustomerData.condicion_fiscal || (selectedCustomerData.nrc ? 'contribuyente' : 'otro')}
-                                                style={{ color: selectedCustomerData.condicion_fiscal === 'gran contribuyente' ? '#d97706' : '#334155' }}>
-                                                {selectedCustomerData.condicion_fiscal === 'otro' 
-                                                    ? 'CONSUMIDOR FINAL' 
-                                                    : (selectedCustomerData.condicion_fiscal || (selectedCustomerData.nrc ? 'CONTRIBUYENTE' : 'CONSUMIDOR FINAL')).toUpperCase()}
-                                            </span>
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                <span className="text-[10px] font-bold truncate uppercase" title={selectedCustomerData.condicion_fiscal || (selectedCustomerData.nrc ? 'contribuyente' : 'otro')}
+                                                    style={{ color: selectedCustomerData.condicion_fiscal === 'gran contribuyente' ? '#d97706' : '#334155' }}>
+                                                    {selectedCustomerData.condicion_fiscal === 'otro' 
+                                                        ? 'CONSUMIDOR FINAL' 
+                                                        : (selectedCustomerData.condicion_fiscal || (selectedCustomerData.nrc ? 'CONTRIBUYENTE' : 'CONSUMIDOR FINAL')).toUpperCase()}
+                                                </span>
+                                                {(selectedCustomerData?.exento_iva === 1 || selectedCustomerData?.exento_iva === true || selectedCustomerData?.condicion_fiscal === 'exento IVA') && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCustomerExemptOverride(prev => prev === false ? null : false)}
+                                                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-extrabold border transition-all cursor-pointer ${
+                                                            customerExemptOverride === false
+                                                                ? 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'
+                                                                : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                                                        }`}
+                                                        title={customerExemptOverride === false 
+                                                            ? "Exención desactivada para esta venta (Liquidando como GRAVADA). Clic para volver a Exenta."
+                                                            : "Cliente con Exento de IVA activo. Clic para liquidar como GRAVADA en esta venta."}
+                                                    >
+                                                        {customerExemptOverride === false ? '⚡ VENTA GRAVADA' : '🛡️ EXENTO IVA'}
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
 
                                         <div className="flex flex-col border-t border-indigo-100/30 pt-1">

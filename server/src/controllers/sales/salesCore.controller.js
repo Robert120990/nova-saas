@@ -515,14 +515,17 @@ const createSale = async (req, res) => {
                 },
                 sale_id: saleId,
                 linkedDocuments: linkedDocuments,
-                items: (req.body.items || []).map(it => ({
-                    ...it,
-                    exento: Boolean(it.exento || isCustomerExento),
-                    tipoItem: isCustomerExento ? 2 : (it.tipoItem || (it.exento ? 2 : 1)),
-                    referencedDoc: (header.dte_type === '05' && linkedDocuments && linkedDocuments.length === 1)
-                        ? linkedDocuments[0].doc_number
-                        : (it.referencedDoc || null)
-                })),
+                items: (req.body.items || []).map(it => {
+                    const itemExento = it.exento !== undefined ? Boolean(it.exento) : Boolean(isCustomerExento);
+                    return {
+                        ...it,
+                        exento: itemExento,
+                        tipoItem: itemExento ? 2 : (it.tipoItem || 1),
+                        referencedDoc: (header.dte_type === '05' && linkedDocuments && linkedDocuments.length === 1)
+                            ? linkedDocuments[0].doc_number
+                            : (it.referencedDoc || null)
+                    };
+                }),
                 header: { ...(req.body.header || {}), dias_credito: diasCredito },
                 dias_credito: diasCredito,
                 emisor_adicional: {
