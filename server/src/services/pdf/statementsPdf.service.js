@@ -558,169 +558,177 @@ const generateProviderBalancesPDF = async (data) => {
 /**
  * Generates a PDF buffer for a customer payment receipt
  */
-const generatePaymentReceiptPDF = (data) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const doc = new PDFDocument({ margin: 40, size: 'LETTER', bufferPages: true });
-            const buffers = [];
-            doc.on('data', buffers.push.bind(buffers));
-            doc.on('end', () => resolve(Buffer.concat(buffers)));
-            doc.on('error', (err) => reject(err));
+const generatePaymentReceiptPDF = async (data) => {
+    const comp = await resolveCompanyInfo(data);
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('portrait');
 
-            // --- Logo Handling ---
-            const logoPath = data.branch_logo_url || data.company_logo_url;
-            if (logoPath) {
-                try {
-                    // Extract filament name from /uploads/filename.ext
-                    const fileName = logoPath.split('/').pop();
-                    const absoluteLogoPath = path.join(__dirname, '..', '..', 'uploads', fileName);
-                    
-                    if (fs.existsSync(absoluteLogoPath)) {
-                        doc.image(absoluteLogoPath, 40, 40, { width: 80 });
-                    }
-                } catch (e) {
-                    console.error('[PDF Service] Error loading logo:', e.message);
-                }
-            }
+    const reciboNum = String(data.recibo_numero || data.id || '').padStart(6, '0');
+    const isProvider = Boolean(data.isProvider || data.proveedor_name);
+    const title = isProvider ? `COMPROBANTE DE PAGO No. ${reciboNum}` : `RECIBO DE INGRESO No. ${reciboNum}`;
 
-            // --- Header Info ---
-            const headerX = logoPath ? 130 : 40;
-            doc.fontSize(16).font('Helvetica-Bold').text(data.company_name, headerX, 40);
-            doc.fontSize(10).font('Helvetica').text(data.branch_name, headerX, 60);
-            if (data.company_nit) doc.text(`NIT: ${data.company_nit}`, headerX, 72);
-            doc.fontSize(14).font('Helvetica-Bold').text('RECIBO DE INGRESO', 400, 40, { align: 'right' });
-            doc.fontSize(12).font('Helvetica-Bold').fillColor('#4f46e5').text(`No. ${String(data.id).padStart(6, '0')}`, 400, 55, { align: 'right' });
-            doc.fillColor('black');
+    const subtitleParts = [];
+    if (data.branch_name) subtitleParts.push(`SUCURSAL: ${data.branch_name}`);
+    if (data.metodo_pago) subtitleParts.push(`MÉTODO: ${data.metodo_pago.toUpperCase()}`);
+    if (data.referencia) subtitleParts.push(`REF: ${data.referencia.toUpperCase()}`);
+    const subtitle = subtitleParts.join('    |    ') || null;
 
-            // --- Receipt Body ---
-            const bodyTop = 95;
-            doc.rect(40, bodyTop, 532, 85).strokeColor('#e5e7eb').stroke();
-            
-            doc.fontSize(9.5).font('Helvetica-Bold').text('RECIBIMOS DE:', 55, bodyTop + 12);
-            doc.font('Helvetica').text((data.customer_name || '').toUpperCase(), 150, bodyTop + 12, { width: 410 });
-            
-            doc.font('Helvetica-Bold').text('LA CANTIDAD DE:', 55, bodyTop + 30);
-            doc.font('Helvetica').text(`$${parseFloat(data.monto || 0).toFixed(2)}`, 150, bodyTop + 30);
-            
-            doc.font('Helvetica-Bold').text('FECHA DE PAGO:', 55, bodyTop + 48);
-            doc.font('Helvetica').text(data.fecha_pago ? new Date(data.fecha_pago).toLocaleDateString('es-SV') : '---', 150, bodyTop + 48);
- 
-            const payInfo = `METODO: ${data.metodo_pago?.toUpperCase() || ''} ${data.referencia ? ` - REF: ${data.referencia.toUpperCase()}` : ''}`;
-            doc.font('Helvetica-Bold').text('INFORMACIÓN:', 55, bodyTop + 66);
-            doc.font('Helvetica').text(payInfo, 150, bodyTop + 66, { width: 410 });
+    const periodText = data.fecha_pago 
+        ? `FECHA DE PAGO: ${reportPdfHelper.formatDate(data.fecha_pago)}`
+        : `FECHA DE EMISIÓN: ${reportPdfHelper.formatDate(new Date())}`;
 
-            let currentY = bodyTop + 100;
-            
-            // --- Documents Table ---
-            doc.fontSize(10).font('Helvetica-Bold').fillColor('#0f172a').text('DETALLE DE DOCUMENTOS ABONADOS:', 40, currentY);
-            currentY += 16;
-            
-            const colWidths = { fecha: 80, doc: 180, total: 130, abono: 130 };
-            
-            const drawTableHeader = (y) => {
-                doc.fontSize(9).font('Helvetica-Bold').fillColor('#4f46e5');
-                let trx = 40;
-                doc.text('FECHA DOC.', trx, y, { width: colWidths.fecha }); trx += colWidths.fecha;
-                doc.text('DOCUMENTO', trx, y, { width: colWidths.doc }); trx += colWidths.doc;
-                doc.text('MONTO DOC.', trx, y, { align: 'right', width: colWidths.total }); trx += colWidths.total;
-                doc.text('MONTO ABONO', trx, y, { align: 'right', width: colWidths.abono });
-                
-                const lineY = y + 13;
-                doc.moveTo(40, lineY).lineTo(572, lineY).strokeColor('#cbd5e1').stroke();
-                doc.fillColor('black').font('Helvetica').fontSize(9);
-                return lineY + 5;
-            };
+    let currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
 
-            currentY = drawTableHeader(currentY);
+    const startX = 30;
+    const contentWidth = 552;
 
-            if (data.documentos && data.documentos.length > 0) {
-                data.documentos.forEach(docItem => {
-                    const fDate = docItem.fecha ? new Date(docItem.fecha).toLocaleDateString('es-SV') : '---';
-                    const docLabel = `${docItem.tipo || ''} ${docItem.numero || ''}`.trim();
-                    const totalStr = `$${parseFloat(docItem.total || 0).toFixed(2)}`;
-                    const abonoStr = `$${parseFloat(docItem.abono || 0).toFixed(2)}`;
+    // Entity Customer / Provider Box
+    const entityTitle = isProvider ? 'INFORMACIÓN DEL PROVEEDOR' : 'INFORMACIÓN DEL CLIENTE';
+    const entityName = (data.customer_name || data.proveedor_name || 'CLIENTE GENERAL').toUpperCase();
+    const entityNit = data.customer_nit || data.customer_dui || data.nit || '—';
+    const entityNrc = data.customer_nrc || data.nrc || '—';
+    const entityPhone = data.customer_phone || data.telefono || '—';
+    const entityEmail = data.customer_email || data.correo || '—';
 
-                    doc.font('Helvetica').fontSize(9);
-                    const docHeight = doc.heightOfString(docLabel, { width: colWidths.doc });
-                    const rowHeight = Math.max(docHeight, 11) + 3;
+    const boxHeight = 46;
+    doc.rect(startX, currentY, contentWidth, boxHeight).fillAndStroke('#f8fafc', '#e2e8f0');
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a').text(entityTitle, startX + 8, currentY + 5);
 
-                    // Salto de página defensivo antes de imprimir la fila para evitar desalineación entre columnas
-                    if (currentY + rowHeight > 680) {
-                        doc.addPage();
-                        currentY = 40;
-                        doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b')
-                           .text(`RECIBO DE INGRESO No. ${String(data.id).padStart(6, '0')} (Continuación)`, 40, currentY);
-                        currentY += 16;
-                        currentY = drawTableHeader(currentY);
-                    }
+    const balLabel = isProvider ? 'TOTAL PAGADO:' : 'TOTAL ABONADO / RECIBIDO:';
+    doc.fontSize(7).font('Helvetica-Bold').fillColor('#64748b').text(balLabel, startX + 330, currentY + 7, { width: 214, align: 'right' });
+    doc.fontSize(11.5).font('Helvetica-Bold').fillColor('#0f172a').text(reportPdfHelper.fmt(data.monto || 0), startX + 330, currentY + 18, { width: 214, align: 'right' });
 
-                    let x = 40;
-                    doc.font('Helvetica').fontSize(9).fillColor('#0f172a');
-                    doc.text(fDate, x, currentY, { width: colWidths.fecha }); 
-                    x += colWidths.fecha;
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#1e293b').text(entityName, startX + 8, currentY + 16, { width: 330, lineBreak: false });
+    doc.fontSize(6.8).font('Helvetica').fillColor('#475569');
+    doc.text(`NIT/DUI: ${entityNit}    |    NRC: ${entityNrc}    |    Tel: ${entityPhone}`, startX + 8, currentY + 26, { width: 330, lineBreak: false });
+    doc.text(`Correo: ${entityEmail}`, startX + 8, currentY + 35, { width: 330, lineBreak: false });
 
-                    doc.text(docLabel, x, currentY, { width: colWidths.doc }); 
-                    x += colWidths.doc;
+    currentY += boxHeight + 6;
 
-                    doc.text(totalStr, x, currentY, { align: 'right', width: colWidths.total }); 
-                    x += colWidths.total;
+    // Notas u Observaciones
+    if (data.notas && String(data.notas).trim()) {
+        const notasStr = String(data.notas).trim();
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#475569').text('OBSERVACIONES / NOTAS:', startX, currentY);
+        doc.fontSize(7).font('Helvetica').fillColor('#0f172a').text(notasStr, startX + 115, currentY, { width: contentWidth - 115 });
+        const notasHeight = doc.heightOfString(notasStr, { width: contentWidth - 115 });
+        currentY += Math.max(12, Math.ceil(notasHeight)) + 5;
+    }
 
-                    doc.text(abonoStr, x, currentY, { align: 'right', width: colWidths.abono });
+    // Tabla de documentos abonados
+    const colWidths = {
+        corr: 26,
+        fecha: 56,
+        tipo: 100,
+        doc: 170,
+        total: 100,
+        abono: 100
+    };
+    const colX = {
+        corr: startX,
+        fecha: startX + colWidths.corr,
+        tipo: startX + colWidths.corr + colWidths.fecha,
+        doc: startX + colWidths.corr + colWidths.fecha + colWidths.tipo,
+        total: startX + colWidths.corr + colWidths.fecha + colWidths.tipo + colWidths.doc,
+        abono: startX + colWidths.corr + colWidths.fecha + colWidths.tipo + colWidths.doc + colWidths.total
+    };
 
-                    currentY += rowHeight;
-                });
-            } else {
-                const concepto = data.documento_aplicado 
-                    ? `ABONO A DOCUMENTO ${data.documento_tipo || ''} ${data.documento_aplicado}` 
-                    : 'ABONO A CUENTA';
-                doc.font('Helvetica').fontSize(9).fillColor('black').text(concepto, 40, currentY);
-                currentY += 20;
-            }
+    const drawTableHeader = (y) => {
+        doc.rect(startX, y, contentWidth, 14).fill('#f1f5f9');
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, y + 14).lineTo(startX + contentWidth, y + 14).stroke();
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('#', colX.corr + 1, y + 3.5, { width: colWidths.corr - 2, align: 'center' });
+        doc.text('FECHA DOC.', colX.fecha + 2, y + 3.5, { width: colWidths.fecha - 4 });
+        doc.text('TIPO DOCUMENTO', colX.tipo + 2, y + 3.5, { width: colWidths.tipo - 4 });
+        doc.text('DOCUMENTO AFECTADO', colX.doc + 2, y + 3.5, { width: colWidths.doc - 4 });
+        doc.text('TOTAL DOC.', colX.total, y + 3.5, { width: colWidths.total - 4, align: 'right' });
+        doc.text('MONTO ABONADO', colX.abono, y + 3.5, { width: colWidths.abono - 4, align: 'right' });
+        return y + 17;
+    };
 
-            // Notas
-            if (data.notas) {
-                currentY += 8;
-                doc.font('Helvetica').fontSize(9);
-                const notasH = doc.heightOfString(data.notas, { width: 485 });
-                if (currentY + notasH + 15 > 670) {
-                    doc.addPage();
-                    currentY = 40;
-                }
-                doc.fontSize(9).font('Helvetica-Bold').fillColor('black').text('NOTAS:', 40, currentY);
-                doc.font('Helvetica').text(data.notas, 85, currentY, { width: 485 });
-                currentY += Math.max(notasH, 12) + 12;
-            }
+    currentY = drawTableHeader(currentY);
 
-            // Firmas
-            const sigHeight = 50;
-            if (currentY + sigHeight > 680) {
+    const documentos = data.documentos && data.documentos.length > 0 ? data.documentos : [];
+    let totalAbonado = 0;
+
+    if (documentos.length > 0) {
+        documentos.forEach((item, idx) => {
+            const fDate = item.fecha ? reportPdfHelper.formatDate(item.fecha) : '---';
+            const tipoLabel = String(item.tipo || 'DOCUMENTO').trim();
+            const docNum = String(item.numero || item.documento || '---').trim();
+            const totalMonto = parseFloat(item.total || 0);
+            const abonoMonto = parseFloat(item.abono || item.monto || 0);
+            totalAbonado += abonoMonto;
+
+            doc.fontSize(7).font('Helvetica');
+            const docHeight = doc.heightOfString(docNum, { width: colWidths.doc - 4 });
+            const tipoHeight = doc.heightOfString(tipoLabel, { width: colWidths.tipo - 4 });
+            const rowHeight = Math.max(12, Math.ceil(docHeight) + 3, Math.ceil(tipoHeight) + 3);
+
+            if (currentY + rowHeight > 700) {
                 doc.addPage();
-                currentY = 60;
+                currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
+                currentY = drawTableHeader(currentY);
             }
 
-            const footerY = Math.min(Math.max(currentY + 25, 620), 660);
-            doc.strokeColor('#000000').lineWidth(0.8);
-            doc.moveTo(80, footerY).lineTo(250, footerY).stroke();
-            doc.fontSize(9).font('Helvetica').fillColor('black').text('ENTREGADO POR', 125, footerY + 5, { align: 'center', width: 100 });
-
-            doc.moveTo(350, footerY).lineTo(520, footerY).stroke();
-            doc.fontSize(9).text('RECIBIDO CONFORME (CLIENTE)', 385, footerY + 5, { align: 'center', width: 100 });
-
-            // Numeración de páginas y pie de página en todas las páginas
-            const range = doc.bufferedPageRange();
-            for (let i = range.start; i < range.start + range.count; i++) {
-                doc.switchToPage(i);
-                doc.fontSize(8).fillColor('grey').text('Este documento es un comprobante de abono a su cuenta pendiente.', 40, 725, { align: 'center', width: 532 });
-                if (range.count > 1) {
-                    doc.fontSize(7.5).fillColor('#64748b').text(`Página ${i + 1} de ${range.count}`, 40, 740, { align: 'center', width: 532 });
-                }
+            if (idx % 2 === 1) {
+                doc.rect(startX, currentY - 1, contentWidth, rowHeight).fill('#fafafa');
             }
-            
-            doc.end();
-        } catch (err) {
-            reject(err);
-        }
-    });
+
+            doc.fontSize(7).font('Helvetica').fillColor('#0f172a');
+            doc.text(String(idx + 1), colX.corr + 1, currentY + 1.5, { width: colWidths.corr - 2, align: 'center' });
+            doc.text(fDate, colX.fecha + 2, currentY + 1.5, { width: colWidths.fecha - 4 });
+            doc.text(tipoLabel, colX.tipo + 2, currentY + 1.5, { width: colWidths.tipo - 4 });
+            doc.font('Helvetica-Bold').text(docNum, colX.doc + 2, currentY + 1.5, { width: colWidths.doc - 4 });
+            doc.font('Helvetica');
+            doc.text(reportPdfHelper.fmt(totalMonto), colX.total, currentY + 1.5, { width: colWidths.total - 4, align: 'right' });
+            doc.font('Helvetica-Bold').text(reportPdfHelper.fmt(abonoMonto), colX.abono, currentY + 1.5, { width: colWidths.abono - 4, align: 'right' });
+
+            doc.strokeColor('#f1f5f9').lineWidth(0.5).moveTo(startX, currentY + rowHeight).lineTo(startX + contentWidth, currentY + rowHeight).stroke();
+            currentY += rowHeight;
+        });
+    } else {
+        const concepto = data.documento_aplicado 
+            ? `ABONO A DOCUMENTO ${data.documento_tipo || ''} ${data.documento_aplicado}` 
+            : 'ABONO DIRECTO A SALDO DE CUENTA';
+        const rowHeight = 16;
+        doc.fontSize(7.5).font('Helvetica').fillColor('#0f172a');
+        doc.text('1', colX.corr + 1, currentY + 2, { width: colWidths.corr - 2, align: 'center' });
+        doc.text(reportPdfHelper.formatDate(data.fecha_pago), colX.fecha + 2, currentY + 2, { width: colWidths.fecha - 4 });
+        doc.text('ABONO', colX.tipo + 2, currentY + 2, { width: colWidths.tipo - 4 });
+        doc.font('Helvetica-Bold').text(concepto, colX.doc + 2, currentY + 2, { width: colWidths.doc - 4 });
+        doc.font('Helvetica');
+        doc.text(reportPdfHelper.fmt(data.monto || 0), colX.total, currentY + 2, { width: colWidths.total - 4, align: 'right' });
+        doc.font('Helvetica-Bold').text(reportPdfHelper.fmt(data.monto || 0), colX.abono, currentY + 2, { width: colWidths.abono - 4, align: 'right' });
+        currentY += rowHeight;
+        totalAbonado = parseFloat(data.monto || 0);
+    }
+
+    // Totales
+    if (currentY + 20 > 700) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
+        currentY = drawTableHeader(currentY);
+    }
+
+    doc.rect(startX, currentY, contentWidth, 15).fill('#f8fafc');
+    doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, currentY).lineTo(startX + contentWidth, currentY).stroke();
+    doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY + 15).lineTo(startX + contentWidth, currentY + 15).stroke();
+
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text('TOTAL GENERAL ABONADO:', startX + 10, currentY + 4);
+    doc.text(reportPdfHelper.fmt(totalAbonado || data.monto || 0), colX.abono, currentY + 4, { width: colWidths.abono - 4, align: 'right' });
+    currentY += 24;
+
+    // Cierre y numeración de páginas estándar (sin firmas)
+    if (currentY + 30 > 700) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
+    }
+    const countItems = documentos.length > 0 ? documentos.length : 1;
+    reportPdfHelper.renderClosingFooter(doc, startX, currentY, countItems, 'Documentos');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
 };
 
 // --- DOCUMENTOS PENDIENTES DETALLADOS ---
