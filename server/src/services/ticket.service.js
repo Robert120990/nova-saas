@@ -228,9 +228,9 @@ async function updateTicketStatus(ticketId, {
     if (status === 'resuelto') {
         const version = resolvedVersion || getCurrentSystemVersion();
         const solver = resolvedByName || assignedName || existing.assigned_name || 'Soporte Técnico';
-        const notes = resolutionNotes !== null
-            ? resolutionNotes
-            : (existing.resolution_notes || 'Se aplicaron las correcciones y mejoras correspondientes a tu solicitud.');
+        const notes = (resolutionNotes && String(resolutionNotes).trim())
+            ? String(resolutionNotes).trim()
+            : (existing.resolution_notes || 'Solicitud atendida y resuelta por el equipo técnico.');
 
         updates.push('resolved_at = NOW()', 'resolved_by_name = ?', 'resolution_notes = ?', 'resolved_version = ?', 'creator_notified_at = NULL');
         params.push(solver, notes, version);

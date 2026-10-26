@@ -271,8 +271,8 @@ const TicketDetailModal = ({ open, ticketId, onClose, onUpdated, canManage = fal
                                     <form onSubmit={handleConfirmResolve} className="pt-3 border-t border-slate-200 space-y-3">
                                         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                                             <div className="sm:col-span-3">
-                                                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Nota de Solución (la verá el usuario en su pop-up)</label>
-                                                <input type="text" required value={resolutionNotes} onChange={(e) => setResolutionNotes(e.target.value)} placeholder="Describe qué se corrigió o implementó..." className="w-full border border-slate-300 rounded-xl px-3 py-2 text-[13px] font-medium focus:outline-none focus:border-emerald-500" />
+                                                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Nota de Solución (Opcional)</label>
+                                                <input type="text" value={resolutionNotes} onChange={(e) => setResolutionNotes(e.target.value)} placeholder="Opcional: Describe qué se corrigió (por defecto: 'Solicitud atendida y resuelta por el equipo técnico')..." className="w-full border border-slate-300 rounded-xl px-3 py-2 text-[13px] font-medium focus:outline-none focus:border-emerald-500" />
                                             </div>
                                             <div>
                                                 <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Versión (Opcional)</label>
