@@ -107,7 +107,14 @@ const GasDiferenciasModal = ({
                                                 {diferenciasData.data.map((row, i) => (
                                                     <tr key={i} className={`hover:bg-slate-50 transition-colors ${parseFloat(row.diferencia_monto) > 0 ? 'bg-amber-50/50' : ''}`}>
                                                         <td className="px-2 py-1 font-bold text-slate-700" data-label="Código">{row.codigo_producto}</td>
-                                                        <td className="px-2 py-1 text-slate-600" data-label="Producto">{row.descripcion_producto}</td>
+                                                        <td className="px-2 py-1 text-slate-600 flex items-center justify-between gap-1" data-label="Producto">
+                                                            <span>{row.descripcion_producto}</span>
+                                                            {parseFloat(row.diferencia_monto) > 500 && (
+                                                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8.5px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0" title={`Monto mayor a $500: se dividirá en ${Math.ceil(parseFloat(row.diferencia_monto) / 500)} DTEs (máx. $500 c/u)`}>
+                                                                    ⚡ {Math.ceil(parseFloat(row.diferencia_monto) / 500)} DTEs
+                                                                </span>
+                                                            )}
+                                                        </td>
                                                         <td className="px-2 py-1 text-right font-mono text-slate-700" data-label="Precio"><Money value={parseFloat(row.precio)} /></td>
                                                         <td className="px-2 py-1 text-right font-mono text-slate-700" data-label="Lectura (Gl)">{parseFloat(row.lectura_galones).toFixed(5)}</td>
                                                         <td className="px-2 py-1 text-right font-mono text-slate-700" data-label="Lectura ($)"><Money value={parseFloat(row.lectura_monto)} /></td>
@@ -176,15 +183,57 @@ const GasDiferenciasModal = ({
                                 {(() => {
                                     const TASA_FOVIAL = 0.20;
                                     const TASA_COTRANS = 0.10;
+                                    const COMPLEMENTARIA_MAX_AMOUNT = 500.00;
                                     const productos = (diferenciasData?.data || []).filter(r => parseFloat(r.diferencia_galones) > 0);
-                                    const totalMontoBruto = productos.reduce((s, r) => s + (parseFloat(r.diferencia_galones) * parseFloat(r.precio)), 0);
-                                    const totalFovial = productos.reduce((s, r) => s + (parseFloat(r.diferencia_galones) * TASA_FOVIAL), 0);
-                                    const totalCotran = productos.reduce((s, r) => s + (parseFloat(r.diferencia_galones) * TASA_COTRANS), 0);
-                                    const totalBaseGrav = totalMontoBruto - totalFovial - totalCotran;
+
+                                    // Desglosar en tramos (máx $500 por cada DTE)
+                                    const tramos = [];
+                                    for (const prod of productos) {
+                                        const glTotal = parseFloat(prod.diferencia_galones) || 0;
+                                        const precio = parseFloat(prod.precio) || 0;
+                                        const montoBrutoTotal = glTotal * precio;
+                                        const numParts = montoBrutoTotal > COMPLEMENTARIA_MAX_AMOUNT 
+                                            ? Math.ceil(montoBrutoTotal / COMPLEMENTARIA_MAX_AMOUNT) 
+                                            : 1;
+                                        const baseGalones = Math.round((glTotal / numParts) * 100000) / 100000;
+                                        let acumulado = 0;
+
+                                        for (let part = 1; part <= numParts; part++) {
+                                            const gl = (part === numParts)
+                                                ? parseFloat((glTotal - acumulado).toFixed(5))
+                                                : baseGalones;
+                                            acumulado += gl;
+                                            const montoBruto = gl * precio;
+                                            const fovial = Math.round(gl * TASA_FOVIAL * 100) / 100;
+                                            const cotrans = Math.round(gl * TASA_COTRANS * 100) / 100;
+                                            const ventaGravada = Math.round((montoBruto - fovial - cotrans) * 100) / 100;
+                                            const baseGrav = ventaGravada;
+                                            tramos.push({
+                                                producto: numParts > 1 ? `${prod.descripcion_producto} (${part}/${numParts})` : prod.descripcion_producto,
+                                                gl,
+                                                precio,
+                                                montoBruto,
+                                                fovial,
+                                                cotrans,
+                                                baseGrav,
+                                                isSplit: numParts > 1
+                                            });
+                                        }
+                                    }
+
+                                    const totalMontoBruto = tramos.reduce((s, r) => s + r.montoBruto, 0);
+                                    const totalFovial = tramos.reduce((s, r) => s + r.fovial, 0);
+                                    const totalCotran = tramos.reduce((s, r) => s + r.cotrans, 0);
+                                    const totalBaseGrav = tramos.reduce((s, r) => s + r.baseGrav, 0);
+                                    const hasSplit = tramos.some(t => t.isSplit);
+
                                     return (
                                         <>
-                                            <p className="text-xs text-slate-600 mb-3">
-                                                Se generará <strong className="text-slate-800">{productos.length} DTE{productos.length !== 1 ? 's' : ''}</strong> de tipo Factura Consumidor Final (CF), uno por cada producto con diferencia positiva:
+                                            <p className="text-xs text-slate-600 mb-2">
+                                                Se generará un total de <strong className="text-slate-800">{tramos.length} DTE{tramos.length !== 1 ? 's' : ''}</strong> de tipo Factura Consumidor Final (CF)
+                                                {hasSplit && (
+                                                    <span className="text-indigo-600 font-semibold"> (fraccionando en tramos ≤ $500 por producto)</span>
+                                                )}:
                                             </p>
                                             {selectedTargetShift && (
                                                 <p className="text-[11px] font-bold text-indigo-600 mb-3 flex items-center gap-2">
@@ -195,7 +244,7 @@ const GasDiferenciasModal = ({
                                             <table className="w-full text-left border-collapse text-[11px] table-cards">
                                                 <thead>
                                                     <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-200">
-                                                        <th className="px-2 py-1">Producto</th>
+                                                        <th className="px-2 py-1">Producto / Tramo</th>
                                                         <th className="px-2 py-1 text-right">Dif. (Gl)</th>
                                                         <th className="px-2 py-1 text-right">Precio/Gal</th>
                                                         <th className="px-2 py-1 text-right">Monto Bruto</th>
@@ -205,30 +254,27 @@ const GasDiferenciasModal = ({
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-100">
-                                                    {productos.map((row, i) => {
-                                                        const gl = parseFloat(row.diferencia_galones) || 0;
-                                                        const precio = parseFloat(row.precio) || 0;
-                                                        const montoBruto = gl * precio;
-                                                        const fovial = gl * TASA_FOVIAL;
-                                                        const cotrans = gl * TASA_COTRANS;
-                                                        const baseGrav = montoBruto - fovial - cotrans;
-                                                        return (
-                                                            <tr key={i} className="hover:bg-slate-50">
-                                                                <td className="px-2 py-1.5 font-medium text-slate-700" data-label="Producto">{row.descripcion_producto}</td>
-                                                                <td className="px-2 py-1.5 text-right font-mono text-slate-600" data-label="Dif. (Gl)">{gl.toFixed(5)}</td>
-                                                                <td className="px-2 py-1.5 text-right font-mono text-slate-600" data-label="Precio/Gal"><Money value={precio} /></td>
-                                                                <td className="px-2 py-1.5 text-right font-mono text-slate-600" data-label="Monto Bruto"><Money value={montoBruto} /></td>
-                                                                <td className="px-2 py-1.5 text-right font-mono text-slate-600" data-label="FOVIAL"><Money value={fovial} /></td>
-                                                                <td className="px-2 py-1.5 text-right font-mono text-slate-600" data-label="COTRANS"><Money value={cotrans} /></td>
-                                                                <td className="px-2 py-1.5 text-right font-mono font-bold text-slate-800" data-label="Base Gravable"><Money value={baseGrav} /></td>
-                                                            </tr>
-                                                        );
-                                                    })}
+                                                    {tramos.map((row, i) => (
+                                                        <tr key={i} className="hover:bg-slate-50">
+                                                            <td className="px-2 py-1.5 font-medium text-slate-700 flex items-center gap-1.5" data-label="Producto / Tramo">
+                                                                <span>{row.producto}</span>
+                                                                {row.isSplit && (
+                                                                    <span className="px-1 py-0.5 rounded text-[8px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200">≤ $500</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-2 py-1.5 text-right font-mono text-slate-600" data-label="Dif. (Gl)">{row.gl.toFixed(5)}</td>
+                                                            <td className="px-2 py-1.5 text-right font-mono text-slate-600" data-label="Precio/Gal"><Money value={row.precio} /></td>
+                                                            <td className="px-2 py-1.5 text-right font-mono font-bold text-slate-700" data-label="Monto Bruto"><Money value={row.montoBruto} /></td>
+                                                            <td className="px-2 py-1.5 text-right font-mono text-slate-600" data-label="FOVIAL"><Money value={row.fovial} /></td>
+                                                            <td className="px-2 py-1.5 text-right font-mono text-slate-600" data-label="COTRANS"><Money value={row.cotrans} /></td>
+                                                            <td className="px-2 py-1.5 text-right font-mono font-bold text-slate-800" data-label="Base Gravable"><Money value={row.baseGrav} /></td>
+                                                        </tr>
+                                                    ))}
                                                 </tbody>
                                                 <tfoot className="bg-slate-50 border-t-2 border-slate-200 text-xs font-bold">
                                                     <tr>
                                                         <td className="px-2 py-1.5 text-slate-600 uppercase tracking-wider">
-                                                            {productos.length} DTE{productos.length !== 1 ? 's' : ''}
+                                                            {tramos.length} DTE{tramos.length !== 1 ? 's' : ''}
                                                         </td>
                                                         <td></td>
                                                         <td></td>

@@ -578,47 +578,68 @@ exports.generarComplementaria = async (req, res) => {
         const tasaFovial = taxCfg.length > 0 ? parseFloat(taxCfg[0].fovial_rate) : 0.20;
         const tasaCotran = taxCfg.length > 0 ? parseFloat(taxCfg[0].cotrans_rate) : 0.10;
 
+        const COMPLEMENTARIA_MAX_AMOUNT = 500.00;
         const resultados = [];
 
         for (const r of rows) {
-            const cantidad = parseFloat((parseFloat(r.diferencia_galones) || 0).toFixed(5));
+            const totalCantidad = parseFloat((parseFloat(r.diferencia_galones) || 0).toFixed(5));
             const precio = parseFloat(r.precio) || 0;
-            const montoBruto = cantidad * precio;
-            if (montoBruto <= 0) continue;
+            const totalMontoBruto = totalCantidad * precio;
+            if (totalMontoBruto <= 0) continue;
 
-            const fovial = Math.round(cantidad * tasaFovial * 100) / 100;
-            const cotrans = Math.round(cantidad * tasaCotran * 100) / 100;
-            const ventaGravada = Math.round((montoBruto - fovial - cotrans) * 100) / 100;
-            const ivaComplementaria = Math.round((ventaGravada * 13) / 113 * 100) / 100;
-            const gravadoNeto = Math.round((ventaGravada - ivaComplementaria) * 100) / 100;
-            const montoTotal = Math.round((ventaGravada + fovial + cotrans) * 100) / 100;
+            const numParts = totalMontoBruto > COMPLEMENTARIA_MAX_AMOUNT
+                ? Math.ceil(totalMontoBruto / COMPLEMENTARIA_MAX_AMOUNT)
+                : 1;
 
-            const obsComplementaria = `Complementaria turno ${fecha_turno} #${turnoNum} - ${r.descripcion_producto}`;
+            const baseGalones = Math.round((totalCantidad / numParts) * 100000) / 100000;
+            let galonesAcumulados = 0;
 
-            // Guardia de idempotencia: si ya existe una complementaria ACEPTADA para este cierre/turno/producto, no duplicar
-            const [existingDte] = await pool.query(`
-                SELECT sh.id, sh.codigo_generacion, sh.numero_control
-                FROM sales_headers sh
-                JOIN dtes d ON (d.venta_id = sh.id OR (sh.codigo_generacion IS NOT NULL AND d.codigo_generacion = sh.codigo_generacion))
-                WHERE sh.company_id = ?
-                  AND sh.branch_id = ?
-                  AND sh.observaciones = ?
-                  AND d.status = 'ACCEPTED'
-                LIMIT 1
-            `, [company_id, branch_id, obsComplementaria]);
+            for (let part = 1; part <= numParts; part++) {
+                const cantidad = (part === numParts)
+                    ? parseFloat((totalCantidad - galonesAcumulados).toFixed(5))
+                    : baseGalones;
+                galonesAcumulados += cantidad;
 
-            if (existingDte.length > 0) {
-                resultados.push({
-                    producto: r.descripcion_producto,
-                    success: true,
-                    already_emitted: true,
-                    codigo_generacion: existingDte[0].codigo_generacion,
-                    numero_control: existingDte[0].numero_control,
-                    total: montoTotal,
-                    sale_id: existingDte[0].id
-                });
-                continue;
-            }
+                const montoBruto = cantidad * precio;
+                if (montoBruto <= 0) continue;
+
+                const fovial = Math.round(cantidad * tasaFovial * 100) / 100;
+                const cotrans = Math.round(cantidad * tasaCotran * 100) / 100;
+                const ventaGravada = Math.round((montoBruto - fovial - cotrans) * 100) / 100;
+                const ivaComplementaria = Math.round((ventaGravada * 13) / 113 * 100) / 100;
+                const gravadoNeto = Math.round((ventaGravada - ivaComplementaria) * 100) / 100;
+                const montoTotal = Math.round((ventaGravada + fovial + cotrans) * 100) / 100;
+
+                const partSuffix = numParts > 1 ? ` (Parte ${part}/${numParts})` : '';
+                const obsComplementaria = `Complementaria turno ${fecha_turno} #${turnoNum} - ${r.descripcion_producto}${partSuffix}`;
+                const labelProducto = numParts > 1 
+                    ? `${r.descripcion_producto} (${part}/${numParts})` 
+                    : r.descripcion_producto;
+
+                // Guardia de idempotencia: si ya existe una complementaria ACEPTADA para este cierre/turno/producto y tramo, no duplicar
+                const [existingDte] = await pool.query(`
+                    SELECT sh.id, sh.codigo_generacion, sh.numero_control
+                    FROM sales_headers sh
+                    JOIN dtes d ON (d.venta_id = sh.id OR (sh.codigo_generacion IS NOT NULL AND d.codigo_generacion = sh.codigo_generacion))
+                    WHERE sh.company_id = ?
+                      AND sh.branch_id = ?
+                      AND sh.observaciones = ?
+                      AND d.status = 'ACCEPTED'
+                    LIMIT 1
+                `, [company_id, branch_id, obsComplementaria]);
+
+                if (existingDte.length > 0) {
+                    resultados.push({
+                        producto: labelProducto,
+                        success: true,
+                        already_emitted: true,
+                        codigo_generacion: existingDte[0].codigo_generacion,
+                        numero_control: existingDte[0].numero_control,
+                        total: montoTotal,
+                        sale_id: existingDte[0].id
+                    });
+                    continue;
+                }
 
             const item = {
                 product_id: r.product_id,
@@ -735,7 +756,7 @@ exports.generarComplementaria = async (req, res) => {
                          dteResult.data.sello_recepcion, dteResult.data.fh_procesamiento, saleId]
                     );
                     resultados.push({
-                        producto: r.descripcion_producto,
+                        producto: labelProducto,
                         success: true,
                         codigo_generacion: dteResult.data.codigo_generacion,
                         numero_control: dteResult.data.numero_control,
@@ -748,7 +769,7 @@ exports.generarComplementaria = async (req, res) => {
                         [dteResult.codigo_generacion, dteResult.numero_control || null, saleId]
                     );
                     resultados.push({
-                        producto: r.descripcion_producto,
+                        producto: labelProducto,
                         success: false,
                         partial: true,
                         codigo_generacion: dteResult.codigo_generacion,
@@ -762,7 +783,7 @@ exports.generarComplementaria = async (req, res) => {
                     await pool.query('DELETE FROM sales_headers WHERE id = ?', [saleId]);
 
                     resultados.push({
-                        producto: r.descripcion_producto,
+                        producto: labelProducto,
                         success: false,
                         sale_id: null,
                         error: dteResult.error || 'Error al emitir DTE'
@@ -779,13 +800,14 @@ exports.generarComplementaria = async (req, res) => {
                 }
 
                 resultados.push({
-                    producto: r.descripcion_producto,
+                    producto: labelProducto,
                     success: false,
                     sale_id: null,
                     error: err.message
                 });
             }
-        }
+            } // Fin for part
+        } // Fin for r of rows
 
         const exitosos = resultados.filter(r => r.success).length;
         const fallidos = resultados.filter(r => !r.success).length;
