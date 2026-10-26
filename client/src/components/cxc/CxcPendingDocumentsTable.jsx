@@ -116,12 +116,12 @@ const CxcPendingDocumentsTable = ({
                 <table className="w-full text-left text-xs table-cards">
                     <thead className="bg-slate-100/90 backdrop-blur sticky top-0 z-10 border-b border-slate-200 text-[10px] font-black text-slate-500 uppercase tracking-wider">
                         <tr>
-                            <th className="px-3.5 py-2.5">Documento</th>
-                            <th className="px-3 py-2.5">Fecha</th>
-                            <th className="px-3 py-2.5 text-right whitespace-nowrap">Monto Orig.</th>
-                            <th className="px-3 py-2.5 text-right whitespace-nowrap">Saldo Pendiente</th>
-                            <th className="px-3 py-2.5 text-right pr-6">Abono</th>
-                            <th className="px-2 py-2.5 text-center w-10">Info</th>
+                            <th className="px-3.5 py-1.5">Documento</th>
+                            <th className="px-3 py-1.5">Fecha</th>
+                            <th className="px-3 py-1.5 text-right whitespace-nowrap">Monto Orig.</th>
+                            <th className="px-3 py-1.5 text-right whitespace-nowrap">Saldo Pendiente</th>
+                            <th className="px-3 py-1.5 text-right pr-6">Abono</th>
+                            <th className="px-2 py-1.5 text-center w-10">Info</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -173,32 +173,32 @@ const CxcPendingDocumentsTable = ({
                                         }`}
                                     >
                                         {/* Documento con badge compacto y número */}
-                                        <td className="px-3.5 py-2" data-label="Documento">
-                                            <div className="flex items-center gap-2">
+                                        <td className="px-3.5 py-1" data-label="Documento">
+                                            <div className="flex items-center gap-1.5">
                                                 <span 
-                                                    className={`px-1.5 py-0.5 rounded text-[9px] font-black border uppercase tracking-wider ${badge.cls}`}
+                                                    className={`px-1.5 py-0.5 rounded text-[8.5px] font-black border uppercase tracking-wider leading-none ${badge.cls}`}
                                                     title={d.tipo}
                                                 >
                                                     {badge.label}
                                                 </span>
-                                                <span className="font-bold text-slate-800 font-mono tracking-tight">
+                                                <span className="font-bold text-slate-800 font-mono tracking-tight text-[11px]">
                                                     #{d.documento || d.id}
                                                 </span>
                                             </div>
                                         </td>
 
                                         {/* Fecha emisión */}
-                                        <td className="px-3 py-2 text-slate-500 font-mono text-[11px] whitespace-nowrap" data-label="Fecha">
+                                        <td className="px-3 py-1 text-slate-500 font-mono text-[10.5px] whitespace-nowrap" data-label="Fecha">
                                             {formatDate(d.fecha)}
                                         </td>
 
                                         {/* Monto Original */}
-                                        <td className="px-3 py-2 text-right text-slate-500 font-medium whitespace-nowrap" data-label="Monto Orig.">
+                                        <td className="px-3 py-1 text-right text-slate-500 font-medium whitespace-nowrap text-[11px]" data-label="Monto Orig.">
                                             <Money value={d.total_original || 0} />
                                         </td>
 
                                         {/* Saldo Pendiente (Clickable para pagar completo) */}
-                                        <td className="px-3 py-2 text-right whitespace-nowrap" data-label="Saldo Pendiente">
+                                        <td className="px-3 py-1 text-right whitespace-nowrap text-[11px]" data-label="Saldo Pendiente">
                                             <button
                                                 type="button"
                                                 onClick={() => onFillAllSaldo && onFillAllSaldo(d.id, saldo)}
@@ -211,7 +211,7 @@ const CxcPendingDocumentsTable = ({
                                         </td>
 
                                         {/* Input de Abono con soporte decimal exacto */}
-                                        <td className="px-3 py-1.5 text-right pr-6" data-label="Abono">
+                                        <td className="px-3 py-0.5 text-right pr-6" data-label="Abono">
                                             <div className="flex items-center justify-end gap-1">
                                                 <span className="text-[10px] font-bold text-slate-300">$</span>
                                                 <MoneyInput 
@@ -221,20 +221,20 @@ const CxcPendingDocumentsTable = ({
                                                     onChange={e => onAbonoChange(d.id, e.target.value)} 
                                                     onBlur={() => onAbonoBlur && onAbonoBlur(d.id)}
                                                     placeholder="0.00"
-                                                    className="w-28 px-2.5 py-1 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-lg text-right font-black text-xs text-indigo-700 outline-none focus:ring-2 focus:ring-indigo-100 transition-all" 
+                                                    className="w-28 px-2 py-0.5 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 focus:border-indigo-500 rounded text-right font-black text-xs text-indigo-700 outline-none focus:ring-1 focus:ring-indigo-200 transition-all leading-tight" 
                                                 />
                                             </div>
                                         </td>
 
                                         {/* Botón de detalle */}
-                                        <td className="px-2 py-1.5 text-center" data-label="">
+                                        <td className="px-2 py-0.5 text-center" data-label="">
                                             <button 
                                                 type="button"
                                                 onClick={() => onViewDetails(d)} 
-                                                className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-indigo-600 transition-colors"
+                                                className="p-0.5 hover:bg-slate-100 rounded text-slate-400 hover:text-indigo-600 transition-colors"
                                                 title="Ver detalles completos"
                                             >
-                                                <Eye size={14} />
+                                                <Eye size={13} />
                                             </button>
                                         </td>
                                     </tr>

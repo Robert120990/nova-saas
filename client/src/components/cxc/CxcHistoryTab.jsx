@@ -1,6 +1,7 @@
-import { Search, Eye, Printer, Mail, Trash2 } from 'lucide-react';
+import { Search, Eye, Printer, Mail, Trash2, FileText } from 'lucide-react';
 import { formatDate } from '../../utils/dateUtils';
 import Money from '../ui/Money';
+import Pagination from '../ui/Pagination';
 
 const metodoBadge = (m) => {
     const map = {
@@ -20,8 +21,14 @@ const CxcHistoryTab = ({
     onPrintPDF,
     onSendEmail,
     onDeletePayment,
+    currentPage = 1,
+    onPageChange,
+    limit = 15,
+    onLimitChange,
+    isLoading = false,
 }) => {
     const payments = histData?.payments || [];
+    const pagination = histData?.pagination || {};
 
     return (
         <div className="space-y-4 animate-in slide-in-from-right-2 duration-200">
@@ -39,81 +46,92 @@ const CxcHistoryTab = ({
                 </div>
             </div>
 
-            {/* Tabla de historial compacta */}
+            {/* Tabla de historial ultra-compacta */}
             <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-x-auto text-xs">
                 <table className="w-full text-left table-cards">
                     <thead className="bg-slate-50/80 border-b border-slate-200 text-[10px] font-black text-slate-500 uppercase tracking-wider">
                         <tr>
-                            <th className="px-4 py-2.5">Recibo</th>
-                            <th className="px-4 py-2.5">Fecha</th>
-                            <th className="px-4 py-2.5 whitespace-nowrap">Documento Afectado</th>
-                            <th className="px-4 py-2.5 text-right">Monto</th>
-                            <th className="px-4 py-2.5 text-center">Método</th>
-                            <th className="px-4 py-2.5 text-right pr-6">Acciones</th>
+                            <th className="px-3 py-1.5">Recibo</th>
+                            <th className="px-3 py-1.5">Fecha</th>
+                            <th className="px-3 py-1.5 whitespace-nowrap">Documento(s) Afectados</th>
+                            <th className="px-3 py-1.5 text-right">Monto Total</th>
+                            <th className="px-3 py-1.5 text-center">Método</th>
+                            <th className="px-3 py-1.5 text-right pr-4">Acciones</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                         {payments.map(p => (
                             <tr key={p.id} className="hover:bg-slate-50/70 transition-colors text-[11px]">
-                                <td className="px-4 py-2 font-mono font-bold text-indigo-600 tracking-tight" data-label="Recibo">
-                                    REC-{String(p.id).padStart(5, '0')}
+                                <td className="px-3 py-1 font-mono font-bold text-indigo-600 tracking-tight" data-label="Recibo">
+                                    REC-{String(p.recibo_numero || p.id).padStart(5, '0')}
                                 </td>
-                                <td className="px-4 py-2 text-slate-500 font-mono text-[11px] whitespace-nowrap" data-label="Fecha">
+                                <td className="px-3 py-1 text-slate-500 font-mono text-[11px] whitespace-nowrap" data-label="Fecha">
                                     {formatDate(p.fecha_pago)}
                                 </td>
-                                <td className="px-4 py-2" data-label="Documento">
-                                    <div className="flex flex-col">
-                                        <span className="font-bold text-slate-800 uppercase leading-tight">
-                                            {p.documento_afectado || 'ABONO GENERAL'}
-                                        </span>
-                                        {p.notas && (
-                                            <span className="text-[9px] text-slate-400 uppercase truncate max-w-[200px]" title={p.notas}>
-                                                {p.notas}
+                                <td className="px-3 py-1" data-label="Documento">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                        {p.documentos_count > 1 ? (
+                                            <>
+                                                <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 text-[9.5px] font-black border border-indigo-200/60 inline-flex items-center gap-1">
+                                                    <FileText size={10} /> {p.documentos_count} docs
+                                                </span>
+                                                <span className="font-bold text-slate-800 uppercase leading-none">
+                                                    Abono Múltiple
+                                                </span>
+                                            </>
+                                        ) : (
+                                            <span className="font-bold text-slate-800 uppercase leading-none">
+                                                {p.documento_afectado || 'ABONO GENERAL'}
+                                            </span>
+                                        )}
+                                        {(p.documentos_resumen || p.notas) && (
+                                            <span className="text-[9px] text-slate-400 font-mono truncate max-w-[280px]" title={p.documentos_resumen || p.notas}>
+                                                ({p.documentos_resumen || p.notas})
                                             </span>
                                         )}
                                     </div>
                                 </td>
-                                <td className="px-4 py-2 text-right font-black text-slate-900" data-label="Monto">
+                                <td className="px-3 py-1 text-right font-black text-slate-900" data-label="Monto">
                                     <Money value={p.monto || 0} />
                                 </td>
-                                <td className="px-4 py-2 text-center" data-label="Método">
+                                <td className="px-3 py-1 text-center" data-label="Método">
                                     <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase border ${metodoBadge(p.metodo_pago)}`}>
                                         {p.metodo_pago}
                                     </span>
                                 </td>
-                                <td className="px-4 py-2 text-right pr-6" data-label="Acciones">
-                                    <div className="flex items-center justify-end gap-1">
+                                <td className="px-3 py-1 text-right pr-4" data-label="Acciones">
+                                    <div className="flex items-center justify-end gap-0.5">
                                         <button 
                                             type="button"
                                             onClick={() => onViewPayment(p.id)} 
                                             title="Ver Detalle" 
-                                            className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-indigo-600 rounded-lg transition-colors"
+                                            className="p-1 hover:bg-slate-100 text-slate-500 hover:text-indigo-600 rounded transition-colors cursor-pointer"
                                         >
-                                            <Eye size={14} />
+                                            <Eye size={13} />
                                         </button>
                                         <button 
                                             type="button"
                                             onClick={() => onPrintPDF(p.id)} 
                                             title="Descargar PDF" 
-                                            className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-slate-800 rounded-lg transition-colors"
+                                            className="p-1 hover:bg-slate-100 text-slate-500 hover:text-slate-800 rounded transition-colors cursor-pointer"
                                         >
-                                            <Printer size={14} />
+                                            <Printer size={13} />
                                         </button>
                                         <button 
                                             type="button"
                                             onClick={() => onSendEmail(p.id)} 
                                             title="Enviar por Correo" 
-                                            className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-blue-600 rounded-lg transition-colors"
+                                            className="p-1 hover:bg-slate-100 text-slate-500 hover:text-blue-600 rounded transition-colors cursor-pointer"
                                         >
-                                            <Mail size={14} />
+                                            <Mail size={13} />
                                         </button>
                                         <button 
                                             type="button"
                                             onClick={() => onDeletePayment(p.id)} 
                                             title="Eliminar Abono" 
-                                            className="p-1.5 hover:bg-rose-50 text-slate-500 hover:text-rose-600 rounded-lg transition-colors"
+                                            className="p-1 hover:bg-rose-50 text-slate-500 hover:text-rose-600 rounded transition-colors cursor-pointer"
                                         >
-                                            <Trash2 size={14} />
+                                            <Trash2 size={13} />
                                         </button>
                                     </div>
                                 </td>
@@ -128,6 +146,20 @@ const CxcHistoryTab = ({
                         )}
                     </tbody>
                 </table>
+
+                {pagination?.pages > 1 && (
+                    <div className="border-t border-slate-100 p-2">
+                        <Pagination 
+                            currentPage={currentPage}
+                            totalPages={pagination.pages}
+                            totalItems={pagination.total}
+                            onPageChange={onPageChange}
+                            limit={limit}
+                            onLimitChange={onLimitChange}
+                            isLoading={isLoading}
+                        />
+                    </div>
+                )}
             </div>
         </div>
     );

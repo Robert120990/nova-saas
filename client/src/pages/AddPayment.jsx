@@ -28,6 +28,8 @@ const AddPayment = () => {
     const [detailsModal, setDetailsModal] = useState(null);
     const [viewPaymentId, setViewPaymentId] = useState(null);
     const [histSearch, setHistSearch] = useState('');
+    const [histPage, setHistPage] = useState(1);
+    const [histLimit, setHistLimit] = useState(15);
     const [montoManual, setMontoManual] = useState('');
     const [formData, setFormData] = useState({
         fecha: new Date().toISOString().split('T')[0],
@@ -50,9 +52,7 @@ const AddPayment = () => {
     });
 
     const loadCustomersOptions = async (search, page) => {
-        const { data } = await axios.get('/api/customers', {
-            params: { search: search || undefined, page, limit: 50, es_credito: 1 }
-        });
+        const { data } = await axios.get('/api/customers', { params: { search: search || undefined, page, limit: 50, es_credito: 1 } });
         return data;
     };
 
@@ -68,9 +68,17 @@ const AddPayment = () => {
         enabled: Boolean(selectedCustomerId && selectedBranchId)
     });
 
-    const { data: histData = { payments: [] } } = useQuery({
-        queryKey: ['payment-history', selectedCustomerId, selectedBranchId, histSearch],
-        queryFn: async () => (await axios.get('/api/cxc/payments', { params: { customer_id: selectedCustomerId, branch_id: selectedBranchId, limit: 100, search: histSearch } })).data,
+    const { data: histData = { payments: [], pagination: {} }, isLoading: isHistLoading } = useQuery({
+        queryKey: ['payment-history', selectedCustomerId, selectedBranchId, histSearch, histPage, histLimit],
+        queryFn: async () => (await axios.get('/api/cxc/payments', { 
+            params: { 
+                customer_id: selectedCustomerId, 
+                branch_id: selectedBranchId, 
+                limit: histLimit, 
+                page: histPage,
+                search: histSearch 
+            } 
+        })).data,
         enabled: activeTab === 'historial' && Boolean(selectedCustomerId),
     });
 
@@ -95,6 +103,7 @@ const AddPayment = () => {
 
     useEffect(() => {
         setHistSearch('');
+        setHistPage(1);
         setDocRows([]);
         setMontoManual('');
     }, [selectedCustomerId, selectedBranchId]);
@@ -141,11 +150,7 @@ const AddPayment = () => {
             const targetIdx = idx !== -1 ? idx : (typeof target === 'number' ? target : -1);
             if (targetIdx === -1 || !next[targetIdx]) return next;
             const s = Math.round(parseFloat(next[targetIdx].originalSaldo || next[targetIdx].saldo_pendiente || 0) * 100) / 100;
-            
-            next[targetIdx] = { 
-                ...next[targetIdx], 
-                abono: (cleanVal !== '' && parseFloat(cleanVal) > s) ? s.toFixed(2) : cleanVal 
-            };
+            next[targetIdx] = { ...next[targetIdx], abono: (cleanVal !== '' && parseFloat(cleanVal) > s) ? s.toFixed(2) : cleanVal };
             return next;
         });
     };
@@ -158,15 +163,11 @@ const AddPayment = () => {
             if (targetIdx === -1 || !next[targetIdx]) return next;
             const s = Math.round(parseFloat(next[targetIdx].originalSaldo || next[targetIdx].saldo_pendiente || 0) * 100) / 100;
             const num = parseFloat(next[targetIdx].abono);
-            next[targetIdx] = {
-                ...next[targetIdx],
-                abono: (!isNaN(num) && num > 0) ? Math.min(num, s).toFixed(2) : ''
-            };
+            next[targetIdx] = { ...next[targetIdx], abono: (!isNaN(num) && num > 0) ? Math.min(num, s).toFixed(2) : '' };
             return next;
         });
     };
 
-    // Abonar el 100% del saldo de una fila con un clic
     const handleFillAllSaldo = (target, saldo) => {
         setDocRows(prev => {
             const next = [...prev];
@@ -184,27 +185,19 @@ const AddPayment = () => {
         setMontoManual('');
     };
 
-    const handleFormDataChange = (field, value) => {
-        setFormData(prev => ({ ...prev, [field]: value }));
-    };
+    const handleFormDataChange = (field, value) => setFormData(prev => ({ ...prev, [field]: value }));
 
     const handlePrintPDF = async (id) => {
         try {
             const res = await axios.get(`/api/cxc/payments/${id}/pdf`, { responseType: 'blob' });
-            const url = window.URL.createObjectURL(new Blob([res.data]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `Recibo_${id}.pdf`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            toast.success('PDF descargado');
+            const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+            window.open(url, '_blank') || Object.assign(document.createElement('a'), { href: url, download: `Recibo_${id}.pdf` }).click();
+            toast.success('Comprobante generado');
         } catch (e) { toast.error('Error al descargar PDF'); }
     };
 
     const handleSendEmail = async (id) => {
-        const promise = axios.post(`/api/cxc/payments/${id}/send-email`);
-        toast.promise(promise, {
+        toast.promise(axios.post(`/api/cxc/payments/${id}/send-email`), {
             loading: 'Enviando comprobante...',
             success: 'Comprobante enviado al cliente',
             error: 'Error al enviar correo'
@@ -329,17 +322,21 @@ const AddPayment = () => {
                 <CxcHistoryTab 
                     histData={histData}
                     histSearch={histSearch}
-                    onHistSearchChange={setHistSearch}
+                    onHistSearchChange={(v) => { setHistSearch(v); setHistPage(1); }}
                     onViewPayment={setViewPaymentId}
                     onPrintPDF={handlePrintPDF}
                     onSendEmail={handleSendEmail}
                     onDeletePayment={handleDelete}
+                    currentPage={histPage}
+                    onPageChange={setHistPage}
+                    limit={histLimit}
+                    onLimitChange={(l) => { setHistLimit(l); setHistPage(1); }}
+                    isLoading={isHistLoading}
                 />
             )}
-
             {/* Modales Desacoplados */}
             <CxcDocDetailsModal doc={detailsModal} onClose={() => setDetailsModal(null)} />
-            <CxcPaymentReceiptModal paymentId={viewPaymentId} onClose={() => setViewPaymentId(null)} />
+            <CxcPaymentReceiptModal paymentId={viewPaymentId} onClose={() => setViewPaymentId(null)} onPrintPDF={handlePrintPDF} />
         </div>
     );
 };
