@@ -311,12 +311,34 @@ const registerPayment = async (req, res) => {
     try {
         await conn.beginTransaction();
 
-        const insertedIds = [];
-        for (const doc of validDocs) {
+        // 1. Insert first document to get the base insertId as the recibo_numero
+        const [firstResult] = await conn.query(`
+            INSERT INTO customer_payments 
+            (company_id, branch_id, customer_id, sale_id, gas_credito_id, monto, fecha_pago, metodo_pago, referencia, notas, recibo_numero)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+        `, [
+            company_id, branch_id, customer_id,
+            validDocs[0].sale_id || null,
+            validDocs[0].gas_credito_id || null,
+            parseFloat(validDocs[0].monto),
+            fecha_pago,
+            metodo_pago,
+            referencia || null,
+            notas || null
+        ]);
+
+        const reciboNumero = firstResult.insertId;
+        await conn.query('UPDATE customer_payments SET recibo_numero = ? WHERE id = ?', [reciboNumero, reciboNumero]);
+
+        const insertedIds = [reciboNumero];
+
+        // 2. Insert remaining documents assigned to the same recibo_numero
+        for (let i = 1; i < validDocs.length; i++) {
+            const doc = validDocs[i];
             const [result] = await conn.query(`
                 INSERT INTO customer_payments 
-                (company_id, branch_id, customer_id, sale_id, gas_credito_id, monto, fecha_pago, metodo_pago, referencia, notas)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (company_id, branch_id, customer_id, sale_id, gas_credito_id, monto, fecha_pago, metodo_pago, referencia, notas, recibo_numero)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `, [
                 company_id, branch_id, customer_id,
                 doc.sale_id || null,
@@ -325,35 +347,36 @@ const registerPayment = async (req, res) => {
                 fecha_pago,
                 metodo_pago,
                 referencia || null,
-                notas || null
+                notas || null,
+                reciboNumero
             ]);
             insertedIds.push(result.insertId);
         }
 
         await conn.commit();
 
-        for (const id of insertedIds) {
-            mailer.sendPaymentReceiptEmail(id).catch(err => {
-                console.error(`[CXC Controller] Error sending payment email for ${id} on registration:`, err);
-            });
-        }
+        // Enviar un solo correo de comprobante para el abono global
+        mailer.sendPaymentReceiptEmail(reciboNumero).catch(err => {
+            console.error(`[CXC Controller] Error sending payment email for receipt ${reciboNumero} on registration:`, err);
+        });
 
         const [customerRows] = await pool.query('SELECT nombre FROM customers WHERE id = ? AND company_id = ?', [customer_id, company_id]);
         const customerName = customerRows.length > 0 ? customerRows[0].nombre : '';
-        const firstDoc = validDocs[0] || {};
-        const monto = firstDoc.monto || 0;
+        const totalMonto = validDocs.reduce((acc, d) => acc + parseFloat(d.monto || 0), 0);
 
-        notificationService.notify('cxc_payment_received', req.company_id, req.user.branch_id, {
-            pago_id: insertedIds[0],
+        notificationService.notify('cxc_payment_received', req.company_id, req.user?.branch_id, {
+            pago_id: reciboNumero,
             cliente_nombre: customerName,
-            monto: monto,
+            monto: Math.round(totalMonto * 100) / 100,
             referencia: referencia || '',
             sucursal: req.branch_name || ''
         }).catch(() => {});
 
         res.status(201).json({
+            id: reciboNumero,
+            recibo_numero: reciboNumero,
             ids: insertedIds,
-            message: `${insertedIds.length} abono(s) registrado(s) exitosamente`
+            message: `Abono global registrado exitosamente (${validDocs.length} documentos)`
         });
     } catch (error) {
         await conn.rollback();
@@ -365,13 +388,13 @@ const registerPayment = async (req, res) => {
 };
 
 /**
- * Obtiene el historial de abonos de un cliente/sucursal (paginado).
+ * Obtiene el historial de abonos agrupado por recibo global (paginado).
  */
 const getPaymentHistory = async (req, res) => {
     const { customer_id, branch_id, page = 1, limit = 15, search = '' } = req.query;
     const company_id = req.company_id;
 
-    const offset = (page - 1) * limit;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
     let whereClauses = ['p.company_id = ?'];
     let queryParams = [company_id];
 
@@ -384,64 +407,76 @@ const getPaymentHistory = async (req, res) => {
         queryParams.push(branch_id);
     }
     if (search) {
-        whereClauses.push('(p.referencia LIKE ? OR (SELECT MAX(d2.numero_control) FROM dtes d2 WHERE d2.venta_id = h.id) LIKE ? OR gcc.documento LIKE ? OR c.nombre LIKE ? OR CONCAT("VTA-", h.id) LIKE ?)');
-        const s = `%${search}%`;
-        queryParams.push(s, s, s, s, s);
+        const cleanSearch = String(search).trim();
+        const s = `%${cleanSearch}%`;
+        const numericSearch = parseInt(cleanSearch.replace(/\D/g, ''), 10);
+        const searchId = !isNaN(numericSearch) ? numericSearch : null;
+
+        whereClauses.push(`(
+            p.recibo_numero = ? 
+            OR CAST(COALESCE(p.recibo_numero, p.id) AS CHAR) LIKE ? 
+            OR LPAD(COALESCE(p.recibo_numero, p.id), 6, '0') LIKE ? 
+            OR CONCAT('REC-', LPAD(COALESCE(p.recibo_numero, p.id), 5, '0')) LIKE ? 
+            OR p.referencia LIKE ? 
+            OR c.nombre LIKE ? 
+            OR p.recibo_numero IN (
+                SELECT sub_p.recibo_numero 
+                FROM customer_payments sub_p
+                LEFT JOIN sales_headers sub_h ON sub_p.sale_id = sub_h.id
+                LEFT JOIN dtes sub_d ON sub_h.id = sub_d.venta_id
+                LEFT JOIN gas_station_closeout_creditos sub_gcc ON sub_p.gas_credito_id = sub_gcc.id
+                WHERE sub_p.company_id = ?
+                AND (sub_d.numero_control LIKE ? OR sub_gcc.documento LIKE ? OR CONCAT('VTA-', sub_h.id) LIKE ?)
+            )
+        )`);
+        queryParams.push(searchId, s, s, s, s, s, company_id, s, s, s);
     }
 
     const whereStr = whereClauses.join(' AND ');
 
     try {
         const [[{ total }]] = await pool.query(`
-            SELECT COUNT(*) as total 
+            SELECT COUNT(DISTINCT COALESCE(p.recibo_numero, p.id)) as total 
             FROM customer_payments p
             LEFT JOIN customers c ON p.customer_id = c.id
-            LEFT JOIN sales_headers h ON p.sale_id = h.id
-            LEFT JOIN gas_station_closeout_creditos gcc ON p.gas_credito_id = gcc.id
             WHERE ${whereStr}
         `, queryParams);
 
         const [rows] = await pool.query(`
             SELECT 
-                p.id,
+                COALESCE(p.recibo_numero, p.id) as id,
+                COALESCE(p.recibo_numero, p.id) as recibo_numero,
                 p.fecha_pago,
-                p.monto,
+                ROUND(SUM(p.monto), 2) as monto,
                 p.metodo_pago,
                 p.referencia,
                 p.notas,
-                p.sale_id,
-                p.gas_credito_id,
-                p.created_at,
+                MAX(p.created_at) as created_at,
                 c.nombre as cliente_nombre,
                 b.nombre as sucursal_nombre,
+                COUNT(p.id) as documentos_count,
                 CASE 
-                    WHEN p.gas_credito_id IS NOT NULL THEN CONCAT('VALE/CRÉDITO #', COALESCE(NULLIF(gcc.documento, ''), gcc.id), ' (Turno #', COALESCE(gsc.numero_turno, gsc.id), ')')
-                    ELSE COALESCE(
-                        (SELECT MAX(d2.numero_control) FROM dtes d2 WHERE d2.venta_id = h.id),
-                        CONCAT('VTA-', h.id)
-                    )
-                END as documento_aplicado,
-                CASE
-                    WHEN p.gas_credito_id IS NOT NULL THEN gsc.fecha_turno
-                    ELSE h.fecha_emision
-                END as fecha_documento,
-                CASE
-                    WHEN p.gas_credito_id IS NOT NULL THEN gcc.tipo_documento
-                    ELSE h.tipo_documento
-                END as tipo_documento,
-                CASE
-                    WHEN p.gas_credito_id IS NOT NULL THEN gcc.monto
-                    ELSE h.total_pagar
-                END as total_documento
+                    WHEN COUNT(p.id) = 1 THEN
+                        CASE 
+                            WHEN MAX(p.gas_credito_id) IS NOT NULL THEN CONCAT('VALE/CRÉDITO #', COALESCE(NULLIF(MAX(gcc.documento), ''), MAX(gcc.id)), ' (Turno #', COALESCE(MAX(gsc.numero_turno), MAX(gsc.id)), ')')
+                            ELSE COALESCE(
+                                (SELECT MAX(d2.numero_control) FROM dtes d2 WHERE d2.venta_id = MAX(h.id)),
+                                CONCAT('VTA-', MAX(h.id))
+                            )
+                        END
+                    ELSE CONCAT(COUNT(p.id), ' DOCUMENTOS ABONADOS')
+                END as documento_afectado,
+                GROUP_CONCAT(DISTINCT COALESCE(d.numero_control, gcc.documento, CONCAT('VTA-', h.id)) SEPARATOR ', ') as documentos_resumen
             FROM customer_payments p
             LEFT JOIN customers c ON p.customer_id = c.id
             LEFT JOIN branches b ON p.branch_id = b.id
             LEFT JOIN sales_headers h ON p.sale_id = h.id
             LEFT JOIN gas_station_closeout_creditos gcc ON p.gas_credito_id = gcc.id
             LEFT JOIN gas_station_closeouts gsc ON gcc.closeout_id = gsc.id
-            LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
+            LEFT JOIN dtes d ON h.id = d.venta_id
             WHERE ${whereStr}
-            ORDER BY p.fecha_pago DESC, p.id DESC
+            GROUP BY COALESCE(p.recibo_numero, p.id), p.fecha_pago, p.metodo_pago, p.referencia, p.notas, c.nombre, b.nombre
+            ORDER BY p.fecha_pago DESC, COALESCE(p.recibo_numero, p.id) DESC
             LIMIT ? OFFSET ?
         `, [...queryParams, parseInt(limit), offset]);
 
@@ -451,7 +486,7 @@ const getPaymentHistory = async (req, res) => {
                 total,
                 page: parseInt(page),
                 limit: parseInt(limit),
-                pages: Math.ceil(total / limit)
+                pages: Math.ceil(total / parseInt(limit))
             }
         });
     } catch (error) {
@@ -461,13 +496,20 @@ const getPaymentHistory = async (req, res) => {
 };
 
 /**
- * Obtiene el detalle de un abono específico.
+ * Obtiene el detalle de un recibo de abono con sus documentos abonados.
  */
 const getPaymentById = async (req, res) => {
     const { id } = req.params;
     const company_id = req.company_id;
 
     try {
+        const [targetRows] = await pool.query(
+            'SELECT id, recibo_numero FROM customer_payments WHERE (id = ? OR recibo_numero = ?) AND company_id = ? LIMIT 1',
+            [id, id, company_id]
+        );
+        if (targetRows.length === 0) return res.status(404).json({ message: 'Abono no encontrado' });
+        const targetRecibo = targetRows[0].recibo_numero || targetRows[0].id;
+
         const [rows] = await pool.query(`
             SELECT 
                 p.*,
@@ -502,11 +544,38 @@ const getPaymentById = async (req, res) => {
             LEFT JOIN gas_station_closeouts gsc ON gcc.closeout_id = gsc.id
             LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
             LEFT JOIN dtes d ON h.id = d.venta_id
-            WHERE p.id = ? AND p.company_id = ?
-        `, [id, company_id]);
+            WHERE (p.recibo_numero = ? OR p.id = ?) AND p.company_id = ?
+            ORDER BY p.id ASC
+        `, [targetRecibo, targetRecibo, company_id]);
 
         if (rows.length === 0) return res.status(404).json({ message: 'Abono no encontrado' });
-        res.json(rows[0]);
+
+        const first = rows[0];
+        const totalMonto = rows.reduce((acc, r) => acc + parseFloat(r.monto || 0), 0);
+
+        res.json({
+            id: first.recibo_numero || first.id,
+            recibo_numero: first.recibo_numero || first.id,
+            fecha_pago: first.fecha_pago,
+            monto: Math.round(totalMonto * 100) / 100,
+            metodo_pago: first.metodo_pago,
+            referencia: first.referencia,
+            notas: first.notas,
+            cliente_nombre: first.cliente_nombre,
+            cliente_correo: first.cliente_correo,
+            sucursal_nombre: first.sucursal_nombre,
+            documentos_count: rows.length,
+            documentos: rows.map(r => ({
+                id: r.id,
+                sale_id: r.sale_id,
+                gas_credito_id: r.gas_credito_id,
+                documento_tipo: r.documento_tipo,
+                documento_aplicado: r.documento_aplicado,
+                fecha_documento: r.fecha_documento,
+                total_documento: r.total_documento,
+                monto: r.monto
+            }))
+        });
     } catch (error) {
         console.error('Error in getPaymentById:', error);
         res.status(500).json({ message: 'Error al obtener el abono' });
@@ -527,16 +596,16 @@ const updatePayment = async (req, res) => {
 
     try {
         const [existing] = await pool.query(
-            'SELECT id FROM customer_payments WHERE id = ? AND company_id = ?',
-            [id, company_id]
+            'SELECT id FROM customer_payments WHERE (recibo_numero = ? OR id = ?) AND company_id = ?',
+            [id, id, company_id]
         );
         if (existing.length === 0) return res.status(404).json({ message: 'Abono no encontrado' });
 
         await pool.query(`
             UPDATE customer_payments 
-            SET monto = ?, fecha_pago = ?, metodo_pago = ?, referencia = ?, notas = ?
-            WHERE id = ? AND company_id = ?
-        `, [parseFloat(monto), fecha_pago, metodo_pago, referencia || null, notas || null, id, company_id]);
+            SET fecha_pago = ?, metodo_pago = ?, referencia = ?, notas = ?
+            WHERE (recibo_numero = ? OR id = ?) AND company_id = ?
+        `, [fecha_pago, metodo_pago, referencia || null, notas || null, id, id, company_id]);
 
         res.json({ message: 'Abono actualizado correctamente' });
     } catch (error) {
@@ -546,7 +615,7 @@ const updatePayment = async (req, res) => {
 };
 
 /**
- * Elimina un abono.
+ * Elimina un abono completo (todos los documentos asociados al recibo).
  */
 const deletePayment = async (req, res) => {
     const { id } = req.params;
@@ -554,22 +623,26 @@ const deletePayment = async (req, res) => {
 
     try {
         const [existing] = await pool.query(
-            `SELECT p.id, p.monto, p.referencia, c.nombre as customer_name
+            `SELECT p.id, p.recibo_numero, p.monto, p.referencia, c.nombre as customer_name
              FROM customer_payments p
              LEFT JOIN customers c ON p.customer_id = c.id
-             WHERE p.id = ? AND p.company_id = ?`,
-            [id, company_id]
+             WHERE (p.recibo_numero = ? OR p.id = ?) AND p.company_id = ?`,
+            [id, id, company_id]
         );
         if (existing.length === 0) return res.status(404).json({ message: 'Abono no encontrado' });
-        const payment = existing[0];
 
-        await pool.query('DELETE FROM customer_payments WHERE id = ? AND company_id = ?', [id, company_id]);
+        const totalMonto = existing.reduce((sum, r) => sum + parseFloat(r.monto || 0), 0);
+        const receiptNo = existing[0].recibo_numero || existing[0].id;
+        const customerName = existing[0].customer_name;
+        const ref = existing[0].referencia;
 
-        notificationService.notify('cxc_payment_deleted', req.company_id, req.user.branch_id, {
-            pago_id: req.params.id,
-            cliente_nombre: payment.customer_name || '',
-            monto: payment.monto || 0,
-            referencia: payment.referencia || '',
+        await pool.query('DELETE FROM customer_payments WHERE (recibo_numero = ? OR id = ?) AND company_id = ?', [id, id, company_id]);
+
+        notificationService.notify('cxc_payment_deleted', req.company_id, req.user?.branch_id, {
+            pago_id: receiptNo,
+            cliente_nombre: customerName || '',
+            monto: totalMonto,
+            referencia: ref || '',
             sucursal: req.branch_name || ''
         }).catch(() => {});
 
@@ -602,15 +675,17 @@ const exportPaymentPDF = async (req, res) => {
     const company_id = req.company_id;
 
     try {
-        const [targetPaymentRows] = await pool.query('SELECT * FROM customer_payments WHERE id = ? AND company_id = ?', [id, company_id]);
+        const [targetPaymentRows] = await pool.query('SELECT * FROM customer_payments WHERE (recibo_numero = ? OR id = ?) AND company_id = ?', [id, id, company_id]);
         if (targetPaymentRows.length === 0) return res.status(404).json({ message: 'Abono no encontrado' });
         const p = targetPaymentRows[0];
+        const reciboNumero = p.recibo_numero || p.id;
 
         const [paymentRows] = await pool.query(`
             SELECT p.*, 
                    c.nombre AS customer_name,
+                   c.nit AS customer_nit, c.nrc AS customer_nrc, c.numero_documento AS customer_dui, c.telefono AS customer_phone, c.correo AS customer_email,
                    b.nombre AS branch_name, b.logo_url AS branch_logo_url,
-                   comp.razon_social AS company_name, comp.logo_url AS company_logo_url, comp.nit AS company_nit,
+                   comp.id AS company_id, comp.razon_social AS company_name, comp.nombre_comercial, comp.logo_url AS company_logo_url, comp.nit AS company_nit, comp.nrc AS company_nrc,
                    CASE
                        WHEN p.gas_credito_id IS NOT NULL THEN CONCAT('Crédito Turno - ', gcc.tipo_documento)
                        ELSE COALESCE(cat.description, h.tipo_documento)
@@ -636,21 +711,28 @@ const exportPaymentPDF = async (req, res) => {
             LEFT JOIN gas_station_closeouts gsc ON gcc.closeout_id = gsc.id
             LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
             LEFT JOIN dtes d ON h.id = d.venta_id
-            WHERE p.customer_id = ? AND p.branch_id = ? AND p.fecha_pago = ? 
-            AND p.metodo_pago = ? AND (p.referencia = ? OR (p.referencia IS NULL AND ? IS NULL))
-            AND ABS(TIMESTAMPDIFF(SECOND, p.created_at, ?)) < 10
+            WHERE (p.recibo_numero = ? OR (p.customer_id = ? AND p.branch_id = ? AND p.fecha_pago = ? AND p.metodo_pago = ? AND ABS(TIMESTAMPDIFF(SECOND, p.created_at, ?)) < 10))
             AND p.company_id = ?
-        `, [p.customer_id, p.branch_id, p.fecha_pago, p.metodo_pago, p.referencia, p.referencia, p.created_at, company_id]);
+            ORDER BY p.id ASC
+        `, [reciboNumero, p.customer_id, p.branch_id, p.fecha_pago, p.metodo_pago, p.created_at, company_id]);
 
         const first = paymentRows[0];
         const receiptData = {
-            id: first.id, // We use the first ID as reference
+            id: first.recibo_numero || first.id, // Referencia del recibo global
+            recibo_numero: first.recibo_numero || first.id,
+            company_id: first.company_id || company_id,
             company_name: first.company_name,
             company_nit: first.company_nit,
+            company_nrc: first.company_nrc,
             branch_name: first.branch_name,
             company_logo_url: first.company_logo_url,
             branch_logo_url: first.branch_logo_url,
             customer_name: first.customer_name,
+            customer_nit: first.customer_nit,
+            customer_nrc: first.customer_nrc,
+            customer_dui: first.customer_dui,
+            customer_phone: first.customer_phone,
+            customer_email: first.customer_email,
             monto: paymentRows.reduce((sum, row) => sum + parseFloat(row.monto), 0),
             fecha_pago: first.fecha_pago,
             metodo_pago: first.metodo_pago,
@@ -668,7 +750,7 @@ const exportPaymentPDF = async (req, res) => {
         const pdfBuffer = await generatePaymentReceiptPDF(receiptData);
 
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename=Recibo_Abono_${id}.pdf`);
+        res.setHeader('Content-Disposition', `inline; filename=Recibo_Abono_${reciboNumero}.pdf`);
         res.send(pdfBuffer);
     } catch (error) {
         console.error('[CXC Controller] Error generating payment PDF:', error);

@@ -476,18 +476,43 @@ const sendPaymentReceiptEmail = async (paymentId) => {
             LEFT JOIN gas_station_closeout_creditos gcc ON p.gas_credito_id = gcc.id
             LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
             LEFT JOIN dtes d ON h.id = d.venta_id
-            WHERE p.id = ?
-        `, [paymentId]);
+            WHERE (p.recibo_numero = ? OR p.id = ?)
+            ORDER BY p.id ASC
+        `, [paymentId, paymentId]);
 
         if (paymentRows.length === 0) throw new Error('No se encontró el registro del abono indicado.');
         const payment = paymentRows[0];
+        const reciboNumero = payment.recibo_numero || payment.id;
+        const totalMonto = paymentRows.reduce((sum, row) => sum + parseFloat(row.monto || 0), 0);
 
         if (!payment.customer_email) {
             throw new Error('El cliente no tiene un correo electrónico configurado.');
         }
 
+        const receiptData = {
+            id: reciboNumero,
+            company_name: payment.company_name,
+            company_nit: payment.company_nit,
+            branch_name: payment.branch_name,
+            company_logo_url: payment.company_logo_url,
+            branch_logo_url: payment.branch_logo_url,
+            customer_name: payment.customer_name,
+            monto: totalMonto,
+            fecha_pago: payment.fecha_pago,
+            metodo_pago: payment.metodo_pago,
+            referencia: payment.referencia,
+            notas: payment.notas,
+            documentos: paymentRows.map(row => ({
+                tipo: row.documento_tipo,
+                numero: row.documento_aplicado,
+                fecha: row.documento_fecha,
+                total: row.documento_total,
+                abono: row.monto
+            }))
+        };
+
         const smtp = await getSMTPSettings(payment.branch_id, payment.company_id);
-        const pdfBuffer = await generatePaymentReceiptPDF(payment);
+        const pdfBuffer = await generatePaymentReceiptPDF(receiptData);
         const transporter = createTransporter(smtp);
 
         await transporter.sendMail({
@@ -501,7 +526,9 @@ const sendPaymentReceiptEmail = async (paymentId) => {
                     <p>Le notificamos que hemos registrado satisfactoriamente su abono.</p>
                     <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0;">
                          <table style="width: 100%; font-size: 14px;">
-                            <tr><td style="color: #64748b; padding-bottom: 5px;">Monto:</td><td style="font-weight: bold; text-align: right;">$${parseFloat(payment.monto).toFixed(2)}</td></tr>
+                            <tr><td style="color: #64748b; padding-bottom: 5px;">Recibo:</td><td style="font-weight: bold; text-align: right;">REC-${String(reciboNumero).padStart(5, '0')}</td></tr>
+                            <tr><td style="color: #64748b; padding-bottom: 5px;">Monto Total:</td><td style="font-weight: bold; text-align: right;">$${totalMonto.toFixed(2)}</td></tr>
+                            <tr><td style="color: #64748b; padding-bottom: 5px;">Documentos Abonados:</td><td style="font-weight: bold; text-align: right;">${paymentRows.length}</td></tr>
                             <tr><td style="color: #64748b; padding-bottom: 5px;">Método:</td><td style="font-weight: bold; text-align: right;">${payment.metodo_pago}</td></tr>
                             <tr><td style="color: #64748b;">Fecha:</td><td style="font-weight: bold; text-align: right;">${new Date(payment.fecha_pago).toLocaleDateString('es-SV')}</td></tr>
                          </table>
@@ -509,7 +536,7 @@ const sendPaymentReceiptEmail = async (paymentId) => {
                     <p style="font-size: 13px; color: #666; text-align: center;">Adjuntamos su comprobante en PDF.</p>
                 </div>
             `,
-            attachments: [{ filename: `Abono_${String(paymentId).padStart(6, '0')}.pdf`, content: pdfBuffer }]
+            attachments: [{ filename: `Abono_${String(reciboNumero).padStart(6, '0')}.pdf`, content: pdfBuffer }]
         });
     } catch (error) {
         console.error(`[Mailer] Error in sendPaymentReceiptEmail for payment ${paymentId}:`, error);
