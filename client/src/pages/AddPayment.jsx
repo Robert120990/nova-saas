@@ -20,18 +20,15 @@ const AddPayment = () => {
     const queryClient = useQueryClient();
     const confirm = useConfirm();
     
-    // UI State
+    // State
     const [activeTab, setActiveTab] = useState('nuevo');
     const [selectedBranchId, setSelectedBranchId] = useState(user?.branch_id || '');
     const [selectedCustomerId, setSelectedCustomerId] = useState('');
-    
-    // Data State
     const [docRows, setDocRows] = useState([]);
     const [detailsModal, setDetailsModal] = useState(null);
     const [viewPaymentId, setViewPaymentId] = useState(null);
     const [histSearch, setHistSearch] = useState('');
     const [montoManual, setMontoManual] = useState('');
-    
     const [formData, setFormData] = useState({
         fecha: new Date().toISOString().split('T')[0],
         metodo: 'Efectivo',
@@ -65,7 +62,7 @@ const AddPayment = () => {
         enabled: Boolean(selectedCustomerId && selectedBranchId)
     });
 
-    const { data: pendingDocs = [], isSuccess: loadSuccess } = useQuery({
+    const { data: pendingDocs = [], isSuccess: loadSuccess, isLoading: isPendingDocsLoading } = useQuery({
         queryKey: ['pending-documents', selectedCustomerId, selectedBranchId],
         queryFn: async () => (await axios.get('/api/cxc/pending-documents', { params: { customer_id: selectedCustomerId, branch_id: selectedBranchId } })).data,
         enabled: Boolean(selectedCustomerId && selectedBranchId)
@@ -133,47 +130,51 @@ const AddPayment = () => {
         }));
     };
 
-    // Edición manual de cada abono en la tabla (sin trabas al escribir decimales)
-    const handleAbonoChange = (idx, val) => {
+    // Edición manual de cada abono en la tabla
+    const handleAbonoChange = (target, val) => {
         const cleanVal = String(val).replace(',', '.');
         if (!/^\d*\.?\d{0,2}$/.test(cleanVal)) return;
 
         setDocRows(prev => {
             const next = [...prev];
-            if (!next[idx]) return next;
-            const s = Math.round(parseFloat(next[idx].originalSaldo || next[idx].saldo_pendiente || 0) * 100) / 100;
+            const idx = next.findIndex(r => r.id === target);
+            const targetIdx = idx !== -1 ? idx : (typeof target === 'number' ? target : -1);
+            if (targetIdx === -1 || !next[targetIdx]) return next;
+            const s = Math.round(parseFloat(next[targetIdx].originalSaldo || next[targetIdx].saldo_pendiente || 0) * 100) / 100;
             
-            if (cleanVal !== '' && parseFloat(cleanVal) > s) {
-                next[idx] = { ...next[idx], abono: s.toFixed(2) };
-            } else {
-                next[idx] = { ...next[idx], abono: cleanVal };
-            }
+            next[targetIdx] = { 
+                ...next[targetIdx], 
+                abono: (cleanVal !== '' && parseFloat(cleanVal) > s) ? s.toFixed(2) : cleanVal 
+            };
             return next;
         });
     };
 
-    const handleAbonoBlur = (idx) => {
+    const handleAbonoBlur = (target) => {
         setDocRows(prev => {
             const next = [...prev];
-            if (!next[idx]) return next;
-            const s = Math.round(parseFloat(next[idx].originalSaldo || next[idx].saldo_pendiente || 0) * 100) / 100;
-            const num = parseFloat(next[idx].abono);
-            if (!isNaN(num) && num > 0) {
-                next[idx] = { ...next[idx], abono: Math.min(num, s).toFixed(2) };
-            } else {
-                next[idx] = { ...next[idx], abono: '' };
-            }
+            const idx = next.findIndex(r => r.id === target);
+            const targetIdx = idx !== -1 ? idx : (typeof target === 'number' ? target : -1);
+            if (targetIdx === -1 || !next[targetIdx]) return next;
+            const s = Math.round(parseFloat(next[targetIdx].originalSaldo || next[targetIdx].saldo_pendiente || 0) * 100) / 100;
+            const num = parseFloat(next[targetIdx].abono);
+            next[targetIdx] = {
+                ...next[targetIdx],
+                abono: (!isNaN(num) && num > 0) ? Math.min(num, s).toFixed(2) : ''
+            };
             return next;
         });
     };
 
     // Abonar el 100% del saldo de una fila con un clic
-    const handleFillAllSaldo = (idx, saldo) => {
+    const handleFillAllSaldo = (target, saldo) => {
         setDocRows(prev => {
             const next = [...prev];
-            if (!next[idx]) return next;
-            const currentAbono = parseFloat(next[idx].abono || 0);
-            next[idx] = { ...next[idx], abono: currentAbono === saldo ? '' : saldo.toFixed(2) };
+            const idx = next.findIndex(r => r.id === target);
+            const targetIdx = idx !== -1 ? idx : (typeof target === 'number' ? target : -1);
+            if (targetIdx === -1 || !next[targetIdx]) return next;
+            const currentAbono = parseFloat(next[targetIdx].abono || 0);
+            next[targetIdx] = { ...next[targetIdx], abono: currentAbono === saldo ? '' : saldo.toFixed(2) };
             return next;
         });
     };
@@ -303,6 +304,7 @@ const AddPayment = () => {
                     <div className="lg:col-span-3">
                         <CxcPendingDocumentsTable 
                             docRows={docRows}
+                            isLoading={isPendingDocsLoading}
                             onAbonoChange={handleAbonoChange}
                             onAbonoBlur={handleAbonoBlur}
                             onFillAllSaldo={handleFillAllSaldo}
