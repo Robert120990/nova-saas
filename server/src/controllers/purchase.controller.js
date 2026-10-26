@@ -1320,33 +1320,130 @@ const scanDteInvoice = async (req, res) => {
             extracted.items = await matchProductsForItems(extracted.items, companyId);
         }
 
-        // Buscar si existe un proveedor que coincida por NIT, NRC o nombre
+        // Buscar si existe un proveedor que coincida por NRC, NIT o nombre (normalizando guiones y espacios)
         let matchedProvider = null;
         if (extracted.emisor && (extracted.emisor.nit || extracted.emisor.nrc || extracted.emisor.nombre)) {
             const cleanNit = (extracted.emisor.nit || '').replace(/[^0-9]/g, '');
             const cleanNrc = (extracted.emisor.nrc || '').replace(/[^0-9]/g, '');
             const searchName = (extracted.emisor.nombre || '').trim();
 
-            let pQuery = `SELECT id, nombre, nit, nrc, dias_credito FROM providers WHERE company_id = ? AND (1=0`;
-            const pParams = [companyId];
+            // 1. Búsqueda por NRC (independiente de si tiene o no guiones en el documento o en la BD)
+            if (cleanNrc.length >= 3) {
+                const [nrcRows] = await pool.query(
+                    `SELECT id, nombre, nit, nrc, dias_credito, es_gran_contribuyente, exento_iva
+                     FROM providers 
+                     WHERE company_id = ? 
+                       AND REPLACE(REPLACE(REPLACE(COALESCE(nrc, ''), '-', ''), ' ', ''), '.', '') = ? 
+                     LIMIT 1`,
+                    [companyId, cleanNrc]
+                );
+                if (nrcRows.length > 0) {
+                    matchedProvider = nrcRows[0];
+                }
+            }
 
-            if (cleanNit.length > 5) {
-                pQuery += ` OR REPLACE(nit, '-', '') LIKE ?`;
-                pParams.push(`%${cleanNit}%`);
+            // 2. Búsqueda por NIT / Documento (normalizado sin guiones)
+            if (!matchedProvider && cleanNit.length >= 8) {
+                const [nitRows] = await pool.query(
+                    `SELECT id, nombre, nit, nrc, dias_credito, es_gran_contribuyente, exento_iva 
+                     FROM providers 
+                     WHERE company_id = ? 
+                       AND (REPLACE(REPLACE(REPLACE(COALESCE(nit, ''), '-', ''), ' ', ''), '.', '') = ?
+                            OR REPLACE(REPLACE(REPLACE(COALESCE(numero_documento, ''), '-', ''), ' ', ''), '.', '') = ?)
+                     LIMIT 1`,
+                    [companyId, cleanNit, cleanNit]
+                );
+                if (nitRows.length > 0) {
+                    matchedProvider = nitRows[0];
+                }
             }
-            if (cleanNrc.length > 2) {
-                pQuery += ` OR REPLACE(nrc, '-', '') LIKE ?`;
-                pParams.push(`%${cleanNrc}%`);
-            }
-            if (searchName.length > 3) {
-                pQuery += ` OR nombre LIKE ?`;
-                pParams.push(`%${searchName}%`);
-            }
-            pQuery += `) LIMIT 1`;
 
-            const [pRows] = await pool.query(pQuery, pParams);
-            if (pRows.length > 0) {
-                matchedProvider = pRows[0];
+            // 3. Búsqueda por Razón Social o Nombre Comercial
+            if (!matchedProvider && searchName.length >= 4) {
+                const [nameRows] = await pool.query(
+                    `SELECT id, nombre, nit, nrc, dias_credito, es_gran_contribuyente, exento_iva 
+                     FROM providers 
+                     WHERE company_id = ? 
+                       AND (nombre = ? OR nombre_comercial = ? OR nombre LIKE ? OR nombre_comercial LIKE ?) 
+                     LIMIT 1`,
+                    [companyId, searchName, searchName, `%${searchName}%`, `%${searchName}%`]
+                );
+                if (nameRows.length > 0) {
+                    matchedProvider = nameRows[0];
+                }
+            }
+
+            // 4. Si NO existe y tenemos nombre válido, registrarlo automáticamente en el catálogo de proveedores
+            if (!matchedProvider && searchName.length >= 3) {
+                try {
+                    const formattedNit = cleanNit 
+                        ? (cleanNit.length === 14 
+                            ? `${cleanNit.slice(0, 4)}-${cleanNit.slice(4, 10)}-${cleanNit.slice(10, 13)}-${cleanNit.slice(13)}` 
+                            : (cleanNit.length === 9 ? `${cleanNit.slice(0, 8)}-${cleanNit.slice(8)}` : cleanNit)) 
+                        : null;
+
+                    const formattedNrc = cleanNrc 
+                        ? (cleanNrc.length >= 4 ? `${cleanNrc.slice(0, -1)}-${cleanNrc.slice(-1)}` : cleanNrc) 
+                        : null;
+
+                    let validCorreo = null;
+                    if (extracted.emisor.correo) {
+                        const c = String(extracted.emisor.correo).trim();
+                        if (/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(c)) {
+                            validCorreo = c;
+                        }
+                    }
+
+                    let validTelefono = null;
+                    if (extracted.emisor.telefono) {
+                        const t = String(extracted.emisor.telefono).trim();
+                        const cleanT = t.replace(/[^0-9]/g, '');
+                        if (cleanT.length >= 7 && !/^0+$/.test(cleanT)) {
+                            validTelefono = t;
+                        }
+                    }
+
+                    const tipoDoc = cleanNit.length === 9 ? '02' : '36'; // 02=DUI, 36=NIT
+                    const isPersonaJuridica = cleanNit.length === 14 || !!cleanNrc;
+
+                    const newProviderData = {
+                        company_id: companyId,
+                        nombre: searchName.toUpperCase(),
+                        nombre_comercial: (extracted.emisor.nombre_comercial || searchName).toUpperCase(),
+                        nit: formattedNit,
+                        nrc: formattedNrc,
+                        tipo_documento: tipoDoc,
+                        numero_documento: formattedNit,
+                        tipo_persona: isPersonaJuridica ? '2' : '1',
+                        pais: '9579',
+                        direccion: extracted.emisor.direccion ? String(extracted.emisor.direccion).trim().toUpperCase() : null,
+                        telefono: validTelefono,
+                        correo: validCorreo,
+                        condicion_fiscal: formattedNrc ? 'contribuyente' : 'otro',
+                        tipo_contribuyente: formattedNrc ? 'Contribuyente' : 'Otros',
+                        es_gran_contribuyente: 0,
+                        exento_iva: 0,
+                        es_credito: 0,
+                        dias_credito: 0
+                    };
+
+                    const [insertRes] = await pool.query('INSERT INTO providers SET ?', [newProviderData]);
+                    if (insertRes.insertId) {
+                        matchedProvider = {
+                            id: insertRes.insertId,
+                            nombre: newProviderData.nombre,
+                            nit: newProviderData.nit,
+                            nrc: newProviderData.nrc,
+                            dias_credito: 0,
+                            es_gran_contribuyente: 0,
+                            exento_iva: 0,
+                            isNewlyCreated: true
+                        };
+                        console.log(`[Scan DTE] Proveedor registrado automáticamente: "${newProviderData.nombre}" (ID: ${insertRes.insertId})`);
+                    }
+                } catch (createErr) {
+                    console.error('[Scan DTE] Error al auto-crear proveedor:', createErr.message);
+                }
             }
         }
 

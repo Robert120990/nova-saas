@@ -41,9 +41,9 @@ class AIService {
 
         if (this.gemini) {
             try {
-                console.log('[AI Service] Falling back to Gemini (using gemini-flash-latest)...');
+                console.log('[AI Service] Falling back to Gemini (using gemini-flash-lite-latest)...');
                 const model = this.gemini.getGenerativeModel({
-                    model: "gemini-flash-latest",
+                    model: "gemini-flash-lite-latest",
                     systemInstruction: { role: 'system', parts: [{ text: systemPrompt }] }
                 });
 
@@ -209,9 +209,9 @@ class AIService {
 
             // Fallback a Gemini
             if (this.gemini) {
-                console.log('[AI Service] Generating final Gemini response...');
+                console.log('[AI Service] Generating final Gemini response (using gemini-flash-lite-latest)...');
                 const model = this.gemini.getGenerativeModel({
-                    model: "gemini-flash-latest",
+                    model: "gemini-flash-lite-latest",
                     systemInstruction: { role: 'system', parts: [{ text: systemPrompt }] }
                 });
 
@@ -251,8 +251,13 @@ Extrae TODOS los campos visibles y responde EXCLUSIVAMENTE con un JSON válido y
   "tipo_documento_nombre": "Nombre descriptivo del tipo de documento",
   "emisor": {
     "nombre": "Nombre o Razón Social del emisor / proveedor si es visible, o null",
+    "nombre_comercial": "Nombre comercial si es visible, o null",
     "nit": "NIT del emisor si es visible, o null",
-    "nrc": "NRC del emisor si es visible, o null"
+    "nrc": "NRC del emisor si es visible, o null",
+    "direccion": "Dirección completa si es visible, o null",
+    "correo": "Correo electrónico si es visible, o null",
+    "telefono": "Teléfono si es visible, o null",
+    "actividad_economica": "Actividad económica si es visible, o null"
   },
   "totales": {
     "total_gravada": 0.0,
@@ -261,6 +266,8 @@ Extrae TODOS los campos visibles y responde EXCLUSIVAMENTE con un JSON válido y
     "iva": 0.0,
     "retencion": 0.0,
     "percepcion": 0.0,
+    "fovial": 0.0,
+    "cotrans": 0.0,
     "monto_total": 0.0
   }${recognizeItems ? `,
   "items": [
@@ -278,22 +285,27 @@ REGLAS:
 - Si un campo no es visible o está cortado en la foto, asígnalo como null (o 0.0 en valores numéricos).
 - Asegúrate de que el código de generación y número de control estén en MAYÚSCULAS y limpios de espacios.
 - IMPORTANTE: Tanto el código de generación (UUID) como el sello de recepción de Hacienda están compuestos ÚNICAMENTE por caracteres hexadecimales (dígitos 0-9 y letras A-F). En caracteres hexadecimales NUNCA existe la letra 'O'; si ves una forma redonda es el número cero '0'.
-- El sello de recepción debe contener todos los caracteres visibles sin espacios.${recognizeItems ? `
+- El sello de recepción debe contener todos los caracteres visibles sin espacios.
+- En facturas o créditos fiscales de combustible, extrae con exactitud los impuestos especiales FOVIAL (o FEFE) y COTRANS que aparezcan en los tributos o totales. Si no existen, colócalos en 0.0.${recognizeItems ? `
 - Extrae con precisión cada una de las filas o renglones de la tabla de detalle/cuerpo de la factura en el arreglo "items". Asegura cantidad numérica, precio unitario sin IVA y total de la línea.` : ''}`;
 
         const candidateModels = [
-            'gemini-flash-latest',
-            'gemini-flash-lite-latest',
-            'gemini-3.7-flash',
             'gemini-2.5-flash-lite',
-            'gemini-pro-latest'
+            'gemini-flash-lite-latest',
+            'gemini-3.5-flash-lite',
+            'gemini-3.5-flash',
+            'gemini-flash-latest'
         ];
 
         let lastError = null;
         for (const modelName of candidateModels) {
             try {
                 const model = this.gemini.getGenerativeModel({ model: modelName });
-                const result = await model.generateContent([
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error(`Timeout de espera en modelo ${modelName}`)), 15000)
+                );
+
+                const generatePromise = model.generateContent([
                     {
                         inlineData: {
                             data: base64Data,
@@ -303,9 +315,15 @@ REGLAS:
                     prompt
                 ]);
 
+                const result = await Promise.race([generatePromise, timeoutPromise]);
+
                 const rawText = result.response.text();
-                const cleanJson = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
-                const parsed = JSON.parse(cleanJson);
+                let jsonStr = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+                const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+                if (jsonMatch) {
+                    jsonStr = jsonMatch[0];
+                }
+                const parsed = JSON.parse(jsonStr);
 
                 // Normalización post-procesamiento para evitar errores comunes de OCR en caracteres hexadecimales
                 if (parsed.codigo_generacion) {
@@ -329,7 +347,7 @@ REGLAS:
                 console.warn(`[AI Service] Error con modelo ${modelName} (${error.message}). Intentando modelo alternativo...`);
                 lastError = error;
                 // Pequeña pausa antes de intentar con el siguiente modelo si hay saturación temporal
-                await new Promise(res => setTimeout(res, 600));
+                await new Promise(res => setTimeout(res, 400));
             }
         }
 
@@ -415,7 +433,13 @@ Responde ÚNICAMENTE con un objeto JSON estricto:
 
         // 2. Fallback con Gemini Flash
         if (this.gemini) {
-            const candidateGeminiModels = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash'];
+            const candidateGeminiModels = [
+                'gemini-2.5-flash-lite',
+                'gemini-flash-lite-latest',
+                'gemini-3.5-flash-lite',
+                'gemini-3.5-flash',
+                'gemini-flash-latest'
+            ];
             for (const gModel of candidateGeminiModels) {
                 try {
                     console.log(`[AI Service] Fallback a Gemini (${gModel}) para diagnóstico DTE...`);
@@ -424,10 +448,20 @@ Responde ÚNICAMENTE con un objeto JSON estricto:
                         generationConfig: { responseMimeType: 'application/json' }
                     });
 
-                    const result = await model.generateContent(prompt);
+                    const timeoutPromise = new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error(`Timeout de espera en modelo ${gModel}`)), 12000)
+                    );
+
+                    const result = await Promise.race([
+                        model.generateContent(prompt),
+                        timeoutPromise
+                    ]);
+
                     const rawText = result.response.text();
-                    const cleanJson = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
-                    const parsed = JSON.parse(cleanJson);
+                    let jsonStr = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+                    const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+                    if (jsonMatch) jsonStr = jsonMatch[0];
+                    const parsed = JSON.parse(jsonStr);
                     return {
                         provider: 'gemini',
                         data: {

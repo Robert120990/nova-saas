@@ -381,9 +381,14 @@ const Purchases = () => {
         if (data.matchedProvider) {
             setProviderId(String(data.matchedProvider.id));
             setProvidersCache(prev => ({ ...prev, [data.matchedProvider.id]: data.matchedProvider }));
-            filledFields.push(`Proveedor (${data.matchedProvider.nombre})`);
+            if (data.matchedProvider.isNewlyCreated) {
+                filledFields.push(`Proveedor Creado (${data.matchedProvider.nombre})`);
+                toast.success(`Proveedor registrado automáticamente en el catálogo: ${data.matchedProvider.nombre}`, { duration: 6000 });
+            } else {
+                filledFields.push(`Proveedor (${data.matchedProvider.nombre})`);
+            }
         } else if (data.emisor?.nombre) {
-            toast.info(`Emisor detectado: ${data.emisor.nombre}${data.emisor.nit ? ` (NIT: ${data.emisor.nit})` : ''}. Verifica si existe en el selector de proveedores.`);
+            toast.info(`Emisor detectado: ${data.emisor.nombre}${data.emisor.nit ? ` (NIT: ${data.emisor.nit})` : ''}.`);
         }
 
         // 7. Productos / Líneas de detalle de la compra
@@ -419,6 +424,24 @@ const Purchases = () => {
             });
             setSelectedItems(newItems);
             filledFields.push(`${newItems.length} Producto(s)`);
+        }
+
+        // 8. Impuestos especiales de combustible (FOVIAL / COTRANS)
+        if (data.totales?.fovial) {
+            const fov = parseFloat(data.totales.fovial) || 0;
+            if (fov > 0) {
+                setManualFovial(String(fov));
+                setIsFovialDirty(true);
+                filledFields.push(`FOVIAL ($${fov.toFixed(2)})`);
+            }
+        }
+        if (data.totales?.cotrans) {
+            const cot = parseFloat(data.totales.cotrans) || 0;
+            if (cot > 0) {
+                setManualCotrans(String(cot));
+                setIsCotransDirty(true);
+                filledFields.push(`COTRANS ($${cot.toFixed(2)})`);
+            }
         }
 
         if (filledFields.length > 0) {

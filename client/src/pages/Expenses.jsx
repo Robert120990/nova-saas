@@ -745,9 +745,14 @@ const Expenses = () => {
             if (data.matchedProvider) {
                 setProviderId(String(data.matchedProvider.id));
                 setProvidersCache(prev => ({ ...prev, [data.matchedProvider.id]: data.matchedProvider }));
-                filledFields.push(`Proveedor (${data.matchedProvider.nombre})`);
+                if (data.matchedProvider.isNewlyCreated) {
+                    filledFields.push(`Proveedor Creado (${data.matchedProvider.nombre})`);
+                    toast.success(`Proveedor registrado automáticamente en el catálogo: ${data.matchedProvider.nombre}`, { duration: 6000 });
+                } else {
+                    filledFields.push(`Proveedor (${data.matchedProvider.nombre})`);
+                }
             } else if (data.emisor?.nombre) {
-                toast.info(`Emisor detectado: ${data.emisor.nombre}${data.emisor.nit ? ` (NIT: ${data.emisor.nit})` : ''}. Verifica si existe en el selector de proveedores.`);
+                toast.info(`Emisor detectado: ${data.emisor.nombre}${data.emisor.nit ? ` (NIT: ${data.emisor.nit})` : ''}.`);
             }
 
             // 7. Totales e Impuestos
@@ -810,6 +815,18 @@ const Expenses = () => {
                         setManualMontoSujeto(msVal);
                         filledFields.push(`Monto Sujeto ($${msVal.toFixed(2)})`);
                     }
+                }
+
+                const fov = parseFloat(data.totales?.fovial) || 0;
+                if (fov > 0) {
+                    setManualFovial(fov);
+                    filledFields.push(`FOVIAL ($${fov.toFixed(2)})`);
+                }
+
+                const cot = parseFloat(data.totales?.cotrans) || 0;
+                if (cot > 0) {
+                    setManualCotrans(cot);
+                    filledFields.push(`COTRANS ($${cot.toFixed(2)})`);
                 }
             }
 
@@ -1305,6 +1322,15 @@ const Expenses = () => {
 
     return (
         <div className="max-w-7xl mx-auto pb-20 space-y-4 text-slate-800">
+            {/* Input oculto para escanear DTE disponible permanentemente tanto en listado como en formulario */}
+            <input 
+                type="file" 
+                ref={dteFileInputRef} 
+                onChange={handleScanDteFile} 
+                accept="image/*,.pdf" 
+                capture="environment"
+                className="hidden" 
+            />
             {!isFormOpen ? (
                 <>
                     {/* Header de Página */}
@@ -1326,15 +1352,6 @@ const Expenses = () => {
                 </div>
 
                 <div className="flex items-center gap-2">
-                    {/* Input oculto para escanear DTE desde listado */}
-                    <input 
-                        type="file" 
-                        ref={dteFileInputRef} 
-                        onChange={handleScanDteFile} 
-                        accept="image/*,.pdf" 
-                        capture="environment"
-                        className="hidden" 
-                    />
                     <button
                         type="button"
                         onClick={handleExportExcel}
