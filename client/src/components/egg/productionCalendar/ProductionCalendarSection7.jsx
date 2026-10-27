@@ -53,8 +53,8 @@ export default function ProductionCalendarSection7({ model }) {
                                 <tr>
                                     <th className="px-3 py-2.5">Cliente</th>
                                     <th className="px-3 py-2.5">Producto / Presentación</th>
-                                    <th className="px-3 py-2.5 text-right">Cantidad (Lbs)</th>
-                                    <th className="px-3 py-2.5 text-right">Precio ($/Lb)</th>
+                                    <th className="px-3 py-2.5 text-right">Cantidad (Uds · Lbs / Kg)</th>
+                                    <th className="px-3 py-2.5 text-right">Precio Pactado ($/Lb · $/Kg)</th>
                                     <th className="px-3 py-2.5">Lote Vinculado</th>
                                     <th className="px-3 py-2.5">Entrega</th>
                                     <th className="px-3 py-2.5">Estado</th>
@@ -91,14 +91,28 @@ export default function ProductionCalendarSection7({ model }) {
                                                 <div className="text-slate-800 font-semibold">{order.product_type}</div>
                                                 <div className="text-[10px] text-slate-500">{order.presentation}</div>
                                             </td>
-                                            <td className="px-3 py-2.5 text-right font-bold text-indigo-600 whitespace-nowrap">
-                                                {parseFloat(order.quantity_lbs || 0).toLocaleString()} Lbs
+                                            <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                                                {parseFloat(order.quantity_units || 0) > 0 && (
+                                                    <div className="text-[10px] font-extrabold text-slate-700">
+                                                        📦 {parseFloat(order.quantity_units).toLocaleString()} Uds
+                                                    </div>
+                                                )}
+                                                <div className="font-bold text-indigo-600">
+                                                    {parseFloat(order.quantity_lbs || 0).toLocaleString()} Lbs
+                                                </div>
+                                                <div className="text-[10px] font-bold text-emerald-700">
+                                                    {Math.round(parseFloat(order.quantity_lbs || 0) * 0.45359237 * 100) / 100} Kg
+                                                </div>
                                             </td>
                                             <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                                                <span className="font-bold text-slate-800">
-                                                    <Money value={order.price_per_lb} />
-                                                </span>
-                                                <span className="text-[10px] text-slate-400 block font-normal">/ Lb</span>
+                                                <div className="font-bold text-slate-800">
+                                                    <Money value={order.price_per_lb} decimals={4} /> <span className="text-[10px] text-slate-400 font-normal">/Lb</span>
+                                                </div>
+                                                {parseFloat(order.price_per_lb || 0) > 0 && (
+                                                    <div className="text-[10px] font-semibold text-emerald-700">
+                                                        <Money value={parseFloat(order.price_per_lb) * 2.20462262} decimals={4} /> /Kg
+                                                    </div>
+                                                )}
                                             </td>
                                             <td className="px-3 py-2.5">
                                                 {order.linked_batch_code || order.lot_code ? (

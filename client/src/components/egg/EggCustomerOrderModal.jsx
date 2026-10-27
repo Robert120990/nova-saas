@@ -317,6 +317,10 @@ export default function EggCustomerOrderModal({
     const [codeMappings, setCodeMappings] = useState([]);
     const [_loadingMappings, setLoadingMappings] = useState(false);
 
+    // Acuerdos comerciales pactados del cliente seleccionado y modo Kilogramos (KG)
+    const [customerAgreements, setCustomerAgreements] = useState([]);
+    const [isKgCustomerMode, setIsKgCustomerMode] = useState(false);
+
     // Múltiples productos / presentaciones
     const [items, setItems] = useState([
         {
@@ -332,6 +336,8 @@ export default function EggCustomerOrderModal({
             quantity_kg: '',
             billing_unit: 'units',
             price_per_lb: '',
+            price_per_kg: '',
+            is_kg_mode: false,
             price_source_note: '',
             batch_id: '',
             lot_code: ''
@@ -439,9 +445,13 @@ export default function EggCustomerOrderModal({
                     const factor = getPresentationFactors(it.presentation);
                     const weightLbs = parseFloat(it.unit_weight_lbs) || factor.lbs;
                     const units = it.quantity_units
-                        || (it.quantity_lbs ? Math.max(1, Math.round(parseFloat(it.quantity_lbs) / weightLbs)) : '');
-                    const lbs = parseFloat(it.quantity_lbs) || (units ? (parseFloat(units) * weightLbs) : '');
-                    const kg = lbs ? (parseFloat(lbs) * 0.453592) : '';
+                        || (it.quantity_lbs ? Math.max(1, Math.round((parseFloat(it.quantity_lbs) / weightLbs) * 100) / 100) : '');
+                    const lbs = parseFloat(it.quantity_lbs) || (units ? Math.round(parseFloat(units) * weightLbs * 100) / 100 : '');
+                    const kg = parseFloat(it.quantity_kg) || (lbs ? Math.round(parseFloat(lbs) * 0.45359237 * 100) / 100 : '');
+                    const pLb = it.price_per_lb !== undefined && it.price_per_lb !== '' ? parseFloat(it.price_per_lb) : '';
+                    const pKg = it.price_per_kg !== undefined && it.price_per_kg !== ''
+                        ? parseFloat(it.price_per_kg)
+                        : (pLb ? Math.round(pLb * 2.20462262 * 10000) / 10000 : '');
                     return {
                         id: `edit-${idx}-${Date.now()}`,
                         product_type: it.product_type || 'Huevo Entero Pasteurizado',
@@ -454,7 +464,9 @@ export default function EggCustomerOrderModal({
                         quantity_lbs: lbs,
                         quantity_kg: kg,
                         billing_unit: it.billing_unit || 'units',
-                        price_per_lb: it.price_per_lb !== undefined ? it.price_per_lb : '',
+                        price_per_lb: pLb,
+                        price_per_kg: pKg,
+                        is_kg_mode: Boolean(it.is_kg_mode || it.billing_unit === 'kg'),
                         price_source_note: it.price_source_note || '',
                         batch_id: it.batch_id || '',
                         lot_code: it.lot_code || ''
@@ -464,9 +476,11 @@ export default function EggCustomerOrderModal({
                 const factor = getPresentationFactors(orderToEdit.presentation);
                 const weightLbs = parseFloat(orderToEdit.unit_weight_lbs) || factor.lbs;
                 const units = orderToEdit.quantity_units
-                    || (orderToEdit.quantity_lbs ? Math.max(1, Math.round(parseFloat(orderToEdit.quantity_lbs) / weightLbs)) : '');
-                const lbs = parseFloat(orderToEdit.quantity_lbs) || (units ? (parseFloat(units) * weightLbs) : '');
-                const kg = lbs ? (parseFloat(lbs) * 0.453592) : '';
+                    || (orderToEdit.quantity_lbs ? Math.max(1, Math.round((parseFloat(orderToEdit.quantity_lbs) / weightLbs) * 100) / 100) : '');
+                const lbs = parseFloat(orderToEdit.quantity_lbs) || (units ? Math.round(parseFloat(units) * weightLbs * 100) / 100 : '');
+                const kg = parseFloat(orderToEdit.quantity_kg) || (lbs ? Math.round(parseFloat(lbs) * 0.45359237 * 100) / 100 : '');
+                const pLb = orderToEdit.price_per_lb !== undefined && orderToEdit.price_per_lb !== '' ? parseFloat(orderToEdit.price_per_lb) : '';
+                const pKg = pLb ? Math.round(pLb * 2.20462262 * 10000) / 10000 : '';
                 setItems([
                     {
                         id: `single-${Date.now()}`,
@@ -480,13 +494,19 @@ export default function EggCustomerOrderModal({
                         quantity_lbs: lbs,
                         quantity_kg: kg,
                         billing_unit: orderToEdit.billing_unit || 'units',
-                        price_per_lb: orderToEdit.price_per_lb !== undefined ? orderToEdit.price_per_lb : '',
+                        price_per_lb: pLb,
+                        price_per_kg: pKg,
+                        is_kg_mode: false,
                         price_source_note: '',
                         batch_id: orderToEdit.batch_id || '',
                         lot_code: orderToEdit.lot_code || ''
                     }
                 ]);
             }
+            // Consultar acuerdos pactados del cliente y rellenar precios si estaban en 0
+            setTimeout(() => {
+                autoFillPricingForItems(orderToEdit.customer_id, orderToEdit.customer_name, false);
+            }, 50);
         } else {
             // Nuevo pedido limpio
             resetForm();
@@ -501,6 +521,8 @@ export default function EggCustomerOrderModal({
         setCustomerBranches([]);
         setBranchSearchInput('');
         setShowBranchDropdown(false);
+        setCustomerAgreements([]);
+        setIsKgCustomerMode(false);
         setOrderForm({
             customer_id: '',
             customer_name: '',
@@ -524,6 +546,8 @@ export default function EggCustomerOrderModal({
                 quantity_kg: '',
                 billing_unit: 'units',
                 price_per_lb: '',
+                price_per_kg: '',
+                is_kg_mode: false,
                 price_source_note: '',
                 batch_id: '',
                 lot_code: ''
@@ -681,43 +705,163 @@ export default function EggCustomerOrderModal({
     };
 
     // Consultar precio pactado en CRM o último precio facturado/pedido
-    const fetchCustomerPrice = async (custId, custName, prodType, pres) => {
+    const fetchCustomerPrice = async (custId, custName, prodType, pres, prodId, catCode) => {
         try {
             const res = await axios.get('/api/egg-industrial/orders/customer-pricing', {
                 params: {
                     customer_id: custId || undefined,
                     customer_name: custName || undefined,
                     product_type: prodType || undefined,
-                    presentation: pres || undefined
+                    presentation: pres || undefined,
+                    product_id: prodId || undefined,
+                    catalog_code: catCode || undefined
                 }
             });
-            return res.data;
+            const data = res.data;
+            if (data) {
+                if (Array.isArray(data.customer_agreements)) {
+                    setCustomerAgreements(data.customer_agreements);
+                }
+                if (data.is_kg_customer !== undefined) {
+                    setIsKgCustomerMode(Boolean(data.is_kg_customer));
+                }
+            }
+            return data;
         } catch (e) {
             console.error('Error obteniendo precio sugerido:', e);
             return null;
         }
     };
 
-    const autoFillPricingForItems = async (custId, custName) => {
+    const autoFillPricingForItems = async (custId, custName, forceUpdate = true) => {
         if (!custId && !custName) return;
         setItems(prevItems => {
             prevItems.forEach(async (it) => {
-                const pricing = await fetchCustomerPrice(custId, custName, it.product_type, it.presentation);
-                if (pricing && pricing.price_per_lb > 0) {
+                const pricing = await fetchCustomerPrice(
+                    custId,
+                    custName,
+                    it.product_type,
+                    it.presentation,
+                    it.catalog_product_id,
+                    it.catalog_code
+                );
+                if (pricing) {
                     setItems(curr => curr.map(item => {
-                        if (item.id === it.id && (!item.price_per_lb || parseFloat(item.price_per_lb) === 0)) {
-                            return {
-                                ...item,
-                                price_per_lb: pricing.price_per_lb,
-                                price_source_note: pricing.description
-                            };
-                        }
-                        return item;
+                        if (item.id !== it.id) return item;
+                        const shouldSetPrice = forceUpdate || !item.price_per_lb || parseFloat(item.price_per_lb) === 0;
+                        const newPriceLb = (pricing.price_per_lb > 0 && shouldSetPrice)
+                            ? pricing.price_per_lb
+                            : item.price_per_lb;
+                        const newPriceKg = (pricing.price_per_lb > 0 && shouldSetPrice)
+                            ? (pricing.price_per_kg || Math.round(pricing.price_per_lb * 2.20462262 * 10000) / 10000)
+                            : item.price_per_kg;
+                        return {
+                            ...item,
+                            price_per_lb: newPriceLb,
+                            price_per_kg: newPriceKg,
+                            is_kg_mode: Boolean(pricing.is_kg_customer || item.is_kg_mode),
+                            price_source_note: (pricing.price_per_lb > 0 && shouldSetPrice)
+                                ? pricing.description
+                                : item.price_source_note
+                        };
                     }));
                 }
             });
             return prevItems;
         });
+    };
+
+    const handleRefreshItemPrice = async (it) => {
+        const custId = orderForm.customer_id;
+        const custName = orderForm.customer_name || customerSearchInput;
+        if (!custId && !custName) {
+            toast.info('Seleccione o escriba primero el nombre del cliente para consultar su precio pactado.');
+            return;
+        }
+        const pricing = await fetchCustomerPrice(
+            custId,
+            custName,
+            it.product_type,
+            it.presentation,
+            it.catalog_product_id,
+            it.catalog_code
+        );
+        if (pricing && pricing.price_per_lb > 0) {
+            const pKg = pricing.price_per_kg || Math.round(pricing.price_per_lb * 2.20462262 * 10000) / 10000;
+            setItems(curr => curr.map(item => item.id === it.id ? {
+                ...item,
+                price_per_lb: pricing.price_per_lb,
+                price_per_kg: pKg,
+                is_kg_mode: Boolean(pricing.is_kg_customer || item.is_kg_mode),
+                price_source_note: pricing.description
+            } : item));
+            toast.success(`Precio pactado aplicado: $${Number(pricing.price_per_lb).toFixed(4)} / lb ($${Number(pKg).toFixed(4)} / kg)`);
+        } else {
+            toast.info('No se encontró un precio pactado ni historial previo para este cliente y producto.');
+        }
+    };
+
+    const handleApplyCustomerAgreement = (ag) => {
+        const matched = findBestMatrixMatch(ag.product_type, ag.presentation, codeMappings);
+        const weightLbs = matched ? matched.weight_lbs : getPresentationFactors(ag.presentation).lbs;
+        const pLb = parseFloat(ag.price_per_lb) || 0;
+        const pKg = pLb > 0 ? Math.round(pLb * 2.20462262 * 10000) / 10000 : '';
+
+        setItems(prev => {
+            // Si la primera línea no tiene cantidad cargada o coincide con el producto, actualizarla; si no, agregar nueva línea
+            const existingIdx = prev.findIndex(it =>
+                (!it.quantity_units || parseFloat(it.quantity_units) === 0) ||
+                (normalizeText(it.product_type) === normalizeText(ag.product_type) && normalizeText(it.presentation) === normalizeText(ag.presentation))
+            );
+
+            if (existingIdx >= 0) {
+                return prev.map((it, idx) => {
+                    if (idx !== existingIdx) return it;
+                    const units = parseFloat(it.quantity_units) || 0;
+                    const lbs = units > 0 ? Math.round(units * weightLbs * 100) / 100 : it.quantity_lbs;
+                    const kg = lbs ? Math.round(parseFloat(lbs) * 0.45359237 * 100) / 100 : it.quantity_kg;
+                    return {
+                        ...it,
+                        product_type: ag.product_type,
+                        presentation: matched ? matched.presentation : ag.presentation,
+                        catalog_code: matched ? matched.code : it.catalog_code,
+                        catalog_product_id: matched ? matched.product_id : it.catalog_product_id,
+                        catalog_product_name: matched ? matched.product_name : it.catalog_product_name,
+                        unit_weight_lbs: weightLbs,
+                        quantity_lbs: lbs,
+                        quantity_kg: kg,
+                        price_per_lb: pLb,
+                        price_per_kg: pKg,
+                        price_source_note: `Acuerdo comercial CRM ($${pLb.toFixed(4)}/lb)`
+                    };
+                });
+            }
+
+            return [
+                ...prev,
+                {
+                    id: `item-${Date.now()}-${Math.random()}`,
+                    product_type: ag.product_type,
+                    presentation: matched ? matched.presentation : ag.presentation,
+                    catalog_code: matched ? matched.code : null,
+                    catalog_product_id: matched ? matched.product_id : null,
+                    catalog_product_name: matched ? matched.product_name : null,
+                    unit_weight_lbs: weightLbs,
+                    quantity_units: '',
+                    quantity_lbs: '',
+                    quantity_kg: '',
+                    billing_unit: 'units',
+                    price_per_lb: pLb,
+                    price_per_kg: pKg,
+                    is_kg_mode: isKgCustomerMode,
+                    price_source_note: `Acuerdo comercial CRM ($${pLb.toFixed(4)}/lb)`,
+                    batch_id: '',
+                    lot_code: '',
+                    selected_by_code: false
+                }
+            ];
+        });
+        toast.success(`Aplicado acuerdo: ${ag.product_type} (${ag.presentation}) a $${pLb.toFixed(4)}/lb`);
     };
 
     const handleSelectCatalogCustomer = (cust) => {
@@ -731,7 +875,7 @@ export default function EggCustomerOrderModal({
             customer_name: cust.nombre || cust.nombre_comercial || ''
         }));
         loadBranches(cust.id);
-        autoFillPricingForItems(cust.id, cust.nombre || cust.nombre_comercial);
+        autoFillPricingForItems(cust.id, cust.nombre || cust.nombre_comercial, true);
     };
 
     const handleUseManualCustomer = (name) => {
@@ -749,7 +893,7 @@ export default function EggCustomerOrderModal({
             customer_branch_id: null,
             manual_branch_name: ''
         }));
-        autoFillPricingForItems(null, cleanName);
+        autoFillPricingForItems(null, cleanName, true);
     };
 
     // ---------------------------------------------------------
@@ -788,6 +932,8 @@ export default function EggCustomerOrderModal({
                 quantity_kg: '',
                 billing_unit: 'units',
                 price_per_lb: '',
+                price_per_kg: '',
+                is_kg_mode: isKgCustomerMode,
                 price_source_note: '',
                 batch_id: '',
                 lot_code: '',
@@ -798,11 +944,13 @@ export default function EggCustomerOrderModal({
         const custId = orderForm.customer_id;
         const custName = orderForm.customer_name || customerSearchInput;
         if (custId || custName) {
-            fetchCustomerPrice(custId, custName, defaultProd, defaultPres).then(p => {
+            fetchCustomerPrice(custId, custName, defaultProd, defaultPres, defaultProdId, defaultCode).then(p => {
                 if (p && p.price_per_lb > 0) {
                     setItems(curr => curr.map(it => it.id === newItemId ? {
                         ...it,
                         price_per_lb: p.price_per_lb,
+                        price_per_kg: p.price_per_kg || Math.round(p.price_per_lb * 2.20462262 * 10000) / 10000,
+                        is_kg_mode: Boolean(p.is_kg_customer || it.is_kg_mode),
                         price_source_note: p.description
                     } : it));
                 }
@@ -854,11 +1002,13 @@ export default function EggCustomerOrderModal({
                     const custId = orderForm.customer_id;
                     const custName = orderForm.customer_name || customerSearchInput;
                     if (custId || custName) {
-                        fetchCustomerPrice(custId, custName, updated.product_type, updated.presentation).then(p => {
+                        fetchCustomerPrice(custId, custName, updated.product_type, updated.presentation, updated.catalog_product_id, updated.catalog_code).then(p => {
                             if (p && p.price_per_lb > 0) {
                                 setItems(curr => curr.map(item => item.id === id ? {
                                     ...item,
                                     price_per_lb: p.price_per_lb,
+                                    price_per_kg: p.price_per_kg || Math.round(p.price_per_lb * 2.20462262 * 10000) / 10000,
+                                    is_kg_mode: Boolean(p.is_kg_customer || item.is_kg_mode),
                                     price_source_note: p.description
                                 } : item));
                             }
@@ -919,11 +1069,13 @@ export default function EggCustomerOrderModal({
             const custId = orderForm.customer_id;
             const custName = orderForm.customer_name || customerSearchInput;
             if (custId || custName) {
-                fetchCustomerPrice(custId, custName, rawValue, nextPres).then(p => {
+                fetchCustomerPrice(custId, custName, rawValue, nextPres, nextProdId, nextCode).then(p => {
                     if (p && p.price_per_lb > 0) {
                         setItems(curr => curr.map(item => item.id === id ? {
                             ...item,
                             price_per_lb: p.price_per_lb,
+                            price_per_kg: p.price_per_kg || Math.round(p.price_per_lb * 2.20462262 * 10000) / 10000,
+                            is_kg_mode: Boolean(p.is_kg_customer || item.is_kg_mode),
                             price_source_note: p.description
                         } : item));
                     }
@@ -962,11 +1114,13 @@ export default function EggCustomerOrderModal({
                     const custId = orderForm.customer_id;
                     const custName = orderForm.customer_name || customerSearchInput;
                     if (custId || custName) {
-                        fetchCustomerPrice(custId, custName, updated.product_type, updated.presentation).then(p => {
+                        fetchCustomerPrice(custId, custName, updated.product_type, updated.presentation, updated.catalog_product_id, updated.catalog_code).then(p => {
                             if (p && p.price_per_lb > 0) {
                                 setItems(curr => curr.map(item => item.id === id ? {
                                     ...item,
                                     price_per_lb: p.price_per_lb,
+                                    price_per_kg: p.price_per_kg || Math.round(p.price_per_lb * 2.20462262 * 10000) / 10000,
+                                    is_kg_mode: Boolean(p.is_kg_customer || item.is_kg_mode),
                                     price_source_note: p.description
                                 } : item));
                             }
@@ -1003,11 +1157,13 @@ export default function EggCustomerOrderModal({
             const custId = orderForm.customer_id;
             const custName = orderForm.customer_name || customerSearchInput;
             if (custId || custName) {
-                fetchCustomerPrice(custId, custName, updated.product_type, rawValue).then(p => {
+                fetchCustomerPrice(custId, custName, updated.product_type, rawValue, updated.catalog_product_id, updated.catalog_code).then(p => {
                     if (p && p.price_per_lb > 0) {
                         setItems(curr => curr.map(item => item.id === id ? {
                             ...item,
                             price_per_lb: p.price_per_lb,
+                            price_per_kg: p.price_per_kg || Math.round(p.price_per_lb * 2.20462262 * 10000) / 10000,
+                            is_kg_mode: Boolean(p.is_kg_customer || item.is_kg_mode),
                             price_source_note: p.description
                         } : item));
                     }
@@ -1018,28 +1174,87 @@ export default function EggCustomerOrderModal({
     };
 
     const handleItemChange = (id, field, value) => {
+        const KG_TO_LB = 2.20462262;
+        const LB_TO_KG = 0.45359237;
+
         setItems(prev => prev.map(it => {
             if (it.id !== id) return it;
             const updated = { ...it, [field]: value };
+            const factorLbs = parseFloat(updated.unit_weight_lbs) || getPresentationFactors(updated.presentation).lbs;
 
-            // Si cambia la cantidad en unidades, recalcular lbs y kg
+            // Si cambia la cantidad en unidades (envases), recalcular lbs y kg
             if (field === 'quantity_units') {
-                const factorLbs = parseFloat(updated.unit_weight_lbs) || getPresentationFactors(updated.presentation).lbs;
-                const units = parseFloat(value) || 0;
-                const lbs = units > 0 ? Math.round(units * factorLbs * 100) / 100 : '';
-                const kg = lbs ? Math.round(lbs * 0.45359237 * 100) / 100 : '';
-                updated.quantity_lbs = lbs;
-                updated.quantity_kg = kg;
+                const units = parseFloat(value);
+                if (Number.isFinite(units) && units > 0) {
+                    const lbs = Math.round(units * factorLbs * 100) / 100;
+                    const kg = Math.round(lbs * LB_TO_KG * 100) / 100;
+                    updated.quantity_lbs = lbs;
+                    updated.quantity_kg = kg;
+                } else {
+                    updated.quantity_lbs = '';
+                    updated.quantity_kg = '';
+                }
             }
 
-            // Si cambia la cantidad en libras, recalcular unidades y kg
+            // Si cambia la cantidad en libras (Lbs), recalcular unidades (envases) y kg
             if (field === 'quantity_lbs') {
-                const factorLbs = parseFloat(updated.unit_weight_lbs) || getPresentationFactors(updated.presentation).lbs;
-                const lbs = parseFloat(value) || 0;
-                const units = (lbs > 0 && factorLbs > 0) ? Math.round((lbs / factorLbs) * 100) / 100 : '';
-                const kg = lbs ? Math.round(lbs * 0.45359237 * 100) / 100 : '';
-                updated.quantity_units = units;
-                updated.quantity_kg = kg;
+                const lbs = parseFloat(value);
+                if (Number.isFinite(lbs) && lbs > 0) {
+                    const units = factorLbs > 0 ? Math.round((lbs / factorLbs) * 100) / 100 : '';
+                    const kg = Math.round(lbs * LB_TO_KG * 100) / 100;
+                    updated.quantity_units = units;
+                    updated.quantity_kg = kg;
+                } else {
+                    updated.quantity_units = '';
+                    updated.quantity_kg = '';
+                }
+            }
+
+            // Si cambia la cantidad en kilogramos (Kg), recalcular libras (Lbs) y unidades (envases)
+            if (field === 'quantity_kg') {
+                const kg = parseFloat(value);
+                if (Number.isFinite(kg) && kg > 0) {
+                    const lbs = Math.round(kg * KG_TO_LB * 100) / 100;
+                    const units = factorLbs > 0 ? Math.round((lbs / factorLbs) * 100) / 100 : '';
+                    updated.quantity_lbs = lbs;
+                    updated.quantity_units = units;
+                } else {
+                    updated.quantity_lbs = '';
+                    updated.quantity_units = '';
+                }
+            }
+
+            // Si cambia cantidad de cajas (para presentaciones de galón 8 lb donde 1 caja = 4 galones = 32 lbs = 14.515 kg)
+            if (field === 'quantity_boxes') {
+                const boxes = parseFloat(value);
+                if (Number.isFinite(boxes) && boxes > 0) {
+                    const units = Math.round(boxes * 4 * 100) / 100;
+                    const lbs = Math.round(units * factorLbs * 100) / 100;
+                    const kg = Math.round(lbs * LB_TO_KG * 100) / 100;
+                    updated.quantity_units = units;
+                    updated.quantity_lbs = lbs;
+                    updated.quantity_kg = kg;
+                } else {
+                    updated.quantity_units = '';
+                    updated.quantity_lbs = '';
+                    updated.quantity_kg = '';
+                }
+            }
+
+            // Si cambia el precio por libra ($/Lb), recalcular su equivalente por kilogramo ($/Kg)
+            if (field === 'price_per_lb') {
+                const pLb = parseFloat(value);
+                updated.price_per_kg = (Number.isFinite(pLb) && pLb > 0)
+                    ? Math.round(pLb * KG_TO_LB * 10000) / 10000
+                    : '';
+            }
+
+            // Si cambia el precio por kilogramo ($/Kg), recalcular su equivalente por libra ($/Lb)
+            if (field === 'price_per_kg') {
+                const pKg = parseFloat(value);
+                updated.price_per_lb = (Number.isFinite(pKg) && pKg > 0)
+                    ? Math.round((pKg / KG_TO_LB) * 10000) / 10000
+                    : '';
             }
 
             // Si cambia el batch_id, auto-completar lot_code y sugerir tipo si coincide
@@ -1144,7 +1359,9 @@ export default function EggCustomerOrderModal({
                     quantity_lbs: Number.isFinite(parseFloat(it.quantity_lbs)) ? parseFloat(it.quantity_lbs) : 0,
                     quantity_kg: Number.isFinite(parseFloat(it.quantity_kg)) ? parseFloat(it.quantity_kg) : 0,
                     billing_unit: it.billing_unit || 'units',
+                    is_kg_mode: Boolean(it.is_kg_mode || isKgCustomerMode),
                     price_per_lb: Number.isFinite(parseFloat(it.price_per_lb)) ? parseFloat(it.price_per_lb) : 0,
+                    price_per_kg: Number.isFinite(parseFloat(it.price_per_kg)) ? parseFloat(it.price_per_kg) : 0,
                     price_source_note: it.price_source_note || '',
                     batch_id: it.batch_id ? (parseInt(it.batch_id, 10) || null) : null,
                     lot_code: it.lot_code || null
@@ -1598,10 +1815,24 @@ export default function EggCustomerOrderModal({
                     {/* SECCIÓN MULTI-PRODUCTO / PRESENTACIONES */}
                     <div className="bg-slate-50/60 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200 space-y-3">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                            <span className="text-[11px] font-black text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
-                                <Package className="w-4 h-4 text-indigo-600 shrink-0" />
-                                <span>Productos y Presentaciones ({items.length})</span>
-                            </span>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-[11px] font-black text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+                                    <Package className="w-4 h-4 text-indigo-600 shrink-0" />
+                                    <span>Productos y Presentaciones ({items.length})</span>
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsKgCustomerMode(prev => !prev)}
+                                    className={`inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-lg border transition ${
+                                        isKgCustomerMode
+                                            ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm'
+                                            : 'bg-white text-slate-600 border-slate-300 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300'
+                                    }`}
+                                    title="Activar/destacar manipulación simultánea en Kilogramos (Kg), Libras (Lbs) y Envases para saber exactamente cuánto descontar de inventario"
+                                >
+                                    <span>⚖️ {isKgCustomerMode ? 'Cliente con Medida en KG + Lbs Activo' : 'Activar Modo Kilogramos (Kg + Lbs)'}</span>
+                                </button>
+                            </div>
                             <button
                                 type="button"
                                 onClick={handleAddItem}
@@ -1612,210 +1843,379 @@ export default function EggCustomerOrderModal({
                             </button>
                         </div>
 
+                        {/* Banner de Acuerdos de Precio Pactados con el Cliente */}
+                        {customerAgreements.length > 0 && (
+                            <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl p-2.5 space-y-1.5">
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="text-[10px] font-black text-emerald-900 uppercase tracking-wide flex items-center gap-1">
+                                        <span>🤝 Precios por Libra Pactados con el Cliente ({customerAgreements.length})</span>
+                                    </span>
+                                    <span className="text-[10px] text-emerald-700 font-medium">
+                                        Clic para aplicar producto y precio pactado:
+                                    </span>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {(Array.isArray(customerAgreements) ? customerAgreements : []).map((ag, agIdx) => {
+                                        const pLb = parseFloat(ag.price_per_lb) || 0;
+                                        const pKg = Math.round(pLb * 2.20462262 * 10000) / 10000;
+                                        return (
+                                            <button
+                                                key={`ag-${ag.id || agIdx}`}
+                                                type="button"
+                                                onClick={() => handleApplyCustomerAgreement(ag)}
+                                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white hover:bg-emerald-100 text-emerald-950 border border-emerald-300 shadow-sm text-[11px] font-bold transition"
+                                                title="Aplicar este acuerdo comercial al pedido"
+                                            >
+                                                <span className="text-slate-800">{ag.product_type}</span>
+                                                <span className="text-[10px] font-semibold text-slate-500">({ag.presentation})</span>
+                                                <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 font-black">
+                                                    <Money amount={pLb} decimals={4} />/Lb
+                                                </span>
+                                                <span className="text-[10px] text-teal-700 font-semibold">
+                                                    (<Money amount={pKg} decimals={4} />/Kg)
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
                         {/* Tabla de items */}
-                        <div className="space-y-2.5">
-                            {(Array.isArray(items) ? items : []).map((it, idx) => (
-                                <div
-                                    key={it.id}
-                                    className="bg-white p-3 rounded-xl border border-slate-200/90 shadow-sm grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-stretch sm:items-end"
-                                >
-                                    {/* Tipo de producto (3 cols) */}
-                                    <div className="sm:col-span-3">
-                                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                                            #{idx + 1} Tipo de Producto *
-                                        </label>
-                                        <select
-                                            value={
-                                                it.selected_by_code && it.catalog_code
-                                                    ? `code:${it.catalog_code}`
-                                                    : (availableProducts.includes(it.product_type) ? it.product_type : (it.catalog_code ? `code:${it.catalog_code}` : it.product_type))
-                                            }
-                                            onChange={(e) => handleProductSelectChange(it.id, e.target.value)}
-                                            className="w-full text-xs font-bold border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500"
-                                        >
-                                            <optgroup label="📋 Productos de la Matriz Industrial">
-                                                {(Array.isArray(availableProducts) ? availableProducts : []).map(p => (
-                                                    <option key={`p-${p}`} value={p}>{p}</option>
-                                                ))}
-                                            </optgroup>
-                                            {allMatrixCodes.length > 0 && (
-                                                <optgroup label="🏷️ Códigos Directos de Catálogo (SKU / Matriz)">
-                                                    {(Array.isArray(allMatrixCodes) ? allMatrixCodes : []).map((c, cIdx) => (
-                                                        <option key={`c-${c.code}-${cIdx}`} value={`code:${c.code}`}>
-                                                            [{c.code}] {c.product_name} ({c.weight_lbs} lb)
-                                                        </option>
-                                                    ))}
-                                                </optgroup>
-                                            )}
-                                        </select>
-                                        <div className="mt-1">
-                                            {it.catalog_code ? (
-                                                <div className="flex items-center gap-1 text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 truncate" title={`Código SKU: ${it.catalog_code}${it.catalog_product_name ? ` - ${it.catalog_product_name}` : ''}`}>
-                                                    <Barcode className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                                    <span className="font-mono font-bold">{it.catalog_code}</span>
-                                                    {it.catalog_product_name && (
-                                                        <span className="truncate text-slate-600 font-normal">
-                                                            • {it.catalog_product_name}
+                        <div className="space-y-3">
+                            {(Array.isArray(items) ? items : []).map((it, idx) => {
+                                const weightLbs = parseFloat(it.unit_weight_lbs) || getPresentationFactors(it.presentation).lbs || 30;
+                                const weightKgPerUnit = Math.round(weightLbs * 0.45359237 * 1000) / 1000;
+                                const numUnits = parseFloat(it.quantity_units) || 0;
+                                const numLbs = parseFloat(it.quantity_lbs) || 0;
+                                const numKg = parseFloat(it.quantity_kg) || (numLbs > 0 ? Math.round(numLbs * 0.45359237 * 100) / 100 : 0);
+                                const pLb = parseFloat(it.price_per_lb) || 0;
+                                const pKg = parseFloat(it.price_per_kg) || (pLb > 0 ? Math.round(pLb * 2.20462262 * 10000) / 10000 : 0);
+                                const unitContainerPrice = Math.round(pLb * weightLbs * 100) / 100;
+                                const isGallon8Lb = Math.abs(weightLbs - 8) < 0.1 || normalizeText(it.presentation).includes('galon');
+                                const equivBoxes = isGallon8Lb && numUnits > 0 ? Math.round((numUnits / 4) * 100) / 100 : '';
+
+                                return (
+                                    <div
+                                        key={it.id}
+                                        className="bg-white p-3 rounded-xl border border-slate-200/90 shadow-sm space-y-2.5"
+                                    >
+                                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-stretch sm:items-start">
+                                            {/* Tipo de producto (3 cols) */}
+                                            <div className="sm:col-span-3">
+                                                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                                                    #{idx + 1} Tipo de Producto *
+                                                </label>
+                                                <select
+                                                    value={
+                                                        it.selected_by_code && it.catalog_code
+                                                            ? `code:${it.catalog_code}`
+                                                            : (availableProducts.includes(it.product_type) ? it.product_type : (it.catalog_code ? `code:${it.catalog_code}` : it.product_type))
+                                                    }
+                                                    onChange={(e) => handleProductSelectChange(it.id, e.target.value)}
+                                                    className="w-full text-xs font-bold border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500"
+                                                >
+                                                    <optgroup label="📋 Productos de la Matriz Industrial">
+                                                        {(Array.isArray(availableProducts) ? availableProducts : []).map(p => (
+                                                            <option key={`p-${p}`} value={p}>{p}</option>
+                                                        ))}
+                                                    </optgroup>
+                                                    {allMatrixCodes.length > 0 && (
+                                                        <optgroup label="🏷️ Códigos Directos de Catálogo (SKU / Matriz)">
+                                                            {(Array.isArray(allMatrixCodes) ? allMatrixCodes : []).map((c, cIdx) => (
+                                                                <option key={`c-${c.code}-${cIdx}`} value={`code:${c.code}`}>
+                                                                    [{c.code}] {c.product_name} ({c.weight_lbs} lb)
+                                                                </option>
+                                                            ))}
+                                                        </optgroup>
+                                                    )}
+                                                </select>
+                                                <div className="mt-1">
+                                                    {it.catalog_code ? (
+                                                        <div className="flex items-center gap-1 text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 truncate" title={`Código SKU: ${it.catalog_code}${it.catalog_product_name ? ` - ${it.catalog_product_name}` : ''}`}>
+                                                            <Barcode className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                                            <span className="font-mono font-bold">{it.catalog_code}</span>
+                                                            {it.catalog_product_name && (
+                                                                <span className="truncate text-slate-600 font-normal">
+                                                                    • {it.catalog_product_name}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-[10px] text-slate-400 italic block pl-0.5">
+                                                            Estándar general
                                                         </span>
                                                     )}
                                                 </div>
-                                            ) : (
-                                                <span className="text-[10px] text-slate-400 italic block pl-0.5">
-                                                    Estándar general
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Presentación (2 cols) */}
-                                    <div className="sm:col-span-2">
-                                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                                            Presentación
-                                        </label>
-                                        <select
-                                            value={
-                                                it.catalog_code && getPresentationsForProduct(it.product_type).some(pm => pm.code === it.catalog_code)
-                                                    ? `code:${it.catalog_code}`
-                                                    : it.presentation
-                                            }
-                                            onChange={(e) => handlePresentationSelectChange(it.id, e.target.value)}
-                                            className="w-full text-xs font-medium border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500"
-                                        >
-                                            {getPresentationsForProduct(it.product_type).length > 0 && (
-                                                <optgroup label="✨ Presentaciones Mapeadas (Matriz)">
-                                                    {(Array.isArray(getPresentationsForProduct(it.product_type)) ? getPresentationsForProduct(it.product_type) : []).map((pm, pmIdx) => (
-                                                        <option key={`pm-${pmIdx}`} value={`code:${pm.code}`}>
-                                                            {pm.presentation} [{pm.code}] ({pm.weight_lbs} lb)
-                                                        </option>
-                                                    ))}
-                                                </optgroup>
-                                            )}
-                                            <optgroup label="📦 Otras Presentaciones">
-                                                {(Array.isArray(PRESENTATIONS) ? PRESENTATIONS : []).map(p => (
-                                                    <option key={`gen-${p}`} value={p}>{p}</option>
-                                                ))}
-                                            </optgroup>
-                                        </select>
-                                        <div className="mt-1">
-                                            <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 block truncate">
-                                                Factor: {it.unit_weight_lbs || getPresentationFactors(it.presentation).lbs} lb/ud
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    {/* Cantidad en Unidades (2 cols) */}
-                                    <div className="sm:col-span-2">
-                                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                                            Cantidad (Uds) *
-                                        </label>
-                                        <input
-                                            type="number"
-                                            required
-                                            step="1"
-                                            min="1"
-                                            placeholder="Ej: 10"
-                                            value={it.quantity_units}
-                                            onChange={(e) => handleItemChange(it.id, 'quantity_units', e.target.value)}
-                                            className="w-full text-xs font-black border border-slate-200 rounded-lg px-2 py-1.5 text-indigo-700 outline-none focus:border-indigo-500"
-                                        />
-                                        <div className="mt-1 flex items-center justify-between gap-1 flex-wrap">
-                                            <div className="flex items-center gap-1 text-[10px] font-bold text-slate-500">
-                                                <span className="text-indigo-600 bg-indigo-50 px-1 py-0.2 rounded border border-indigo-100">
-                                                    = {it.quantity_lbs ? `${it.quantity_lbs.toLocaleString()} lb` : '0 lb'}
-                                                </span>
-                                                {it.quantity_kg ? (
-                                                    <span className="text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-100">
-                                                        {it.quantity_kg.toLocaleString()} kg
-                                                    </span>
-                                                ) : null}
                                             </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleItemChange(it.id, 'billing_unit', it.billing_unit === 'lbs' ? 'units' : 'lbs')}
-                                                title={it.billing_unit === 'lbs' ? 'Facturar por Libras (Peso) en DTE' : 'Facturar por Presentación (Uds) en DTE'}
-                                                className={`text-[9px] font-bold px-1.5 py-0.5 rounded border transition ${
-                                                    it.billing_unit === 'lbs'
-                                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                                                        : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
-                                                }`}
-                                            >
-                                                {it.billing_unit === 'lbs' ? '⚖️ Factura: Lbs' : '📦 Factura: Uds'}
-                                            </button>
+
+                                            {/* Presentación (2 cols) */}
+                                            <div className="sm:col-span-2">
+                                                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                                                    Presentación
+                                                </label>
+                                                <select
+                                                    value={
+                                                        it.catalog_code && getPresentationsForProduct(it.product_type).some(pm => pm.code === it.catalog_code)
+                                                            ? `code:${it.catalog_code}`
+                                                            : it.presentation
+                                                    }
+                                                    onChange={(e) => handlePresentationSelectChange(it.id, e.target.value)}
+                                                    className="w-full text-xs font-medium border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500"
+                                                >
+                                                    {getPresentationsForProduct(it.product_type).length > 0 && (
+                                                        <optgroup label="✨ Presentaciones Mapeadas (Matriz)">
+                                                            {(Array.isArray(getPresentationsForProduct(it.product_type)) ? getPresentationsForProduct(it.product_type) : []).map((pm, pmIdx) => (
+                                                                <option key={`pm-${pmIdx}`} value={`code:${pm.code}`}>
+                                                                    {pm.presentation} [{pm.code}] ({pm.weight_lbs} lb)
+                                                                </option>
+                                                            ))}
+                                                        </optgroup>
+                                                    )}
+                                                    <optgroup label="📦 Otras Presentaciones">
+                                                        {(Array.isArray(PRESENTATIONS) ? PRESENTATIONS : []).map(p => (
+                                                            <option key={`gen-${p}`} value={p}>{p}</option>
+                                                        ))}
+                                                    </optgroup>
+                                                </select>
+                                                <div className="mt-1">
+                                                    <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 block truncate" title={`1 envase = ${weightLbs} Lbs = ${weightKgPerUnit} Kg`}>
+                                                        1 ud = {weightLbs} lb ({weightKgPerUnit} kg)
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {/* Cantidades Sincronizadas: Envases (Uds), Libras (Lbs) y Kilogramos (Kg) (3 cols) */}
+                                            <div className="sm:col-span-3">
+                                                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                                                    Cantidades (Envases / Lbs / Kg) *
+                                                </label>
+                                                <div className="grid grid-cols-3 gap-1.5">
+                                                    {/* Input 1: Envases (Unidades de inventario) */}
+                                                    <div>
+                                                        <input
+                                                            type="number"
+                                                            required
+                                                            step="any"
+                                                            min="0.01"
+                                                            placeholder="Uds"
+                                                            value={it.quantity_units}
+                                                            onChange={(e) => handleItemChange(it.id, 'quantity_units', e.target.value)}
+                                                            className="w-full text-xs font-black border border-indigo-200 bg-indigo-50/30 rounded-lg px-2 py-1.5 text-indigo-800 outline-none focus:border-indigo-500"
+                                                            title="Cantidad de envases/unidades a descontar de inventario"
+                                                        />
+                                                        <span className="block text-[9px] font-bold text-indigo-700 text-center mt-0.5">
+                                                            📦 Envases
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Input 2: Peso en Libras (Lbs) */}
+                                                    <div>
+                                                        <input
+                                                            type="number"
+                                                            step="any"
+                                                            min="0"
+                                                            placeholder="Lbs"
+                                                            value={it.quantity_lbs}
+                                                            onChange={(e) => handleItemChange(it.id, 'quantity_lbs', e.target.value)}
+                                                            className="w-full text-xs font-bold border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500"
+                                                            title="Peso total en Libras (Lbs)"
+                                                        />
+                                                        <span className="block text-[9px] font-bold text-slate-600 text-center mt-0.5">
+                                                            ⚖️ Libras (Lb)
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Input 3: Peso en Kilogramos (Kg) */}
+                                                    <div>
+                                                        <input
+                                                            type="number"
+                                                            step="any"
+                                                            min="0"
+                                                            placeholder="Kg"
+                                                            value={it.quantity_kg}
+                                                            onChange={(e) => handleItemChange(it.id, 'quantity_kg', e.target.value)}
+                                                            className={`w-full text-xs font-black rounded-lg px-2 py-1.5 outline-none transition ${
+                                                                isKgCustomerMode || it.is_kg_mode
+                                                                    ? 'border-2 border-emerald-500 bg-emerald-50/60 text-emerald-900 focus:border-emerald-600'
+                                                                    : 'border border-emerald-200 bg-emerald-50/20 text-emerald-800 focus:border-emerald-500'
+                                                            }`}
+                                                            title="Peso total en Kilogramos (Kg) — Calcula automáticamente las Libras y Envases para inventario"
+                                                        />
+                                                        <span className="block text-[9px] font-bold text-emerald-700 text-center mt-0.5">
+                                                            ⚖️ Kilos (Kg)
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Si es Galón de 8 lb, permitir manipular también por Cajas de 4 galones (32 lbs = 14.515 kg) */}
+                                                {isGallon8Lb && (
+                                                    <div className="mt-1 flex items-center gap-1.5 bg-amber-50/70 border border-amber-200/80 rounded-lg px-2 py-1">
+                                                        <span className="text-[9px] font-bold text-amber-900 shrink-0">
+                                                            📦 Cajas (4 gal = 32 lb / 14.515 kg):
+                                                        </span>
+                                                        <input
+                                                            type="number"
+                                                            step="any"
+                                                            min="0"
+                                                            placeholder="Cajas"
+                                                            value={equivBoxes}
+                                                            onChange={(e) => handleItemChange(it.id, 'quantity_boxes', e.target.value)}
+                                                            className="w-16 text-[11px] font-black border border-amber-300 bg-white rounded px-1.5 py-0.5 text-amber-900 outline-none focus:border-amber-500"
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Precio Pactado ($/Lb y $/Kg) (2 cols) */}
+                                            <div className="sm:col-span-2">
+                                                <div className="flex items-center justify-between gap-1 mb-1">
+                                                    <label className="block text-[10px] font-bold text-slate-500 uppercase">
+                                                        Precio ($/Lb)
+                                                    </label>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleRefreshItemPrice(it)}
+                                                        className="text-[9px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-1.5 py-0.2 rounded border border-indigo-200 transition flex items-center gap-0.5"
+                                                        title="Llamar precio por libra pactado con el cliente"
+                                                    >
+                                                        <RefreshCw className="w-2.5 h-2.5" />
+                                                        <span>Pactado</span>
+                                                    </button>
+                                                </div>
+                                                <MoneyInput
+                                                    value={it.price_per_lb}
+                                                    onChange={(e) => handleItemChange(it.id, 'price_per_lb', e.target.value)}
+                                                    placeholder="0.0000"
+                                                    className="w-full text-xs font-black border border-slate-200 rounded-lg px-2 py-1.5 text-slate-900 outline-none focus:border-indigo-500"
+                                                    step="any"
+                                                    min="0"
+                                                />
+                                                {/* Equivalente editable en $/Kg */}
+                                                <div className="mt-1 flex items-center gap-1">
+                                                    <span className="text-[9px] font-bold text-emerald-700 shrink-0">$/Kg:</span>
+                                                    <MoneyInput
+                                                        value={it.price_per_kg !== undefined && it.price_per_kg !== '' ? it.price_per_kg : (pKg || '')}
+                                                        onChange={(e) => handleItemChange(it.id, 'price_per_kg', e.target.value)}
+                                                        placeholder="0.0000"
+                                                        className="w-full text-[11px] font-bold border border-emerald-200 bg-emerald-50/30 rounded px-1.5 py-0.5 text-emerald-900 outline-none focus:border-emerald-500"
+                                                        step="any"
+                                                        min="0"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Vincular Lote + Eliminar (2 cols) */}
+                                            <div className="sm:col-span-2 flex items-start gap-1.5">
+                                                <div className="flex-1 min-w-0">
+                                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                                                        Vincular Lote
+                                                    </label>
+                                                    <select
+                                                        value={it.batch_id || ''}
+                                                        onChange={(e) => handleItemChange(it.id, 'batch_id', e.target.value)}
+                                                        className="w-full text-[11px] font-semibold border border-slate-200 rounded-lg px-2 py-1.5 text-emerald-800 bg-emerald-50/20 outline-none focus:border-emerald-500"
+                                                    >
+                                                        <option value="">-- Sin asignar --</option>
+                                                        {(Array.isArray(availableBatches
+                                                            .filter(b => String(b.id) === String(it.batch_id) || isBatchCompatibleWithProduct(b.product_type, it.product_type))) ? availableBatches
+                                                            .filter(b => String(b.id) === String(it.batch_id) || isBatchCompatibleWithProduct(b.product_type, it.product_type)) : [])
+                                                            .map(b => (
+                                                                <option key={b.id} value={b.id}>
+                                                                    {b.batch_code_display || b.lote} ({b.product_type || 'Ovoproducto'})
+                                                                </option>
+                                                            ))}
+                                                    </select>
+                                                    <div className="mt-1">
+                                                        {it.batch_id ? (
+                                                            <span className="text-[10px] font-semibold text-emerald-700 block truncate">
+                                                                ✓ Lote asignado
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-[10px] text-slate-400 italic block">
+                                                                Sin lote
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemoveItem(it.id)}
+                                                    disabled={items.length <= 1}
+                                                    className="mt-5 p-1.5 text-slate-400 hover:text-rose-600 disabled:opacity-30 transition rounded shrink-0"
+                                                    title="Eliminar presentación"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Sub-barra de Descuento en Inventario, Doble Medida (Lbs / Kg) y Facturación */}
+                                        <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px]">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                {/* Resumen explícito de Descuento en Inventario */}
+                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-900 border border-indigo-200 font-bold">
+                                                    <span>📦 Descontar de Inventario:</span>
+                                                    <strong className="text-indigo-700">
+                                                        {numUnits > 0 ? `${numUnits.toLocaleString()} ${it.presentation || 'envases'}` : '0 envases'}
+                                                    </strong>
+                                                    {isGallon8Lb && numUnits > 0 && (
+                                                        <span className="text-amber-800 bg-amber-100/80 px-1.5 py-0.2 rounded text-[10px] font-extrabold">
+                                                            ({equivBoxes} cajas de 4 gal)
+                                                        </span>
+                                                    )}
+                                                </span>
+
+                                                {/* Doble medida Lbs y Kg */}
+                                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-900 border border-emerald-200 font-bold">
+                                                    <span>⚖️ Equivalencia:</span>
+                                                    <strong className="text-indigo-800">{numLbs.toLocaleString()} Lbs</strong>
+                                                    <span className="text-slate-400">⇄</span>
+                                                    <strong className="text-emerald-700">{numKg.toLocaleString()} Kg</strong>
+                                                </span>
+
+                                                {/* Origen del precio pactado y precio por envase */}
+                                                {pLb > 0 && (
+                                                    <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200">
+                                                        Envase ({weightLbs} lb): <Money amount={unitContainerPrice} />
+                                                        {it.price_source_note ? ` • 🏷️ ${it.price_source_note}` : ''}
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            <div className="flex items-center justify-between sm:justify-end gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const nextUnit = it.billing_unit === 'units'
+                                                            ? 'lbs'
+                                                            : (it.billing_unit === 'lbs' ? 'kg' : 'units');
+                                                        handleItemChange(it.id, 'billing_unit', nextUnit);
+                                                    }}
+                                                    title="Cambiar unidad de medida para facturación en DTE (Presentación/Uds, Libras o Kilogramos)"
+                                                    className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border transition ${
+                                                        it.billing_unit === 'kg'
+                                                            ? 'bg-teal-50 text-teal-800 border-teal-300 hover:bg-teal-100'
+                                                            : it.billing_unit === 'lbs'
+                                                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                                                : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                                                    }`}
+                                                >
+                                                    {it.billing_unit === 'kg'
+                                                        ? '⚖️ Factura DTE: Kilos (Kg)'
+                                                        : it.billing_unit === 'lbs'
+                                                            ? '⚖️ Factura DTE: Libras (Lbs)'
+                                                            : '📦 Factura DTE: Envases (Uds)'}
+                                                </button>
+
+                                                <span className="text-xs font-black text-slate-800">
+                                                    Subtotal: <Money amount={numLbs * pLb} />
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
-
-                                    {/* Precio Acordado / Lb (2 cols) */}
-                                    <div className="sm:col-span-2">
-                                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                                            Precio ($/Lb)
-                                        </label>
-                                        <MoneyInput
-                                            value={it.price_per_lb}
-                                            onChange={(e) => handleItemChange(it.id, 'price_per_lb', e.target.value)}
-                                            placeholder="0.0000"
-                                            className="w-full text-xs font-bold border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500"
-                                            step="any"
-                                            min="0"
-                                        />
-                                        <div className="mt-0.5">
-                                            {it.price_source_note ? (
-                                                <span className="text-[9px] font-semibold text-emerald-700 block truncate" title={it.price_source_note}>
-                                                    🏷️ {it.price_source_note}
-                                                </span>
-                                            ) : null}
-                                            <span className="text-[10px] font-bold text-slate-600 block">
-                                                Subtotal: <Money amount={(parseFloat(it.quantity_lbs) || 0) * (parseFloat(it.price_per_lb) || 0)} />
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    {/* Vincular Lote de Producción (2 cols) */}
-                                    <div className="sm:col-span-2">
-                                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                                            Vincular Lote
-                                        </label>
-                                        <select
-                                            value={it.batch_id || ''}
-                                            onChange={(e) => handleItemChange(it.id, 'batch_id', e.target.value)}
-                                            className="w-full text-[11px] font-semibold border border-slate-200 rounded-lg px-2 py-1.5 text-emerald-800 bg-emerald-50/20 outline-none focus:border-emerald-500"
-                                        >
-                                            <option value="">-- Sin asignar --</option>
-                                            {(Array.isArray(availableBatches
-                                                .filter(b => String(b.id) === String(it.batch_id) || isBatchCompatibleWithProduct(b.product_type, it.product_type))) ? availableBatches
-                                                .filter(b => String(b.id) === String(it.batch_id) || isBatchCompatibleWithProduct(b.product_type, it.product_type)) : [])
-                                                .map(b => (
-                                                    <option key={b.id} value={b.id}>
-                                                        {b.batch_code_display || b.lote} ({b.product_type || 'Ovoproducto'})
-                                                    </option>
-                                                ))}
-                                        </select>
-                                        <div className="mt-1">
-                                            {it.batch_id ? (
-                                                <span className="text-[10px] font-semibold text-emerald-700 block truncate">
-                                                    ✓ Lote asignado
-                                                </span>
-                                            ) : (
-                                                <span className="text-[10px] text-slate-400 italic block">
-                                                    Sin lote
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Eliminar fila (1 col) */}
-                                    <div className="sm:col-span-1 flex justify-center pb-1">
-                                        <button
-                                            type="button"
-                                            onClick={() => handleRemoveItem(it.id)}
-                                            disabled={items.length <= 1}
-                                            className="p-1.5 text-slate-400 hover:text-rose-600 disabled:opacity-30 transition rounded"
-                                            title="Eliminar presentación"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
 
                         {/* Barra de Totales */}

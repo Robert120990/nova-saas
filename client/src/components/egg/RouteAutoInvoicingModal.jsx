@@ -476,14 +476,50 @@ export default function RouteAutoInvoicingModal({
     };
 
     const handleUpdateItemField = (stopId, itemIndex, field, value) => {
+        const KG_TO_LB = 2.20462262;
+        const LB_TO_KG = 0.45359237;
+
         setStopsConfig(prev => {
             const currentStop = prev[stopId];
             if (!currentStop || currentStop.is_billed) return prev;
             const newItems = [...currentStop.items];
+            const prevItem = newItems[itemIndex];
             const updatedItem = {
-                ...newItems[itemIndex],
+                ...prevItem,
                 [field]: value
             };
+
+            const factorLbs = parseFloat(updatedItem.unit_weight_lbs) || getIndustrialPresentationWeightLbs(updatedItem.presentation || updatedItem.original_presentation) || 30;
+
+            if (field === 'units' || field === 'quantity_units') {
+                const u = parseFloat(value);
+                if (Number.isFinite(u) && u > 0) {
+                    const lbs = Math.round(u * factorLbs * 100) / 100;
+                    updatedItem.units = u;
+                    updatedItem.quantity_units = u;
+                    updatedItem.quantity_lbs = lbs;
+                    updatedItem.quantity_kg = Math.round(lbs * LB_TO_KG * 100) / 100;
+                }
+            } else if (field === 'quantity_lbs') {
+                const lbs = parseFloat(value);
+                if (Number.isFinite(lbs) && lbs > 0) {
+                    const u = factorLbs > 0 ? Math.round((lbs / factorLbs) * 100) / 100 : updatedItem.units;
+                    updatedItem.quantity_lbs = lbs;
+                    updatedItem.units = u;
+                    updatedItem.quantity_units = u;
+                    updatedItem.quantity_kg = Math.round(lbs * LB_TO_KG * 100) / 100;
+                }
+            } else if (field === 'quantity_kg') {
+                const kg = parseFloat(value);
+                if (Number.isFinite(kg) && kg > 0) {
+                    const lbs = Math.round(kg * KG_TO_LB * 100) / 100;
+                    const u = factorLbs > 0 ? Math.round((lbs / factorLbs) * 100) / 100 : updatedItem.units;
+                    updatedItem.quantity_kg = kg;
+                    updatedItem.quantity_lbs = lbs;
+                    updatedItem.units = u;
+                    updatedItem.quantity_units = u;
+                }
+            }
 
             if (field === 'presentation' || field === 'lot_code') {
                 const matched = findMatchingPackaging(updatedItem, availableLots);
@@ -1294,48 +1330,90 @@ export default function RouteAutoInvoicingModal({
                                                         )}
                                                     </div>
 
-                                                    {/* 3. Cant. Unidades */}
+                                                    {/* 3. Cant. Unidades (Descuento en Inventario) */}
                                                     <div className="text-center sm:text-left">
                                                         <div className="flex items-center gap-1">
-                                                            <span className={`block text-[9px] font-black uppercase ${isBillingByUnits ? 'text-blue-700' : 'text-slate-400'}`}>
-                                                                {isBillingByUnits ? 'Cant. DTE (Uds)' : 'Unidades'}
+                                                            <span className={`block text-[9px] font-black uppercase ${isBillingByUnits ? 'text-blue-700' : 'text-slate-500'}`}>
+                                                                {isBillingByUnits ? 'Cant. DTE (Uds)' : '📦 Inv. (Uds)'}
                                                             </span>
                                                             {isBillingByUnits && (
                                                                 <span className="text-[8px] bg-blue-100 text-blue-700 font-extrabold px-1 rounded">DTE</span>
                                                             )}
                                                         </div>
-                                                        <span className={`font-black px-2 py-0.5 rounded-md border inline-block text-xs mt-0.5 ${
-                                                            isBillingByUnits
-                                                                ? 'text-blue-900 bg-blue-50 border-blue-200 shadow-2xs'
-                                                                : 'text-slate-500 bg-slate-100 border-slate-200'
-                                                        }`}>
-                                                            {units} Uds
-                                                        </span>
+                                                        {!isBilled ? (
+                                                            <input
+                                                                type="number"
+                                                                step="any"
+                                                                min="0"
+                                                                value={units}
+                                                                onChange={(e) => handleUpdateItemField(stop.id, itemIdx, 'units', e.target.value)}
+                                                                className={`w-full text-xs font-black px-2 py-1 rounded-md border mt-0.5 outline-none ${
+                                                                    isBillingByUnits
+                                                                        ? 'text-blue-900 bg-blue-50 border-blue-300 focus:border-blue-500'
+                                                                        : 'text-indigo-800 bg-indigo-50/40 border-indigo-200 focus:border-indigo-500'
+                                                                }`}
+                                                                title="Envases/unidades a descontar de inventario"
+                                                            />
+                                                        ) : (
+                                                            <span className="font-black px-2 py-0.5 rounded-md border inline-block text-xs mt-0.5 text-slate-600 bg-slate-100 border-slate-200">
+                                                                {units} Uds
+                                                            </span>
+                                                        )}
                                                     </div>
 
-                                                    {/* 4. Cant. Libras / Kilogramos */}
+                                                    {/* 4. Doble Medida Simultánea: Libras (Lbs) y Kilogramos (Kg) */}
                                                     <div className="text-center sm:text-left">
-                                                        <div className="flex items-center gap-1">
-                                                            <span className={`block text-[9px] font-black uppercase ${!isBillingByUnits ? 'text-emerald-700' : 'text-slate-400'}`}>
-                                                                {!isBillingByUnits
-                                                                    ? (it.is_kg_mode ? 'Cant. DTE (Kg)' : 'Cant. DTE (Lbs)')
-                                                                    : (it.is_kg_mode ? 'Peso (Kg)' : 'Peso (Lbs)')
-                                                                }
+                                                        <div className="flex items-center justify-between gap-1">
+                                                            <span className={`block text-[9px] font-black uppercase ${!isBillingByUnits ? 'text-emerald-700' : 'text-slate-500'}`}>
+                                                                Peso (Lbs / Kg)
                                                             </span>
                                                             {!isBillingByUnits && (
-                                                                <span className="text-[8px] bg-emerald-100 text-emerald-700 font-extrabold px-1 rounded">DTE</span>
+                                                                <span className="text-[8px] bg-emerald-100 text-emerald-700 font-extrabold px-1 rounded">
+                                                                    DTE {it.is_kg_mode ? 'KG' : 'LBS'}
+                                                                </span>
                                                             )}
                                                         </div>
-                                                        <span className={`font-black px-2 py-0.5 rounded-md border inline-block text-xs mt-0.5 ${
-                                                            !isBillingByUnits
-                                                                ? 'text-emerald-900 bg-emerald-50 border-emerald-200 shadow-2xs'
-                                                                : 'text-slate-600 bg-slate-100 border-slate-200'
-                                                        }`}>
-                                                            {it.is_kg_mode
-                                                                ? `${(qtyLbs * 0.45359237).toFixed(2)} Kg`
-                                                                : `${qtyLbs.toLocaleString()} Lbs`
-                                                            }
-                                                        </span>
+                                                        {!isBilled ? (
+                                                            <div className="grid grid-cols-2 gap-1 mt-0.5">
+                                                                <div>
+                                                                    <input
+                                                                        type="number"
+                                                                        step="any"
+                                                                        min="0"
+                                                                        value={qtyLbs}
+                                                                        onChange={(e) => handleUpdateItemField(stop.id, itemIdx, 'quantity_lbs', e.target.value)}
+                                                                        className="w-full text-[11px] font-black px-1.5 py-0.5 rounded border border-slate-200 bg-white text-slate-800 focus:border-indigo-500 outline-none"
+                                                                        title="Peso en Libras (Lbs)"
+                                                                    />
+                                                                    <span className="block text-[8px] font-bold text-slate-500 text-center">Lbs</span>
+                                                                </div>
+                                                                <div>
+                                                                    <input
+                                                                        type="number"
+                                                                        step="any"
+                                                                        min="0"
+                                                                        value={it.quantity_kg !== undefined && it.quantity_kg !== '' ? it.quantity_kg : Math.round(qtyLbs * 0.45359237 * 100) / 100}
+                                                                        onChange={(e) => handleUpdateItemField(stop.id, itemIdx, 'quantity_kg', e.target.value)}
+                                                                        className={`w-full text-[11px] font-black px-1.5 py-0.5 rounded border outline-none ${
+                                                                            it.is_kg_mode
+                                                                                ? 'border-emerald-400 bg-emerald-50 text-emerald-900'
+                                                                                : 'border-emerald-200 bg-emerald-50/30 text-emerald-800'
+                                                                        }`}
+                                                                        title="Peso en Kilogramos (Kg)"
+                                                                    />
+                                                                    <span className="block text-[8px] font-bold text-emerald-700 text-center">Kg</span>
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="mt-0.5 space-y-0.5">
+                                                                <span className="font-black px-1.5 py-0.2 rounded border inline-block text-[11px] text-slate-700 bg-slate-100 border-slate-200 mr-1">
+                                                                    {qtyLbs.toLocaleString()} Lbs
+                                                                </span>
+                                                                <span className="font-black px-1.5 py-0.2 rounded border inline-block text-[11px] text-emerald-800 bg-emerald-50 border-emerald-200">
+                                                                    {(qtyLbs * 0.45359237).toFixed(2)} Kg
+                                                                </span>
+                                                            </div>
+                                                        )}
                                                     </div>
 
                                                     {/* 5 & 6. Precio y Total */}
@@ -1344,17 +1422,15 @@ export default function RouteAutoInvoicingModal({
                                                             {isBillingByUnits ? (
                                                                 <>@ <Money value={effectiveUnitPrice} />/ud</>
                                                             ) : (
-                                                                <>@ <Money value={priceLb} />/lb</>
+                                                                <>@ <Money value={priceLb} decimals={4} />/lb</>
                                                             )}
                                                         </span>
                                                         <span className="font-black text-slate-900 text-sm">
                                                             <Money value={itemTotal} />
                                                         </span>
-                                                        {isBillingByUnits && (
-                                                            <span className="block text-[9px] text-slate-400 font-medium">
-                                                                (@ <Money value={priceLb} />/lb)
-                                                            </span>
-                                                        )}
+                                                        <span className="block text-[9px] text-emerald-700 font-semibold">
+                                                            <Money value={priceLb} decimals={4} />/lb · <Money value={priceLb * 2.20462262} decimals={4} />/kg
+                                                        </span>
                                                     </div>
                                                 </div>
 

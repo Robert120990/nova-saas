@@ -275,15 +275,28 @@ export const EggCalendarPreviewPopover = ({ hoverPreview }) => {
                 <div className="grid grid-cols-2 gap-2 bg-amber-50/60 p-2.5 rounded-xl border border-amber-200/60 text-[11px]">
                     <div>
                         <span className="text-[10px] font-bold text-amber-800/70 uppercase block">Cantidad Solicitada</span>
-                        <span className="font-black text-slate-900 text-xs">
+                        <span className="font-black text-slate-900 text-xs block">
                             {parseFloat(order.quantity_lbs || 0).toLocaleString()} Lbs
+                            <span className="text-[10px] font-bold text-emerald-700 ml-1">
+                                ({Math.round(parseFloat(order.quantity_lbs || 0) * 0.45359237 * 100) / 100} Kg)
+                            </span>
                         </span>
+                        {parseFloat(order.quantity_units || 0) > 0 && (
+                            <span className="text-[10px] font-bold text-indigo-700 block">
+                                📦 {parseFloat(order.quantity_units).toLocaleString()} Uds (Inventario)
+                            </span>
+                        )}
                     </div>
                     <div>
                         <span className="text-[10px] font-bold text-amber-800/70 uppercase block">Total Estimado</span>
-                        <span className="font-bold text-emerald-700 text-xs">
+                        <span className="font-bold text-emerald-700 text-xs block">
                             <Money value={totalAmount} />
                         </span>
+                        {parseFloat(order.price_per_lb || 0) > 0 && (
+                            <span className="text-[9.5px] font-semibold text-slate-600 block">
+                                <Money value={order.price_per_lb} decimals={4} />/Lb (<Money value={parseFloat(order.price_per_lb) * 2.20462262} decimals={4} />/Kg)
+                            </span>
+                        )}
                     </div>
                     <div>
                         <span className="text-[10px] font-bold text-amber-800/70 uppercase block">Producto</span>
@@ -324,13 +337,21 @@ export const EggCalendarPreviewPopover = ({ hoverPreview }) => {
                         <span className="font-bold text-amber-950 block mb-1">
                             Partidas del Pedido ({itemsList.length}):
                         </span>
-                        <div className="space-y-1 max-h-20 overflow-y-auto">
-                            {(Array.isArray(itemsList) ? itemsList : []).map((it, idx) => (
-                                <div key={idx} className="flex items-center justify-between bg-slate-50 p-1 rounded font-medium">
-                                    <span className="truncate max-w-[180px]">{it.product_type} - {it.presentation}</span>
-                                    <span className="font-bold text-slate-800">{parseFloat(it.quantity_lbs || 0).toLocaleString()} Lbs</span>
-                                </div>
-                            ))}
+                        <div className="space-y-1 max-h-24 overflow-y-auto">
+                            {(Array.isArray(itemsList) ? itemsList : []).map((it, idx) => {
+                                const iLbs = parseFloat(it.quantity_lbs || 0);
+                                const iKg = parseFloat(it.quantity_kg) || Math.round(iLbs * 0.45359237 * 100) / 100;
+                                const iUds = parseFloat(it.quantity_units || it.units || 0);
+                                return (
+                                    <div key={idx} className="flex items-center justify-between bg-slate-50 p-1.5 rounded font-medium gap-1">
+                                        <span className="truncate max-w-[150px]">{it.product_type} ({it.presentation})</span>
+                                        <span className="font-bold text-slate-800 whitespace-nowrap text-right">
+                                            {iUds > 0 ? <span className="text-indigo-700 mr-1">{iUds} Uds ·</span> : null}
+                                            {iLbs.toLocaleString()} Lb <span className="text-emerald-700">({iKg} Kg)</span>
+                                        </span>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 )}

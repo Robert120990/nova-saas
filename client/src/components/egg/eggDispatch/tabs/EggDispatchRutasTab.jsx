@@ -302,10 +302,15 @@ export default function EggDispatchRutasTab({ model }) {
                                                                                  </span>
                                                                              )}
                                                                          </div>
-                                                                         <div className="text-right whitespace-nowrap">
-                                                                             <span className="font-black text-indigo-700">{parseFloat(item.quantity_lbs || 0).toLocaleString()} Lbs</span>
-                                                                             <span className="text-[10px] text-slate-500 ml-1">
-                                                                                 ({getItemUnits(item).toLocaleString()} uds)
+                                                                         <div className="text-right whitespace-nowrap flex items-center justify-end gap-1.5 flex-wrap">
+                                                                             <span className="text-[10px] font-bold text-slate-700 bg-white px-1.5 py-0.2 rounded border border-slate-200">
+                                                                                 📦 {getItemUnits(item).toLocaleString()} uds
+                                                                             </span>
+                                                                             <span className="font-black text-indigo-700">
+                                                                                 {parseFloat(item.quantity_lbs || 0).toLocaleString()} Lbs
+                                                                             </span>
+                                                                             <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                                                                                 {Math.round(parseFloat(item.quantity_lbs || 0) * 0.45359237 * 100) / 100} Kg
                                                                              </span>
                                                                          </div>
                                                                      </div>

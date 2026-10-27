@@ -97,8 +97,27 @@ const saveEggCustomerOrder = async (req) => {
         let resolvedLotCode = lot_code || null;
 
         if (itemList.length > 0) {
-            totalQuantityLbs = itemList.reduce((sum, it) => sum + safeNum(it.quantity_lbs, 0), 0);
             for (const it of itemList) {
+                const rawKg = safeNum(it.quantity_kg, 0);
+                let rawLbs = safeNum(it.quantity_lbs, 0);
+                if (rawLbs <= 0 && rawKg > 0) {
+                    rawLbs = parseFloat((rawKg * 2.20462262).toFixed(2));
+                    it.quantity_lbs = rawLbs;
+                }
+                if (rawKg <= 0 && rawLbs > 0) {
+                    it.quantity_kg = parseFloat((rawLbs * 0.45359237).toFixed(2));
+                }
+                let pLb = safeNum(it.price_per_lb, 0);
+                const pKg = safeNum(it.price_per_kg, 0);
+                if (pLb <= 0 && pKg > 0) {
+                    pLb = parseFloat((pKg / 2.20462262).toFixed(4));
+                    it.price_per_lb = pLb;
+                }
+                if (pLb > 0 && pKg <= 0) {
+                    it.price_per_kg = parseFloat((pLb * 2.20462262).toFixed(4));
+                }
+                it.is_kg_mode = Boolean(it.is_kg_mode);
+
                 if (!it.catalog_product_id) {
                     const resolved = await resolveEggCatalogProduct(pool, company_id, it.product_type, it.presentation);
                     if (resolved && resolved.catalog_product_id) {
@@ -108,6 +127,7 @@ const saveEggCustomerOrder = async (req) => {
                     }
                 }
             }
+            totalQuantityLbs = itemList.reduce((sum, it) => sum + safeNum(it.quantity_lbs, 0), 0);
             const firstItem = itemList[0];
             primaryProductType = primaryProductType || firstItem.product_type || 'Huevo Entero Pasteurizado';
             primaryPresentation = primaryPresentation || firstItem.presentation || 'cubeta 30LB';
@@ -144,7 +164,6 @@ const saveEggCustomerOrder = async (req) => {
 
         // 3. Obtener precio pactado del CRM si no se ingresó manualmente
         if (primaryPrice <= 0 && resolvedCustomerId) {
-            // Intentar primero coincidencia de producto Y presentación activa y vigente
             let [agreements] = await pool.query(
                 `SELECT agreed_price_per_lb
                  FROM egg_costing_customer_agreements
@@ -167,7 +186,6 @@ const saveEggCustomerOrder = async (req) => {
                 [company_id, resolvedCustomerId, resolvedCustomerName, primaryProductType, `%${primaryProductType}%`, primaryProductType, primaryPresentation, `%${primaryPresentation}%`, primaryPresentation]
             );
 
-            // Si no hay precio con presentación exacta, buscar por tipo de producto general
             if (agreements.length === 0) {
                 const [genAgr] = await pool.query(
                     `SELECT agreed_price_per_lb

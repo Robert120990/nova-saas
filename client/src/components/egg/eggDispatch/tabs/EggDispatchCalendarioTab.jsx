@@ -177,9 +177,9 @@ export default function EggDispatchCalendarioTab({ model }) {
                                         <th className="p-3">Prioridad</th>
                                         <th className="p-3">Cliente / Sucursal</th>
                                         <th className="p-3">Producto / Presentación</th>
-                                        <th className="p-3 text-right">Cantidad Lbs</th>
-                                        <th className="p-3 text-right">Unidades</th>
-                                        <th className="p-3 text-right">Precio / Lb</th>
+                                        <th className="p-3 text-right">Peso (Lbs / Kg)</th>
+                                        <th className="p-3 text-right">Unidades (Inv.)</th>
+                                        <th className="p-3 text-right">Precio ($/Lb · $/Kg)</th>
                                         <th className="p-3">Estado / Ruta</th>
                                         <th className="p-3 text-center">Acciones</th>
                                     </tr>
@@ -235,7 +235,7 @@ export default function EggDispatchCalendarioTab({ model }) {
                                                                 )}
                                                                 {getOrderItems(ord).length > 1 && (
                                                                     <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.2 rounded">
-                                                                        {parseFloat(item.quantity_lbs || 0).toLocaleString()} Lbs
+                                                                        {parseFloat(item.quantity_lbs || 0).toLocaleString()} Lbs ({Math.round(parseFloat(item.quantity_lbs || 0) * 0.45359237 * 100) / 100} Kg)
                                                                     </span>
                                                                 )}
                                                             </div>
@@ -248,14 +248,26 @@ export default function EggDispatchCalendarioTab({ model }) {
                                                         </div>
                                                     ))}
                                                 </td>
-                                                <td className="p-3 text-right font-black text-indigo-700 whitespace-nowrap">
-                                                    {parseFloat(ord.quantity_lbs || 0).toLocaleString()} Lbs
+                                                <td className="p-3 text-right whitespace-nowrap">
+                                                    <div className="font-black text-indigo-700">
+                                                        {parseFloat(ord.quantity_lbs || 0).toLocaleString()} Lbs
+                                                    </div>
+                                                    <div className="text-[10px] font-bold text-emerald-700">
+                                                        {Math.round(parseFloat(ord.quantity_lbs || 0) * 0.45359237 * 100) / 100} Kg
+                                                    </div>
                                                 </td>
                                                 <td className="p-3 text-right font-bold text-slate-700 whitespace-nowrap">
-                                                    {getOrderTotalUnits(ord).toLocaleString()} Uds
+                                                    <div>📦 {getOrderTotalUnits(ord).toLocaleString()} Uds</div>
                                                 </td>
-                                                <td className="p-3 text-right font-semibold text-slate-700 whitespace-nowrap">
-                                                    <Money amount={parseFloat(ord.price_per_lb || 0)} />
+                                                <td className="p-3 text-right whitespace-nowrap">
+                                                    <div className="font-semibold text-slate-800">
+                                                        <Money amount={parseFloat(ord.price_per_lb || 0)} decimals={4} /> <span className="text-[9px] text-slate-400">/Lb</span>
+                                                    </div>
+                                                    {parseFloat(ord.price_per_lb || 0) > 0 && (
+                                                        <div className="text-[10px] font-semibold text-emerald-700">
+                                                            <Money amount={parseFloat(ord.price_per_lb || 0) * 2.20462262} decimals={4} /> /Kg
+                                                        </div>
+                                                    )}
                                                 </td>
                                                 <td className="p-3 whitespace-nowrap">
                                                     <div className="space-y-1">
