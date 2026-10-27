@@ -10,6 +10,8 @@ const cleanStr = (val) => {
     return String(val).replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim();
 };
 
+const isUuid = (val) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(val || '').trim());
+
 /**
  * Anexo Retenciones de IVA 1% Emitidas (Art. 162 CT / DTE-07)
  */
@@ -76,6 +78,9 @@ async function getRetencionesEmitidasData({ companyId, branchId, year, month, se
                     ELSE ph.numero_documento
                 END AS doc_origen,
                 ph.codigo_generacion,
+                ph.numero_control,
+                ph.sello_recepcion,
+                ph.numero_documento,
                 ph.tipo_documento_id,
                 cat.description AS tipo_doc_origen_nombre,
                 ph.total_gravada AS monto_sujeto,
@@ -112,6 +117,9 @@ async function getRetencionesEmitidasData({ companyId, branchId, year, month, se
                 ELSE eh.numero_documento
             END AS doc_origen,
             eh.codigo_generacion,
+            eh.num_control AS numero_control,
+            eh.sello_recepcion,
+            eh.numero_documento,
             eh.tipo_documento_id,
             CASE eh.tipo_documento_id
                 WHEN '01' THEN 'Factura'
@@ -142,49 +150,97 @@ async function getRetencionesEmitidasData({ companyId, branchId, year, month, se
         WHERE ${eWhere.join(' AND ')}
     `, eParams);
 
+    const mappedPRows = pRows.map(r => {
+        const isDocNumUuid = isUuid(r.numero_documento);
+        const resolucion = cleanStr(r.codigo_generacion) || (isDocNumUuid ? cleanStr(r.numero_documento) : '---');
+        const serie = cleanStr(r.sello_recepcion) || '---';
+        const numDoc = cleanStr(r.numero_control) || (!isDocNumUuid ? cleanStr(r.numero_documento) : '---');
+        return {
+            ...r,
+            numero_resolucion: resolucion,
+            serie_documento: serie,
+            numero_documento: numDoc
+        };
+    });
+
+    const mappedERows = eRows.map(r => {
+        const isDocNumUuid = isUuid(r.numero_documento);
+        const resolucion = cleanStr(r.codigo_generacion) || (isDocNumUuid ? cleanStr(r.numero_documento) : '---');
+        const serie = cleanStr(r.sello_recepcion) || '---';
+        const numDoc = cleanStr(r.numero_control) || (!isDocNumUuid ? cleanStr(r.numero_documento) : '---');
+        return {
+            ...r,
+            numero_resolucion: resolucion,
+            serie_documento: serie,
+            numero_documento: numDoc
+        };
+    });
+
     let dWhere = [
         'd.tipo_dte = "07"',
         'd.company_id = ?',
-        'YEAR(d.created_at) = ?',
-        'MONTH(d.created_at) = ?',
-        'd.status NOT IN ("REJECTED", "ERROR", "INVALIDADO")'
+        'YEAR(COALESCE(sh.fecha_emision, d.created_at)) = ?',
+        'MONTH(COALESCE(sh.fecha_emision, d.created_at)) = ?',
+        '(d.status IS NULL OR UPPER(d.status) NOT IN ("REJECTED", "ERROR", "INVALIDADO"))'
     ];
     let dParams = [companyId, year, month];
     if (branchId && branchId !== 'all') {
         dWhere.push('d.branch_id = ?');
         dParams.push(branchId);
     }
+    if (search && search.trim()) {
+        const s = `%${search.trim()}%`;
+        dWhere.push('(d.codigo_generacion LIKE ? OR d.numero_control LIKE ? OR d.sello_recepcion LIKE ? OR d.json_original LIKE ?)');
+        dParams.push(s, s, s, s);
+    }
+
     const [dRows] = await pool.query(`
         SELECT 
             'dte-07' AS origen,
             d.id,
-            d.created_at AS fecha,
-            d.numero_control AS doc_retencion,
-            d.codigo_generacion AS doc_origen,
+            COALESCE(sh.fecha_emision, d.created_at) AS fecha,
+            COALESCE(d.numero_control, sh.numero_control) AS numero_control,
+            COALESCE(d.codigo_generacion, sh.codigo_generacion) AS codigo_generacion,
+            COALESCE(d.sello_recepcion, sh.sello_recepcion) AS sello_recepcion,
             d.status,
             d.json_original,
             b.nombre AS branch_name
         FROM dtes d
+        LEFT JOIN sales_headers sh ON d.venta_id = sh.id
         LEFT JOIN branches b ON d.branch_id = b.id
         WHERE ${dWhere.join(' AND ')}
     `, dParams);
 
-    const existingDocRet = new Set([...pRows, ...eRows].map(r => cleanStr(r.doc_retencion)));
+    const existingDocRet = new Set(
+        [...mappedPRows, ...mappedERows]
+            .map(r => cleanStr(r.doc_retencion || r.numero_documento))
+            .filter(doc => doc && doc !== '---')
+    );
     const standaloneDtes = [];
 
     for (const d of dRows) {
-        const numCtrl = cleanStr(d.doc_retencion);
+        const numCtrl = cleanStr(d.numero_control);
         if (existingDocRet.has(numCtrl)) continue;
         let json = {};
         try { json = typeof d.json_original === 'string' ? JSON.parse(d.json_original) : (d.json_original || {}); } catch (e) {}
         const rec = json.receptor || {};
         const res = json.resumen || {};
+        const cuerpo = Array.isArray(json.cuerpoDocumento) ? json.cuerpoDocumento : [];
+        const relatedDocs = cuerpo.map(item => cleanStr(item.numeroDocumento || item.numDocumento)).filter(Boolean);
+        const docOrigen = relatedDocs.length > 0 ? relatedDocs.join(', ') : cleanStr(d.codigo_generacion || '---');
+
         standaloneDtes.push({
             origen: 'dte-07',
             id: d.id,
             fecha: d.fecha,
+            numero_resolucion: cleanStr(d.codigo_generacion || '---'),
+            serie_documento: cleanStr(d.sello_recepcion || '---'),
+            numero_documento: numCtrl,
             doc_retencion: numCtrl,
-            doc_origen: cleanStr(d.doc_origen),
+            doc_origen: docOrigen,
+            codigo_generacion: cleanStr(d.codigo_generacion),
+            sello_recepcion: cleanStr(d.sello_recepcion),
+            numero_control: numCtrl,
             tipo_documento_id: '07',
             tipo_doc_origen_nombre: 'Comprobante de Retención Electrónico',
             monto_sujeto: n(res.totalSujetoRetencion),
@@ -199,7 +255,7 @@ async function getRetencionesEmitidasData({ companyId, branchId, year, month, se
         });
     }
 
-    const allRecords = [...pRows, ...eRows, ...standaloneDtes].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+    const allRecords = [...mappedPRows, ...mappedERows, ...standaloneDtes].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
 
     let totalMontoSujeto = 0;
     let totalRetencion = 0;
@@ -230,8 +286,12 @@ async function getRetencionesEmitidasData({ companyId, branchId, year, month, se
         id: r.id,
         origen: r.origen,
         fecha: r.fecha,
-        doc_retencion: cleanStr(r.doc_retencion),
+        numero_resolucion: cleanStr(r.numero_resolucion || r.codigo_generacion || '---'),
+        serie_documento: cleanStr(r.serie_documento || r.sello_recepcion || '---'),
+        numero_documento: cleanStr(r.numero_documento || r.doc_retencion || '---'),
+        doc_retencion: cleanStr(r.doc_retencion || r.numero_documento),
         doc_origen: cleanStr(r.doc_origen),
+        codigo_generacion: cleanStr(r.codigo_generacion || r.numero_resolucion),
         tipo_documento_id: cleanStr(r.tipo_documento_id),
         tipo_doc_origen_nombre: cleanStr(r.tipo_doc_origen_nombre),
         proveedor_nombre: cleanStr(r.proveedor_nombre).toUpperCase(),

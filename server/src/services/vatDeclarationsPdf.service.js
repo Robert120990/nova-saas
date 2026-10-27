@@ -47,16 +47,18 @@ async function generateDeclarationsPdf(type, items, summary, meta) {
         reportTitle = 'ANEXO DE RETENCIONES DE IVA 1% EMITIDAS';
         entityName = 'Comprobantes de Retención';
         columns = [
-            { title: '#', x: 30, width: 22, align: 'center' },
-            { title: 'ORIGEN', x: 52, width: 42, align: 'center' },
-            { title: 'FECHA', x: 94, width: 48, align: 'center' },
-            { title: 'SUJETO RETENIDO (PROVEEDOR)', x: 142, width: 180, align: 'left' },
-            { title: 'NIT', x: 322, width: 75, align: 'left' },
-            { title: 'DOC. RETENCIÓN / DTE', x: 397, width: 95, align: 'left' },
-            { title: 'DOC. ORIGEN', x: 492, width: 60, align: 'left' },
-            { title: 'SUCURSAL', x: 552, width: 70, align: 'left' },
-            { title: 'MONTO SUJETO', x: 622, width: 70, align: 'right' },
-            { title: 'RETENCIÓN 1%', x: 692, width: 70, align: 'right' }
+            { title: '#', x: 30, width: 18, align: 'center' },
+            { title: 'ORIGEN', x: 48, width: 34, align: 'center' },
+            { title: 'FECHA', x: 82, width: 42, align: 'center' },
+            { title: 'SUJETO RETENIDO (PROVEEDOR)', x: 124, width: 126, align: 'left' },
+            { title: 'NIT', x: 250, width: 56, align: 'left' },
+            { title: 'NUM. RESOLUCIÓN', x: 306, width: 90, align: 'left' },
+            { title: 'SERIE DOC.', x: 396, width: 90, align: 'left' },
+            { title: 'NUM. DOCUMENTO', x: 486, width: 76, align: 'left' },
+            { title: 'DOC. ORIGEN', x: 562, width: 50, align: 'left' },
+            { title: 'SUCURSAL', x: 612, width: 46, align: 'left' },
+            { title: 'MONTO SUJETO', x: 658, width: 52, align: 'right' },
+            { title: 'RETENCIÓN 1%', x: 710, width: 52, align: 'right' }
         ];
     } else if (type === 'retenciones_recibidas') {
         reportTitle = 'ANEXO DE RETENCIONES DE IVA 1% RECIBIDAS (VENTAS)';
@@ -144,16 +146,18 @@ async function generateDeclarationsPdf(type, items, summary, meta) {
             doc.text(fmt(r.monto_sujeto), 614, curY, { width: 74, align: 'right' });
             doc.text(fmt(r.anticipo_cuenta), 688, curY, { width: 74, align: 'right' });
         } else if (type === 'retenciones_emitidas') {
-            doc.text(String(r.corr), 30, curY, { width: 22, align: 'center' });
-            doc.text(String(r.origen || '').toUpperCase(), 52, curY, { width: 42, align: 'center' });
-            doc.text(formatDate(r.fecha), 94, curY, { width: 48, align: 'center' });
-            doc.text(r.proveedor_nombre, 142, curY, { width: 180, ellipsis: true });
-            doc.text(r.proveedor_nit || '---', 322, curY, { width: 75, ellipsis: true });
-            doc.text(r.doc_retencion || '---', 397, curY, { width: 95, ellipsis: true });
-            doc.text(r.doc_origen || '---', 492, curY, { width: 60, ellipsis: true });
-            doc.text(r.branch_name, 552, curY, { width: 70, ellipsis: true });
-            doc.text(fmt(r.monto_sujeto), 622, curY, { width: 70, align: 'right' });
-            doc.text(fmt(r.monto_retencion), 692, curY, { width: 70, align: 'right' });
+            doc.text(String(r.corr), 30, curY, { width: 18, align: 'center' });
+            doc.text(String(r.origen || '').toUpperCase(), 48, curY, { width: 34, align: 'center' });
+            doc.text(formatDate(r.fecha), 82, curY, { width: 42, align: 'center' });
+            doc.text(r.proveedor_nombre, 124, curY, { width: 126, ellipsis: true });
+            doc.text(r.proveedor_nit || '---', 250, curY, { width: 56, ellipsis: true });
+            doc.text(r.numero_resolucion || r.codigo_generacion || '---', 306, curY, { width: 90, ellipsis: true });
+            doc.text(r.serie_documento || r.sello_recepcion || '---', 396, curY, { width: 90, ellipsis: true });
+            doc.text(r.numero_documento || r.doc_retencion || '---', 486, curY, { width: 76, ellipsis: true });
+            doc.text(r.doc_origen || '---', 562, curY, { width: 50, ellipsis: true });
+            doc.text(r.branch_name, 612, curY, { width: 46, ellipsis: true });
+            doc.text(fmt(r.monto_sujeto), 658, curY, { width: 52, align: 'right' });
+            doc.text(fmt(r.monto_retencion), 710, curY, { width: 52, align: 'right' });
         } else if (type === 'retenciones_recibidas') {
             doc.text(String(r.corr), 30, curY, { width: 22, align: 'center' });
             doc.text(formatDate(r.fecha), 52, curY, { width: 48, align: 'center' });

@@ -17,7 +17,9 @@ const RetencionesEmitidasTab = ({
         { label: 'Sujeto Retenido (Proveedor)', className: 'w-60' },
         { label: 'NIT', className: 'text-center w-36 whitespace-nowrap' },
         { label: 'NRC', className: 'text-center w-24 whitespace-nowrap' },
-        { label: 'Comprobante Retención / DTE-07', className: 'w-44 whitespace-nowrap' },
+        { label: 'Número de Resolución', className: 'w-48 whitespace-nowrap' },
+        { label: 'Serie de Documento', className: 'w-48 whitespace-nowrap' },
+        { label: 'Número de Documento', className: 'w-44 whitespace-nowrap' },
         { label: 'Doc. Origen', className: 'w-32 whitespace-nowrap' },
         { label: 'Sucursal', className: 'w-32 whitespace-nowrap' },
         { label: 'Monto Sujeto', className: 'text-right w-28 whitespace-nowrap' },
@@ -42,7 +44,15 @@ const RetencionesEmitidasTab = ({
             </td>
             <td className="py-1.5 px-2.5 text-center text-slate-600 font-mono text-[11px] whitespace-nowrap">{item.proveedor_nit || '---'}</td>
             <td className="py-1.5 px-2.5 text-center text-slate-600 font-mono text-[11px] whitespace-nowrap">{item.proveedor_nrc || '---'}</td>
-            <td className="py-1.5 px-2.5 text-indigo-700 font-semibold font-mono text-[11px] whitespace-nowrap">{item.doc_retencion || '---'}</td>
+            <td className="py-1.5 px-2.5 text-slate-600 font-mono text-[10px] whitespace-nowrap truncate max-w-[180px]" title={item.numero_resolucion}>
+                {item.numero_resolucion || '---'}
+            </td>
+            <td className="py-1.5 px-2.5 text-slate-600 font-mono text-[10px] whitespace-nowrap truncate max-w-[180px]" title={item.serie_documento}>
+                {item.serie_documento || '---'}
+            </td>
+            <td className="py-1.5 px-2.5 text-indigo-700 font-semibold font-mono text-[11px] whitespace-nowrap">
+                {item.numero_documento || '---'}
+            </td>
             <td className="py-1.5 px-2.5 text-slate-500 font-mono text-[11px] whitespace-nowrap">{item.doc_origen || '---'}</td>
             <td className="py-1.5 px-2.5 text-slate-600 font-medium whitespace-nowrap">{item.branch_name || 'Central'}</td>
             <td className="py-1.5 px-2.5 text-right font-medium text-slate-700 whitespace-nowrap">
@@ -61,7 +71,14 @@ const RetencionesEmitidasTab = ({
                 <span className="text-xs font-medium text-slate-500">{formatDate(item.fecha)}</span>
             </div>
             <div className="font-semibold text-slate-800 text-sm">{item.proveedor_nombre}</div>
-            <div className="text-xs text-slate-500 font-mono">Retención: {item.doc_retencion} | Origen: {item.doc_origen || '---'}</div>
+            <div className="text-xs text-slate-500 font-mono space-y-0.5">
+                <div><span className="text-slate-400 font-sans font-medium">Resolución:</span> {item.numero_resolucion || '---'}</div>
+                <div><span className="text-slate-400 font-sans font-medium">Serie:</span> {item.serie_documento || '---'}</div>
+                <div><span className="text-slate-400 font-sans font-medium">Doc:</span> {item.numero_documento || '---'}</div>
+                {item.doc_origen && item.doc_origen !== '---' && (
+                    <div><span className="text-slate-400 font-sans font-medium">Origen:</span> {item.doc_origen}</div>
+                )}
+            </div>
             <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
                 <span className="text-xs text-slate-500">Monto Sujeto: <Money value={item.monto_sujeto} /></span>
                 <span className="text-sm font-bold text-amber-600">Retención 1%: <Money value={item.monto_retencion} /></span>
