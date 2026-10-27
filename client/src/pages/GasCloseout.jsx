@@ -1656,7 +1656,15 @@ const GasCloseout = () => {
             mutate: (data) => saveChequesMutation.mutate(data),
             mutateAsync: (data) => saveChequesMutation.mutateAsync(data),
             isPending: () => saveChequesMutation.isPending,
-            isEmptyRow: (r) => (!r.numero_cheque || r.numero_cheque.trim() === '') && (!r.banco || r.banco.trim() === '') && (parseFloat(r.monto) || 0) === 0,
+            cleanForSave: (data) => (Array.isArray(data) ? data : []).map(c => ({
+                id: c.id,
+                numero_cheque: String(c.numero_cheque || '').trim(),
+                banco: String(c.banco || '').trim(),
+                despachador_id: c.despachador_id ? parseInt(c.despachador_id) : null,
+                tipo_operacion: c.tipo_operacion || 'venta_combustible',
+                monto: parseFloat(c.monto) || 0
+            })),
+            isEmptyRow: (r) => (!r.numero_cheque || String(r.numero_cheque).trim() === '') && (!r.banco || String(r.banco).trim() === '') && (parseFloat(r.monto) || 0) === 0,
             validateRow: (r) => {
                 if (!r.despachador_id) return 'Falta asignar despachador';
                 if ((parseFloat(r.monto) || 0) <= 0) return 'El monto debe ser mayor a 0';
@@ -1734,7 +1742,11 @@ const GasCloseout = () => {
         if (!cfg || !modalSnapshotsRef.current) return false;
         const current = cfg.getData();
         const snap = modalSnapshotsRef.current[key] || '[]';
-        return JSON.stringify(current) !== snap;
+        try {
+            return JSON.stringify(current) !== snap;
+        } catch {
+            return false;
+        }
     };
 
     const isAnySectionDirty = () => {
@@ -1779,7 +1791,12 @@ const GasCloseout = () => {
         const current = cfg.getData();
         const nonEmptyRows = current.filter(r => !cfg.isEmptyRow(r));
         const snap = modalSnapshotsRef.current[key] || '[]';
-        const isStillDirty = JSON.stringify(nonEmptyRows) !== snap;
+        let isStillDirty = false;
+        try {
+            isStillDirty = JSON.stringify(nonEmptyRows) !== snap;
+        } catch {
+            isStillDirty = false;
+        }
 
         if (!isStillDirty) {
             cfg.setData(nonEmptyRows);
@@ -2299,8 +2316,11 @@ const GasCloseout = () => {
     };
 
     const handleChequeChange = (id, field, value) => {
-        trackDespachadorChange(field, value);
-        setCheques(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
+        const cleanVal = (value && typeof value === 'object' && 'target' in value)
+            ? value.target.value
+            : value;
+        trackDespachadorChange(field, cleanVal);
+        setCheques(prev => prev.map(c => c.id === id ? { ...c, [field]: cleanVal } : c));
     };
 
     const handleRemoveCheque = (id) => {

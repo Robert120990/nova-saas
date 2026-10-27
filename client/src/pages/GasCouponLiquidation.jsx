@@ -1063,7 +1063,7 @@ const GasCouponLiquidation = () => {
                                                     <td className="px-1.5 py-1.5 text-right whitespace-nowrap">
                                                         <MoneyInput
                                                             value={c.monto_fisico}
-                                                            onChange={(val) => handleMontoFisicoChange(realIndex, val)}
+                                                            onChange={(e) => handleMontoFisicoChange(realIndex, e?.target ? e.target.value : e)}
                                                             className="w-16 text-right font-bold text-xs py-0.5 px-1 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 inline-block"
                                                         />
                                                     </td>
@@ -1191,7 +1191,7 @@ const GasCouponLiquidation = () => {
                         <label className="text-[11px] font-bold text-slate-500 uppercase">Monto Físico ($)</label>
                         <MoneyInput
                             value={sobranteMonto}
-                            onChange={setSobranteMonto}
+                            onChange={(e) => setSobranteMonto(e?.target ? e.target.value : e)}
                             placeholder="0.00"
                             className="w-full px-3 py-2 text-[13px] font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                         />

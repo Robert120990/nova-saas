@@ -245,7 +245,7 @@ export default function OrderDiscountModal({ isOpen, onClose, order, initialItem
                         <label className="text-[11px] font-bold text-slate-500 uppercase">Monto a Descontar ($)</label>
                         <MoneyInput
                             value={discountValue}
-                            onChange={(val) => setDiscountValue(val)}
+                            onChange={(e) => setDiscountValue(e?.target ? e.target.value : e)}
                             className="w-full px-3 py-1.5 text-sm font-bold rounded-xl border border-slate-300"
                         />
                     </div>

@@ -303,7 +303,7 @@ export default function ModifierGroupModal({ isOpen, onClose, group, onSuccess }
                                     <MoneyInput
                                         placeholder="+$0.00"
                                         value={opt.extra_price}
-                                        onChange={(val) => handleOptionChange(idx, 'extra_price', val)}
+                                        onChange={(e) => handleOptionChange(idx, 'extra_price', e?.target ? e.target.value : e)}
                                         className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800"
                                     />
                                 </div>

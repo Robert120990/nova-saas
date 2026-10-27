@@ -170,9 +170,12 @@ const GasChequesModal = ({
                                     </td>
                                     <td className="px-1.5 py-1 text-right" data-label="Monto">
                                         <MoneyInput
+                                            step="0.01"
+                                            min="0"
                                             value={c.monto}
                                             disabled={estado === 'cerrado'}
-                                            onChange={(val) => handleChequeChange(c.id, 'monto', val)}
+                                            onChange={(e) => handleChequeChange(c.id, 'monto', e?.target ? e.target.value : e)}
+                                            onFocus={(e) => e.target.select?.()}
                                             onKeyDown={(e) => {
                                                 if (e.key === 'Enter') handleRowEnter(index);
                                             }}
