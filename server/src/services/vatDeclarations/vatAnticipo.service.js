@@ -69,7 +69,15 @@ const isUuid = (val) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
             eh.monto_total,
             eh.status,
             p.nombre AS proveedor_nombre,
-            p.nit AS proveedor_nit,
+            COALESCE(
+                NULLIF(TRIM(p.nit), ''),
+                (SELECT p2.nit FROM providers p2 WHERE p2.nrc = p.nrc AND p2.nit IS NOT NULL AND TRIM(p2.nit) != '' LIMIT 1),
+                CASE 
+                    WHEN p.numero_documento REGEXP '^[0-9]{4}-?[0-9]{6}-?[0-9]{3}-?[0-9]{1}$' THEN p.numero_documento 
+                    WHEN p.numero_documento REGEXP '^[0-9]{8}-?[0-9]{1}$' THEN p.numero_documento 
+                    ELSE NULL 
+                END
+            ) AS proveedor_nit,
             p.nrc AS proveedor_nrc,
             b.nombre AS branch_name
         FROM expense_headers eh

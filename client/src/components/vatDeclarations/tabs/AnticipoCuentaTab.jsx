@@ -66,6 +66,9 @@ const AnticipoCuentaTab = ({
                     <span className="text-xs font-medium text-slate-500">{formatDate(item.fecha)}</span>
                 </div>
                 <div className="font-semibold text-slate-800 text-sm">{item.proveedor_nombre}</div>
+                <div className="text-xs text-slate-600 font-mono">
+                    NIT: {item.proveedor_nit || '---'} | NRC: {item.proveedor_nrc || '---'}
+                </div>
                 <div className="text-xs text-slate-500 font-mono truncate" title={item.codigo_generacion}>
                     Doc: {docDisplay} | Cód. Gen: {item.codigo_generacion || '---'}
                 </div>

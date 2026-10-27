@@ -67,6 +67,9 @@ const LABEL_FIELD_MAP = {
     'documento / no.': ['numero_documento', 'num_control', 'num_doc', 'documento'],
     'no. doc': ['num_doc', 'documento', 'numero_documento', 'numero_control'],
     'no. documento': ['numero_documento', 'num_doc', 'documento', 'numero_control'],
+    'numero de resolucion': ['numero_resolucion', 'codigo_generacion', 'num_resolucion'],
+    'serie de documento': ['serie_documento', 'sello_recepcion', 'serie'],
+    'numero de documento': ['numero_documento', 'numero_control', 'num_doc'],
     'n° cotizacion': ['quote_number', 'numero', 'correlativo', 'id'],
     'pedido #': ['numero', 'id', 'pedido_numero', 'correlativo'],
     'asunto': ['subject', 'asunto'],
@@ -99,8 +102,8 @@ const LABEL_FIELD_MAP = {
     'total gln': ['total_galones', 'galones'],
     'galones': ['galones', 'total_galones', 'p_diesel'],
     'forma de pago / referencia': ['forma_pago', 'referencia'],
-    'nrc': ['nrc'],
-    'nit': ['nit'],
+    'nrc': ['nrc', 'proveedor_nrc', 'cliente_nrc', 'customer_nrc', 'provider_nrc'],
+    'nit': ['nit', 'proveedor_nit', 'cliente_nit', 'customer_nit', 'provider_nit'],
     'dui': ['dui', 'numero_documento'],
 };
 
