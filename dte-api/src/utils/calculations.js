@@ -57,9 +57,9 @@ function calculateItem(item, tipoDte = '01', ivaRate = 13) {
         const isGravado = !item.exento && item.tipoItem !== 2 && item.tipoItem !== 3;
         iva = isGravado ? round6((ventaGravada * ivaRate) / (100 + ivaRate)) : 0;
     } else if (tipoDte === '11') {
-        // MODO EXPORTACIÓN: No lleva IVA, extraer el neto del precio inclusive
-        netPrice = round6(priceInput / divisor);
-        netDiscount = round6(discountInput / divisor);
+        // MODO EXPORTACIÓN: Tasa 0% IVA (tributo C3). El precio negociado es neto directo de exportación.
+        netPrice = priceInput;
+        netDiscount = discountInput;
         ventaGravada = round(Math.max(0, (netPrice * quantity) - netDiscount));
         iva = 0;
     } else {

@@ -1968,7 +1968,7 @@ const SalesTerminal = () => {
                 let itemPrecioUnitario = item.precio;
 
                 if (tipoDte === '11') {
-                    itemVentaGravada = subtotal / (1 + ivaRate);
+                    itemVentaGravada = subtotal;
                     itemVentaExenta = 0;
                 } else if (isItemExento) {
                     itemVentaGravada = 0;
@@ -2072,7 +2072,7 @@ const SalesTerminal = () => {
                     exento += subtotal;
                 }
             } else if (tipoDte === '11') {
-                gravadoBruto += subtotal / (1 + ivaRate);
+                gravadoBruto += subtotal;
             } else {
                 // FOVIAL/COTRANS only for non-Remission notes
                 if (item.tipo_combustible > 0 && tipoDte !== '04') {
@@ -3475,7 +3475,7 @@ const SalesTerminal = () => {
                                                         </div>
                                                     ) : (
                                                         <div className="font-bold text-xs text-slate-700">
-                                                            <Money value={tipoDte === '11' ? parseFloat(item.precio || 0) / (1 + parseFloat(taxSettings?.iva_rate || 13) / 100) : item.precio} />
+                                                            <Money value={item.precio} />
                                                         </div>
                                                     )}
                                                 </td>
@@ -3509,7 +3509,7 @@ const SalesTerminal = () => {
                                                     )}
                                                 </td>
                                                 <td className="px-4 py-4 text-right font-black text-slate-900 text-xs" data-label="Subtotal">
-                                                    <Money value={tipoDte === '11' ? (((parseFloat(item.precio || 0) * (parseFloat(item.cantidad || 0))) - (parseFloat(item.descuento || 0))) / (1 + parseFloat(taxSettings?.iva_rate || 13) / 100)) : ((parseFloat(item.precio || 0) * (parseFloat(item.cantidad || 0))) - (parseFloat(item.descuento || 0)))} />
+                                                    <Money value={((parseFloat(item.precio || 0) * (parseFloat(item.cantidad || 0))) - (parseFloat(item.descuento || 0)))} />
                                                 </td>
                                                 <td className="pr-6 py-4 text-right">
                                                     <button onClick={() => removeFromCart(item.id)} className="text-rose-300 hover:text-rose-600"><Trash2 size={16} /></button>

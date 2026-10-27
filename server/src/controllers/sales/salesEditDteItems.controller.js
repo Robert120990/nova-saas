@@ -96,62 +96,81 @@ const editDTEItems = async (req, res) => {
                 ? JSON.parse(sale.json_original)
                 : (sale.json_original || {});
             const originalCuerpo = json.cuerpoDocumento || [];
+            const tipoDte = String(sale.tipo_documento || sale.dte_type || json.identificacion?.tipoDte || '01');
 
-            const updWithCodigo = [];
-            const updWithoutCodigo = [];
-            updatedItems.forEach((item) => {
-                if (item.codigo) {
-                    updWithCodigo.push(item);
-                } else {
-                    updWithoutCodigo.push(item);
-                }
-            });
+            // Identificar los productos reales del cuerpo original de Hacienda (precio > 0 o venta > 0)
+            const realProductsOrig = originalCuerpo.filter(entry =>
+                (parseFloat(entry.precioUni) || 0) > 0 ||
+                (parseFloat(entry.ventaGravada) || 0) > 0 ||
+                (parseFloat(entry.ventaExenta) || 0) > 0 ||
+                (parseFloat(entry.ventaNoSuj) || 0) > 0
+            );
 
+            // Reconstruir cuerpoDocumento respetando el orden de updatedItems en sales_items
+            let realProdIdx = 0;
             const newCuerpo = [];
-            let withIdx = 0;
-            let withoutIdx = 0;
 
-            for (const origEntry of originalCuerpo) {
-                if (origEntry.codigo) {
-                    const upd = updWithCodigo[withIdx];
-                    if (upd) {
-                        newCuerpo.push({ ...origEntry });
+            for (const item of updatedItems) {
+                const isRealProduct = item.product_id != null || (parseFloat(item.precio_unitario) || 0) > 0;
+
+                if (isRealProduct) {
+                    let matchedEntry = null;
+                    if (item.codigo) {
+                        matchedEntry = realProductsOrig.find(p => p.codigo === item.codigo);
                     }
-                    withIdx++;
+                    if (!matchedEntry && realProdIdx < realProductsOrig.length) {
+                        matchedEntry = realProductsOrig[realProdIdx];
+                    }
+                    if (matchedEntry) {
+                        newCuerpo.push({ ...matchedEntry });
+                        realProdIdx++;
+                    }
                 } else {
-                    const upd = updWithoutCodigo[withoutIdx];
-                    if (upd) {
-                        newCuerpo.push({
-                            ...origEntry,
-                            descripcion: upd.descripcion,
-                            cantidad: parseFloat(upd.cantidad)
-                        });
+                    // Ítem descriptivo (notas de empaque, cajas, etc.)
+                    const baseDescItem = {
+                        numItem: 0,
+                        tipoItem: 1,
+                        numeroDocumento: null,
+                        codigo: `P-${newCuerpo.length + 1}`,
+                        codTributo: null,
+                        descripcion: item.descripcion,
+                        cantidad: parseFloat(item.cantidad) || 1,
+                        uniMedida: 59,
+                        precioUni: 0,
+                        montoDescu: 0,
+                        ventaGravada: 0
+                    };
+
+                    if (tipoDte === '11') {
+                        // FEX v3: Tributo obligatorio C3 (exportación 0%), sin campos de IVA local
+                        baseDescItem.tributos = ['C3'];
+                        baseDescItem.noGravado = 0;
+                    } else if (tipoDte === '01') {
+                        baseDescItem.tributos = null;
+                        baseDescItem.ivaItem = 0;
+                        baseDescItem.psv = 0;
+                        baseDescItem.noGravado = 0;
+                        baseDescItem.ventaNoSuj = 0;
+                        baseDescItem.ventaExenta = 0;
+                    } else {
+                        baseDescItem.tributos = null;
+                        baseDescItem.psv = 0;
+                        baseDescItem.noGravado = 0;
+                        baseDescItem.ventaNoSuj = 0;
+                        baseDescItem.ventaExenta = 0;
                     }
-                    withoutIdx++;
+
+                    newCuerpo.push(baseDescItem);
                 }
             }
 
-            while (withoutIdx < updWithoutCodigo.length) {
-                const upd = updWithoutCodigo[withoutIdx];
-                newCuerpo.push({
-                    numItem: 0,
-                    tipoItem: 1,
-                    numeroDocumento: null,
-                    codigo: null,
-                    codTributo: null,
-                    descripcion: upd.descripcion,
-                    cantidad: parseFloat(upd.cantidad),
-                    uniMedida: 59,
-                    precioUni: 0,
-                    montoDescu: 0,
-                    ventaNoSuj: 0,
-                    ventaExenta: 0,
-                    ventaGravada: 0,
-                    tributos: null,
-                    psv: 0,
-                    noGravado: 0
-                });
-                withoutIdx++;
+            // Preservar defensivamente cualquier producto real original que no haya sido vinculado
+            while (realProdIdx < realProductsOrig.length) {
+                const leftover = realProductsOrig[realProdIdx];
+                if (!newCuerpo.some(entry => entry.codigo && entry.codigo === leftover.codigo)) {
+                    newCuerpo.push({ ...leftover });
+                }
+                realProdIdx++;
             }
 
             newCuerpo.forEach((entry, idx) => { entry.numItem = idx + 1; });
