@@ -271,6 +271,34 @@ const computeSystemCostsData = async (companyId, { month, year, projected_batche
     if (otherOpsTotal > 0) {
         categoryBreakdown.push({ categoria: 'Otros Gastos Indirectos Operativos', total: +otherOpsTotal.toFixed(2) });
     }
+    let containersColdStorageTotal = 0;
+    let containersDaysTotal = 0;
+    try {
+        const [activeContRows] = await pool.query(
+            'SELECT COALESCE(SUM(days_on), 0) AS active_days, COALESCE(SUM(days_on * daily_rate), 0) AS active_subtotal FROM egg_storage_containers WHERE company_id = ? AND days_on > 0',
+            [companyId]
+        );
+        const [closedCycleRows] = await pool.query(
+            `SELECT COALESCE(SUM(days_on), 0) AS closed_days, COALESCE(SUM(subtotal), 0) AS closed_subtotal
+             FROM egg_storage_container_logs
+             WHERE company_id = ? AND action_type = 'cierre_ciclo'
+               AND MONTH(created_at) = ? AND YEAR(created_at) = ?`,
+            [companyId, currentMonth, currentYear]
+        );
+        containersDaysTotal = +((parseFloat(activeContRows[0]?.active_days) || 0) + (parseFloat(closedCycleRows[0]?.closed_days) || 0)).toFixed(2);
+        containersColdStorageTotal = +((parseFloat(activeContRows[0]?.active_subtotal) || 0) + (parseFloat(closedCycleRows[0]?.closed_subtotal) || 0)).toFixed(2);
+        if (containersColdStorageTotal > 0) {
+            categoryBreakdown.push({
+                categoria: `Contenedores de Almacenamiento en Frío (${containersDaysTotal} días)`,
+                total: containersColdStorageTotal
+            });
+            otherOpsTotal += containersColdStorageTotal;
+        }
+    } catch {
+        // Ignorar si la tabla aún no existe
+    }
+    if (true) {
+    }
 
     const totalExpenses = +(energyTotal + boilerFuelTotal + waterAndCipTotal + maintenanceTotal + otherOpsTotal).toFixed(2);
     const payrollPerBatch = batchesCount > 0 ? +(totalPayroll / batchesCount).toFixed(2) : 0;
@@ -338,7 +366,18 @@ const computeSystemCostsData = async (companyId, { month, year, projected_batche
         payrolls_summary: { count: employeeCount, total_perceptions: +totalPayroll.toFixed(2), total_base: +totalBaseSalary.toFixed(2), items: payrolls },
         expenses_summary: { count: categoryBreakdown.length, total: totalExpenses, breakdown: { energy: energyTotal, boiler_fuel: boilerFuelTotal, maintenance: maintenanceTotal, other_ops: waterAndCipTotal + otherOpsTotal } },
         production_basis: { monthly_projected_lbs: monthlyProjectedLbs, standard_batch_lbs: standardBatchLbs, estimated_batches: batchesCount },
-        suggested_concepts: suggestedConcepts
+        suggested_concepts: containersColdStorageTotal > 0
+            ? [
+                ...suggestedConcepts,
+                {
+                    concept_name: 'Almacenamiento en Contenedores de Frío',
+                    monthly_total: +containersColdStorageTotal.toFixed(2),
+                    default_value: +(containersColdStorageTotal / batchesCount).toFixed(2),
+                    source_type: 'egg_storage_containers',
+                    details: `${containersDaysTotal} día(s) acumulados en contenedores de frío ($${containersColdStorageTotal.toFixed(2)} sin IVA).`
+                }
+            ]
+            : suggestedConcepts
     };
 };
 

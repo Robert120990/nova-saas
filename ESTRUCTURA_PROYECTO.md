@@ -2,7 +2,7 @@
 
 > **GENERADO AUTOMÁTICAMENTE** — no editar a mano.
 > Regenerar con: `node scripts/generate-project-structure.js`
-> Última generación: 2026-10-23
+> Última generación: 2026-10-27
 >
 > Mapa exhaustivo de la estructura física del repositorio con la función de
 > cada archivo. Para reglas de negocio y convenciones ver AGENTS.md, CLAUDE.md
@@ -168,6 +168,7 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `dte.service.js` | Cliente HTTP hacia dte-api: emitir, firmar, transmitir, contingencia e invalidación. |
 | `dteQueryFilters.js` | Filtros SQL reutilizables para consultas de documentos DTE. |
 | `eggAccess.service.js` | Egg Access.service. |
+| `eggContainers.service.js` | Egg Containers.service. |
 | `eggDispatchEmission.service.js` | Egg Dispatch Emission.service. |
 | `eggDispatchRecovery.service.js` | Egg Dispatch Recovery.service. |
 | `eggOriginCertificate.service.js` | Egg Origin Certificate.service. |
@@ -290,6 +291,7 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `dashboard.controller.js` | KPIs del panel principal: ventas del día, top productos, alertas. |
 | `discountRules.controller.js` | Reglas automáticas de descuento evaluadas al facturar. |
 | `eggCommissions.controller.js` | Egg Commissions.controller. |
+| `eggContainers.controller.js` | Egg Containers.controller. |
 | `eggCosteoLibra.controller.js` | Egg Costeo Libra.controller. |
 | `eggDispatch.controller.js` | Egg Dispatch.controller. |
 | `eggIndustrial.controller.js` | Módulo industrial de huevo: recepción, producción, empaque, costos y trazabilidad. |
@@ -644,6 +646,18 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | `ConfigCostsTab.jsx` | Config Costs Tab. |
 | `ConfigLotPrefixesTab.jsx` | Config Lot Prefixes Tab. |
 | `ConfigProductsTab.jsx` | Config Products Tab. |
+
+**`client/src/components/egg/containers/`**
+
+| Archivo | Descripción |
+|---|---|
+| `ContainerFormModal.jsx` | Container Form Modal. |
+| `ContainersGrid.jsx` | Containers Grid. |
+| `ContainersHeader.jsx` | Containers Header. |
+| `ContainersSummaryCards.jsx` | Containers Summary Cards. |
+| `ContainersTableSection.jsx` | Containers Table Section. |
+| `index.js` | Index. |
+| `useContainersModel.js` | Use Containers Model. |
 
 **`client/src/components/egg/costeo/`**
 
@@ -1464,6 +1478,7 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | Archivo | Descripción |
 |---|---|
 | `Config.jsx` | Configuración del módulo industrial de huevo. |
+| `Containers.jsx` | Módulo industrial de huevo: Containers. |
 | `CosteoPorLibra.jsx` | Módulo industrial de huevo: Costeo Por Libra. |
 | `CostsMaintenance.jsx` | Costos y mantenimiento de equipos del módulo huevo. |
 | `Dashboard.jsx` | Panel del módulo industrial de huevo. |
@@ -1645,7 +1660,7 @@ oficiales viven en `cumplientoDTE/svfe-json-schemas/` y la firma en `services/si
 Patrón de nombres: `migration_v<N>_<descripcion>.{sql|js}` y un runner `run_migration_v<N>.js` por versión.
 
 - Rango de versiones detectado: **v2 → v639**
-- Total de archivos: **579** (193 .sql · 152 .js migración · 232 runners run_migration* · 2 .json · 0 otros)
+- Total de archivos: **583** (193 .sql · 154 .js migración · 234 runners run_migration* · 2 .json · 0 otros)
 
 > Los archivos NO se listan individualmente por su volumen: para conocer el esquema vigente usa
 > `SELECT ... FROM information_schema` o revisa `server/src/config/db.schema.js`,

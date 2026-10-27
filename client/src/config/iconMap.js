@@ -81,6 +81,8 @@ import {
     Store,
     BatteryCharging,
     Bot,
+    Container,
+    Snowflake,
 } from 'lucide-react';
 
 const iconMap = {
@@ -166,6 +168,8 @@ const iconMap = {
     Ticket,
     GitCompare,
     Fingerprint,
+    Container,
+    Snowflake,
 };
 
 export default iconMap;

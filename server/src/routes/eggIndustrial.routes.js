@@ -275,4 +275,15 @@ router.get('/commissions/summary', permit('manage_egg_commissions'), eggCommissi
 const eggEmission = require('../controllers/eggIndustrial/eggEmission.controller');
 router.get('/dispatch/emissions/:saleId', permit('manage_egg_dispatch'), eggEmission.getEmission);
 router.post('/dispatch/emissions/:saleId/recover', permit('manage_egg_dispatch'), eggEmission.recoverEmission);
+// 27. Control de Contenedores de Almacenamiento Industrial (Encendido/Apagado y Cobro Diario)
+const eggContainersController = require('../controllers/eggContainers.controller');
+const containerPermits = permit('manage_egg_containers', 'manage_packaging', 'manage_industrial_costs', 'manage_production', 'view_industrial_dashboard', 'view_egg_inventory');
+router.get('/containers', containerPermits, eggContainersController.getContainersOverview);
+router.post('/containers', containerPermits, eggContainersController.addContainer);
+router.put('/containers/daily-rate', containerPermits, eggContainersController.updateGlobalDailyRate);
+router.post('/containers/:id/toggle-power', containerPermits, eggContainersController.toggleContainerPower);
+router.post('/containers/:id/reset-cycle', containerPermits, eggContainersController.resetContainerCycle);
+router.put('/containers/:id', containerPermits, eggContainersController.updateContainer);
+router.delete('/containers/:id', containerPermits, eggContainersController.deleteContainer);
+
 module.exports = router;

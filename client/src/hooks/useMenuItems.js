@@ -147,10 +147,26 @@ function buildTree(items) {
             id: 'virtual-industrial-dispatch',
             label: 'Despachos y Rutas',
             path: '/industrial/despachos',
-            permission: 'manage_production',
-            permission_key: 'manage_production',
+            permission: 'manage_egg_dispatch',
+            permission_key: 'manage_egg_dispatch',
+            // permiso unificado manage_egg_dispatch
+            // clave unificada manage_egg_dispatch
             hideInMenu: false,
             icon: iconMap.Truck || iconMap.Circle,
+            children: []
+        });
+    }
+
+    // Asegurar submenú Contenedores de Frío en Huevo Industrial
+    if (industrialRoot && !industrialRoot.children.some(c => c.path === '/industrial/contenedores')) {
+        industrialRoot.children.push({
+            id: 'virtual-industrial-containers',
+            label: 'Contenedores de Frío',
+            path: '/industrial/contenedores',
+            permission: 'manage_egg_containers',
+            permission_key: 'manage_egg_containers',
+            hideInMenu: false,
+            icon: iconMap.Container || iconMap.Boxes || iconMap.Circle,
             children: []
         });
     }
@@ -621,6 +637,7 @@ export function useMenuPermissions() {
         if (indGroup) {
             const extraIndustrialPerms = [
                 { id: 'manage_production_calendar', label: 'Calendario de Producción', isReport: false, isSpecial: false, sort_order: 3 },
+                { id: 'manage_egg_containers', label: 'Contenedores de Frío', isReport: false, isSpecial: false, sort_order: 4 },
                 { id: 'view_egg_inventory', label: 'Inventario Traducido (Lbs / Kg)', isReport: false, isSpecial: false, sort_order: 25 },
                 { id: 'view_egg_reports', label: 'Reportes de Huevo Industrial', isReport: true, isSpecial: false, sort_order: 30 },
                 { id: 'edit_egg_quality', label: 'Evaluar y Editar Calidad (LAB-004)', isReport: false, isSpecial: true, sort_order: 101 },

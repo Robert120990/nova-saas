@@ -834,7 +834,11 @@ ORDER BY gc.fecha_turno DESC
 - accion_tomar ENUM('llamado_verbal', 'llamado_escrito_1', 'llamado_escrito_2', 'suspension', 'terminacion_sin_responsabilidad', 'despido', 'otro')
 - dias_suspension INT, fecha_inicio_suspension DATE, fecha_fin_suspension DATE, accion_otra VARCHAR(255)
 - recursos_humanos VARCHAR(150), estado_firma ENUM('pendiente', 'firmado', 'se_nego_a_firmar')
-- testigo_nombre VARCHAR(150), observaciones TEXT, estado ENUM('borrador', 'aplicada', 'anulada')
+- testigo_nombre VARCHAR(150), observaciones TEXT, estado ENUM('borrador', 'aplicada', 'anulada') - created_at, updated_at
+### egg_storage_containers (Contenedores de frío / almacenamiento industrial)
+- id, company_id, container_number INT, code VARCHAR(30), name VARCHAR(120), is_active_power TINYINT(1), days_on DECIMAL(10,2), daily_rate DECIMAL(12,2), turned_on_at DATETIME, turned_off_at DATETIME, notes VARCHAR(255)
+### egg_storage_container_logs (Bitácora de ciclos y encendido/apagado de contenedores industriales)
+- id, company_id, container_id, container_name, action_type, days_on, daily_rate, subtotal, iva_amount, total_with_iva, started_at, ended_at, notes, user_id, user_name, created_at
 - created_at, updated_at
 
 `;
