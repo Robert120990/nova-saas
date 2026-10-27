@@ -69,7 +69,9 @@ export default function ContainersSummaryCards({ model }) {
                             </span>
                         </div>
                         <span className="inline-block text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800">
-                            Almacenando Producto
+                            {Number(summary.current_lbs_balance || 0) > 0
+                                ? `${Number(summary.current_lbs_balance).toLocaleString('en-US')} lbs almacenadas`
+                                : 'Almacenando Producto'}
                         </span>
                     </div>
                     <div className="p-3 rounded-2xl bg-cyan-100/80 text-cyan-600 shrink-0">
@@ -92,7 +94,7 @@ export default function ContainersSummaryCards({ model }) {
                             </span>
                         </div>
                         <span className="text-[11px] font-semibold text-slate-500 block">
-                            Tarifa: <Money value={summary.default_daily_rate} /> + IVA / día
+                            Almac.: <Money value={summary.storage_subtotal ?? summary.total_subtotal} /> • Desc.: <Money value={summary.loading_unloading_total || 0} />
                         </span>
                     </div>
                     <div className="p-3 rounded-2xl bg-indigo-50 text-indigo-600 shrink-0">
@@ -105,10 +107,10 @@ export default function ContainersSummaryCards({ model }) {
                     <div className="flex items-start justify-between gap-2">
                         <div>
                             <span className="text-[10px] font-bold text-indigo-200 uppercase tracking-wider block">
-                                Cobro Total (+ IVA 13%)
+                                Total Estado de Cuenta
                             </span>
                             <div className="text-xl sm:text-2xl font-black text-emerald-400 mt-0.5">
-                                <Money value={summary.total_with_iva} />
+                                <Money value={summary.total_subtotal} />
                             </div>
                         </div>
                         <div className="p-2.5 rounded-xl bg-white/10 text-indigo-200 shrink-0">
@@ -117,10 +119,10 @@ export default function ContainersSummaryCards({ model }) {
                     </div>
                     <div className="mt-2 pt-2 border-t border-white/10 flex items-center justify-between text-[11px] font-semibold text-slate-300">
                         <span>
-                            Subtotal: <Money value={summary.total_subtotal} className="text-white font-bold" />
+                            + IVA (13%): <Money value={summary.total_iva} className="text-amber-300 font-bold" />
                         </span>
                         <span>
-                            IVA (13%): <Money value={summary.total_iva} className="text-amber-300 font-bold" />
+                            c/IVA: <Money value={summary.total_with_iva} className="text-white font-bold" />
                         </span>
                     </div>
                 </div>

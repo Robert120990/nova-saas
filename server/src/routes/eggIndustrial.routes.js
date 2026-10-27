@@ -285,6 +285,9 @@ router.post('/containers/sync-period-days', containerPermits, eggContainersContr
 router.get('/containers/statement-report', containerPermits, eggContainersController.exportContainerStatementReport);
 router.post('/containers/cutoffs', containerPermits, eggContainersController.createContainerCutoff);
 router.delete('/containers/cutoffs/:id', containerPermits, eggContainersController.revertLastContainerCutoff);
+router.post('/containers/daily-ledger', containerPermits, eggContainersController.saveDailyLedgerRow);
+router.put('/containers/daily-ledger/:id', containerPermits, eggContainersController.saveDailyLedgerRow);
+router.delete('/containers/daily-ledger/:id', containerPermits, eggContainersController.deleteDailyLedgerRow);
 router.post('/containers/:id/toggle-power', containerPermits, eggContainersController.toggleContainerPower);
 router.post('/containers/:id/reset-cycle', containerPermits, eggContainersController.resetContainerCycle);
 router.put('/containers/:id', containerPermits, eggContainersController.updateContainer);

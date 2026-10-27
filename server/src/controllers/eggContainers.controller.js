@@ -1,5 +1,6 @@
 const eggContainersService = require('../services/eggContainers.service');
 const eggContainerCutoffsService = require('../services/eggContainerCutoffs.service');
+const eggContainerDailyLedgerService = require('../services/eggContainerDailyLedger.service');
 
 const getContainersOverview = async (req, res) => {
     try {
@@ -128,6 +129,29 @@ const exportContainerStatementReport = async (req, res) => {
     }
 };
 
+const saveDailyLedgerRow = async (req, res) => {
+    try {
+        const payload = { ...(req.body || {}), id: req.params.id || req.body?.id || null };
+        await eggContainerDailyLedgerService.saveDailyLedgerRow(req.company_id, payload, req.user);
+        const data = await eggContainersService.getContainersOverview(req.company_id);
+        res.json(data);
+    } catch (error) {
+        console.error('Error en saveDailyLedgerRow:', error);
+        res.status(error.status || 500).json({ message: error.message || 'Error al guardar registro diario de contenedor.' });
+    }
+};
+
+const deleteDailyLedgerRow = async (req, res) => {
+    try {
+        await eggContainerDailyLedgerService.deleteDailyLedgerRow(req.company_id, req.params.id);
+        const data = await eggContainersService.getContainersOverview(req.company_id);
+        res.json(data);
+    } catch (error) {
+        console.error('Error en deleteDailyLedgerRow:', error);
+        res.status(error.status || 500).json({ message: error.message || 'Error al eliminar registro diario de contenedor.' });
+    }
+};
+
 module.exports = {
     getContainersOverview,
     addContainer,
@@ -139,5 +163,7 @@ module.exports = {
     syncContainerDaysForPeriod,
     createContainerCutoff,
     revertLastContainerCutoff,
-    exportContainerStatementReport
+    exportContainerStatementReport,
+    saveDailyLedgerRow,
+    deleteDailyLedgerRow
 };

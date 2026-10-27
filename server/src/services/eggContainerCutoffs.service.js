@@ -4,11 +4,13 @@ const excelService = require('./excel.service');
 const {
     DEFAULT_DAILY_RATE,
     formatYMD,
+    addDaysYMD,
     computeBilling,
     computeElapsedDaysSinceReference,
     logIndustrialEvent,
     getContainersOverview
 } = require('./eggContainers.service');
+const { recalculateAndSyncActiveLedger } = require('./eggContainerDailyLedger.service');
 
 async function getLastAppliedCutoff(companyId) {
     const [rows] = await pool.query(
@@ -23,9 +25,10 @@ async function getLastAppliedCutoff(companyId) {
 
 async function syncContainerDaysForPeriod(companyId, payload = {}, user = null) {
     const lastCutoff = await getLastAppliedCutoff(companyId);
+    const defaultStart = lastCutoff ? addDaysYMD(lastCutoff.period_end, 1) : formatYMD(new Date());
     const periodStart = (lastCutoff && payload.lock_to_last_cutoff !== false)
-        ? formatYMD(lastCutoff.period_end)
-        : (formatYMD(payload.period_start) || formatYMD(lastCutoff?.period_end) || formatYMD(new Date()));
+        ? (formatYMD(payload.period_start) || defaultStart)
+        : (formatYMD(payload.period_start) || defaultStart);
     const periodEnd = formatYMD(payload.period_end) || formatYMD(new Date());
 
     if (periodEnd < periodStart) {
@@ -41,7 +44,7 @@ async function syncContainerDaysForPeriod(companyId, payload = {}, user = null) 
 
     const startMs = new Date(`${periodStart}T00:00:00`).getTime();
     const endMs = new Date(`${periodEnd}T00:00:00`).getTime();
-    const periodSpanDays = Math.max(1, Math.round((endMs - startMs) / 86400000));
+    const periodSpanDays = Math.max(1, Math.round((endMs - startMs) / 86400000) + 1);
 
     for (const c of containers) {
         if (!c.is_active_power) continue;
@@ -68,20 +71,20 @@ async function syncContainerDaysForPeriod(companyId, payload = {}, user = null) 
 
 async function createContainerCutoff(companyId, payload = {}, user = null) {
     const lastCutoff = await getLastAppliedCutoff(companyId);
+    const [activeLedger] = await pool.query(
+        'SELECT * FROM egg_storage_container_daily_ledger WHERE company_id = ? AND cutoff_id IS NULL ORDER BY entry_date ASC, id ASC',
+        [companyId]
+    );
 
-    // Regla central: los nuevos cortes parten desde el último corte realizado
-    const periodStart = (lastCutoff && payload.lock_to_last_cutoff !== false)
-        ? formatYMD(lastCutoff.period_end)
-        : (formatYMD(payload.period_start) || formatYMD(lastCutoff?.period_end) || formatYMD(new Date()));
-    const periodEnd = formatYMD(payload.period_end) || formatYMD(new Date());
+    const defaultStart = activeLedger[0]?.entry_date
+        ? formatYMD(activeLedger[0].entry_date)
+        : (lastCutoff ? addDaysYMD(lastCutoff.period_end, 1) : formatYMD(new Date()));
+    const periodStart = formatYMD(payload.period_start) || defaultStart;
+    const periodEnd = formatYMD(payload.period_end)
+        || (activeLedger.length > 0 ? formatYMD(activeLedger[activeLedger.length - 1].entry_date) : formatYMD(new Date()));
 
-    if (!periodStart || !periodEnd) {
-        const err = new Error('Debe especificar las fechas del período de corte.');
-        err.status = 400;
-        throw err;
-    }
     if (periodEnd < periodStart) {
-        const err = new Error(`La fecha de corte (${periodEnd}) no puede ser anterior al último corte (${periodStart}).`);
+        const err = new Error(`La fecha de corte (${periodEnd}) no puede ser anterior al inicio (${periodStart}).`);
         err.status = 400;
         throw err;
     }
@@ -105,7 +108,7 @@ async function createContainerCutoff(companyId, payload = {}, user = null) {
             ? overridesMap[c.id]
             : Math.max(0, parseFloat(c.days_on) || 0);
         const rate = parseFloat(c.daily_rate || DEFAULT_DAILY_RATE);
-        const billing = computeBilling(daysOn, rate);
+        const billing = computeBilling(daysOn, rate, 0);
         return {
             container: c,
             was_active_power: c.is_active_power ? 1 : 0,
@@ -114,10 +117,22 @@ async function createContainerCutoff(companyId, payload = {}, user = null) {
         };
     });
 
+    const openingLbs = parseFloat(lastCutoff?.closing_lbs_balance || 0);
+    const totalLbsIn = +activeLedger.reduce((s, r) => s + parseFloat(r.lbs_in || 0), 0).toFixed(2);
+    const totalLbsOut = +activeLedger.reduce((s, r) => s + parseFloat(r.lbs_out || 0), 0).toFixed(2);
+    const closingLbs = payload.closing_lbs_balance !== undefined
+        ? parseFloat(payload.closing_lbs_balance) || 0
+        : +(openingLbs + totalLbsIn - totalLbsOut).toFixed(2);
+
+    const loadingUnloadingTotal = payload.loading_unloading_total !== undefined
+        ? Math.max(0, parseFloat(payload.loading_unloading_total) || 0)
+        : +activeLedger.reduce((s, r) => s + parseFloat(r.loading_unloading_cost || 0), 0).toFixed(2);
+
     const totalDaysOn = +preparedItems.reduce((acc, it) => acc + it.days_on, 0).toFixed(2);
-    const totalSubtotal = +preparedItems.reduce((acc, it) => acc + it.subtotal, 0).toFixed(2);
-    const totalIva = +preparedItems.reduce((acc, it) => acc + it.iva_amount, 0).toFixed(2);
-    const totalWithIva = +preparedItems.reduce((acc, it) => acc + it.total_with_iva, 0).toFixed(2);
+    const storageSubtotal = +preparedItems.reduce((acc, it) => acc + it.storage_subtotal, 0).toFixed(2);
+    const totalSubtotal = +(storageSubtotal + loadingUnloadingTotal).toFixed(2);
+    const totalIva = +(totalSubtotal * 0.13).toFixed(2);
+    const totalWithIva = +(totalSubtotal + totalIva).toFixed(2);
     const billedCount = preparedItems.filter(it => it.days_on > 0).length;
     const activeCount = preparedItems.filter(it => it.was_active_power === 1).length;
     const defaultRate = preparedItems[0]?.daily_rate || DEFAULT_DAILY_RATE;
@@ -129,42 +144,35 @@ async function createContainerCutoff(companyId, payload = {}, user = null) {
     );
     const nextCutoffNum = (numRow[0]?.max_num || 0) + 1;
     const cutoffCode = `CORTE-${String(nextCutoffNum).padStart(4, '0')}`;
-    const customerName = payload.customer_name ? String(payload.customer_name).trim() : (lastCutoff?.customer_name || null);
+    const customerName = payload.customer_name ? String(payload.customer_name).trim() : (lastCutoff?.customer_name || 'ALMACENAMIENTO EN CONTENEDOR');
     const customerId = payload.customer_id ? parseInt(payload.customer_id, 10) || null : (lastCutoff?.customer_id || null);
     const cutoffNotes = payload.notes ? String(payload.notes).trim() : null;
 
     const [insCutoff] = await pool.query(
         `INSERT INTO egg_storage_container_cutoffs
          (company_id, cutoff_number, cutoff_code, customer_id, customer_name, previous_cutoff_id, previous_cutoff_date,
-          period_start, period_end, total_containers, billed_containers_count, active_containers_count,
-          total_days_on, daily_rate, subtotal, iva_amount, total_with_iva, keep_active_running, status, notes, user_id, user_name)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'aplicado', ?, ?, ?)`,
+          period_start, period_end, opening_lbs_balance, total_lbs_in, total_lbs_out, closing_lbs_balance,
+          total_containers, billed_containers_count, active_containers_count,
+          total_days_on, daily_rate, storage_subtotal, loading_unloading_total, subtotal, iva_amount, total_with_iva,
+          keep_active_running, status, notes, user_id, user_name)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'aplicado', ?, ?, ?)`,
         [
-            companyId,
-            nextCutoffNum,
-            cutoffCode,
-            customerId,
-            customerName,
-            lastCutoff?.id || null,
-            lastCutoff ? formatYMD(lastCutoff.period_end) : null,
-            periodStart,
-            periodEnd,
-            containers.length,
-            billedCount,
-            activeCount,
-            totalDaysOn,
-            defaultRate,
-            totalSubtotal,
-            totalIva,
-            totalWithIva,
-            keepActiveRunning,
-            cutoffNotes,
-            user?.id || null,
-            user?.nombre || user?.username || 'Sistema'
+            companyId, nextCutoffNum, cutoffCode, customerId, customerName,
+            lastCutoff?.id || null, lastCutoff ? formatYMD(lastCutoff.period_end) : null,
+            periodStart, periodEnd, openingLbs, totalLbsIn, totalLbsOut, closingLbs,
+            containers.length, billedCount, activeCount,
+            totalDaysOn, defaultRate, storageSubtotal, loadingUnloadingTotal, totalSubtotal, totalIva, totalWithIva,
+            keepActiveRunning, cutoffNotes, user?.id || null, user?.nombre || user?.username || 'Sistema'
         ]
     );
 
     const cutoffId = insCutoff.insertId;
+
+    // Asociar las filas diarias vigentes a este corte cerrado
+    await pool.query(
+        'UPDATE egg_storage_container_daily_ledger SET cutoff_id = ? WHERE company_id = ? AND cutoff_id IS NULL',
+        [cutoffId, companyId]
+    );
 
     for (const item of preparedItems) {
         const c = item.container;
@@ -174,49 +182,14 @@ async function createContainerCutoff(companyId, payload = {}, user = null) {
               was_active_power, turned_on_at, turned_off_at, days_on, daily_rate, subtotal, iva_amount, total_with_iva, notes)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
-                cutoffId,
-                companyId,
-                c.id,
-                c.container_number,
-                c.code,
-                c.name,
-                item.was_active_power,
-                c.turned_on_at,
-                c.turned_off_at,
-                item.days_on,
-                item.daily_rate,
-                item.subtotal,
-                item.iva_amount,
-                item.total_with_iva,
-                item.notes
+                cutoffId, companyId, c.id, c.container_number, c.code, c.name,
+                item.was_active_power, c.turned_on_at, c.turned_off_at,
+                item.days_on, item.daily_rate, item.subtotal, item.iva_amount, item.total_with_iva, item.notes
             ]
         );
 
-        if (item.days_on > 0) {
-            await pool.query(
-                `INSERT INTO egg_storage_container_logs
-                 (company_id, container_id, container_name, action_type, days_on, daily_rate, subtotal, iva_amount, total_with_iva, started_at, ended_at, notes, user_id, user_name)
-                 VALUES (?, ?, ?, 'corte_fechas', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [
-                    companyId,
-                    c.id,
-                    c.name,
-                    item.days_on,
-                    item.daily_rate,
-                    item.subtotal,
-                    item.iva_amount,
-                    item.total_with_iva,
-                    `${periodStart} 00:00:00`,
-                    `${periodEnd} 23:59:59`,
-                    `${cutoffCode} (${reportPdfHelper.formatDate(periodStart)} al ${reportPdfHelper.formatDate(periodEnd)})${customerName ? ` • ${customerName}` : ''}`,
-                    user?.id || null,
-                    user?.nombre || user?.username || 'Sistema'
-                ]
-            );
-        }
-
-        // Reiniciar días para que el nuevo corte parta limpio desde la fecha de este último corte
         const nextPower = item.was_active_power === 1 && keepActiveRunning ? 1 : 0;
+        const nextTurnedOn = addDaysYMD(periodEnd, 1) || periodEnd;
         await pool.query(
             `UPDATE egg_storage_containers
              SET days_on = 0,
@@ -227,7 +200,7 @@ async function createContainerCutoff(companyId, payload = {}, user = null) {
                  last_cutoff_id = ?
              WHERE id = ? AND company_id = ?`,
             nextPower === 1
-                ? [nextPower, `${periodEnd} 00:00:00`, periodEnd, cutoffId, c.id, companyId]
+                ? [nextPower, `${nextTurnedOn} 00:00:00`, periodEnd, cutoffId, c.id, companyId]
                 : [nextPower, periodEnd, cutoffId, c.id, companyId]
         );
     }
@@ -235,8 +208,8 @@ async function createContainerCutoff(companyId, payload = {}, user = null) {
     await logIndustrialEvent(
         companyId,
         'container.cutoff_created',
-        `Estado de Cuenta ${cutoffCode} (${periodStart} al ${periodEnd}): ${totalDaysOn} día(s), Total c/IVA: $${totalWithIva.toFixed(2)}`,
-        { cutoff_id: cutoffId, cutoff_code: cutoffCode, period_start: periodStart, period_end: periodEnd, total_days_on: totalDaysOn, total_with_iva: totalWithIva },
+        `Estado de Cuenta ${cutoffCode} (${periodStart} al ${periodEnd}): ${closingLbs} lbs, Almacenamiento $${storageSubtotal.toFixed(2)} + Descarga $${loadingUnloadingTotal.toFixed(2)} = $${totalSubtotal.toFixed(2)}`,
+        { cutoff_id: cutoffId, cutoff_code: cutoffCode, period_start: periodStart, period_end: periodEnd, closing_lbs: closingLbs, subtotal: totalSubtotal },
         user
     );
 
@@ -247,7 +220,7 @@ async function createContainerCutoff(companyId, payload = {}, user = null) {
 async function revertLastContainerCutoff(companyId, cutoffId, user = null) {
     const lastCutoff = await getLastAppliedCutoff(companyId);
     if (!lastCutoff || Number(lastCutoff.id) !== Number(cutoffId)) {
-        const err = new Error('Solo se puede revertir el último corte realizado para mantener la continuidad de fechas.');
+        const err = new Error('Solo se puede revertir el último corte realizado para mantener la continuidad de fechas y saldos.');
         err.status = 400;
         throw err;
     }
@@ -260,29 +233,24 @@ async function revertLastContainerCutoff(companyId, cutoffId, user = null) {
     for (const item of items) {
         await pool.query(
             `UPDATE egg_storage_containers
-             SET days_on = ?,
-                 is_active_power = ?,
-                 turned_on_at = ?,
-                 turned_off_at = ?,
-                 last_cutoff_date = ?,
-                 last_cutoff_id = ?
+             SET days_on = ?, is_active_power = ?, turned_on_at = ?, turned_off_at = ?,
+                 last_cutoff_date = ?, last_cutoff_id = ?
              WHERE id = ? AND company_id = ?`,
             [
-                item.days_on,
-                item.was_active_power,
-                item.turned_on_at,
-                item.turned_off_at,
-                lastCutoff.previous_cutoff_date,
-                lastCutoff.previous_cutoff_id,
-                item.container_id,
-                companyId
+                item.days_on, item.was_active_power, item.turned_on_at, item.turned_off_at,
+                lastCutoff.previous_cutoff_date, lastCutoff.previous_cutoff_id,
+                item.container_id, companyId
             ]
         );
     }
 
+    // Devolver las filas diarias al período vigente (cutoff_id = NULL)
+    await pool.query('UPDATE egg_storage_container_daily_ledger SET cutoff_id = NULL WHERE cutoff_id = ? AND company_id = ?', [cutoffId, companyId]);
     await pool.query('DELETE FROM egg_storage_container_logs WHERE company_id = ? AND action_type = ? AND notes LIKE ?', [companyId, 'corte_fechas', `${lastCutoff.cutoff_code}%`]);
     await pool.query('DELETE FROM egg_storage_container_cutoff_items WHERE cutoff_id = ? AND company_id = ?', [cutoffId, companyId]);
     await pool.query('DELETE FROM egg_storage_container_cutoffs WHERE id = ? AND company_id = ?', [cutoffId, companyId]);
+
+    await recalculateAndSyncActiveLedger(companyId, true);
 
     await logIndustrialEvent(
         companyId,
@@ -297,196 +265,170 @@ async function revertLastContainerCutoff(companyId, cutoffId, user = null) {
 
 async function exportContainerStatementReport(companyId, query = {}, res) {
     const company = await reportPdfHelper.getCompanyInfo(companyId);
-    const { cutoff_id, format, include_zero } = query;
+    const { cutoff_id, format } = query;
+    const overview = await getContainersOverview(companyId);
 
-    let headerInfo = null;
-    let items = [];
-
+    let cutData = null;
     if (cutoff_id) {
-        const [cRows] = await pool.query(
-            'SELECT * FROM egg_storage_container_cutoffs WHERE id = ? AND company_id = ?',
-            [cutoff_id, companyId]
-        );
-        if (!cRows.length) {
-            return res.status(404).json({ message: 'Corte de estado de cuenta no encontrado.' });
-        }
-        const cut = cRows[0];
-        const [iRows] = await pool.query(
-            'SELECT * FROM egg_storage_container_cutoff_items WHERE cutoff_id = ? AND company_id = ? ORDER BY container_number ASC',
-            [cutoff_id, companyId]
-        );
-        headerInfo = {
-            code: cut.cutoff_code,
-            customer_name: cut.customer_name || 'CLIENTE GENERAL / PLANTA',
-            previous_cutoff_date: formatYMD(cut.previous_cutoff_date),
-            period_start: formatYMD(cut.period_start),
-            period_end: formatYMD(cut.period_end),
-            notes: cut.notes || '',
-            is_preliminary: false
-        };
-        items = iRows.map(r => ({
-            code: r.container_code,
-            name: r.container_name,
-            status_label: r.was_active_power ? 'ENCENDIDO' : 'DISPONIBLE / APAGADO',
-            days_on: parseFloat(r.days_on || 0),
-            daily_rate: parseFloat(r.daily_rate || DEFAULT_DAILY_RATE),
-            subtotal: parseFloat(r.subtotal || 0),
-            iva_amount: parseFloat(r.iva_amount || 0),
-            total_with_iva: parseFloat(r.total_with_iva || 0),
-            notes: r.notes || ''
-        }));
+        cutData = overview.cutoffs.find(c => Number(c.id) === Number(cutoff_id));
+        if (!cutData) return res.status(404).json({ message: 'Corte de estado de cuenta no encontrado.' });
     } else {
-        const overview = await getContainersOverview(companyId);
-        const periodStart = formatYMD(query.period_start) || overview.cutoff_chain.next_period_start;
-        const periodEnd = formatYMD(query.period_end) || overview.cutoff_chain.suggested_period_end;
-        headerInfo = {
-            code: 'PRELIMINAR (EN CURSO)',
-            customer_name: query.customer_name || overview.cutoff_chain.last_customer_name || 'CLIENTE GENERAL / PLANTA',
+        const dl = overview.daily_ledger;
+        cutData = {
+            cutoff_code: 'VIGENTE (ARCHIVO 1.2)',
+            customer_name: query.customer_name || overview.cutoff_chain.last_customer_name || 'ALMACENAMIENTO EN CONTENEDOR',
             previous_cutoff_date: overview.cutoff_chain.last_cutoff_date,
-            period_start: periodStart,
-            period_end: periodEnd,
-            notes: query.notes || '',
-            is_preliminary: true
+            period_start: formatYMD(query.period_start) || overview.cutoff_chain.next_period_start,
+            period_end: formatYMD(query.period_end) || overview.cutoff_chain.suggested_period_end,
+            opening_lbs_balance: dl.opening_lbs_balance,
+            total_lbs_in: dl.totals.total_lbs_in,
+            total_lbs_out: dl.totals.total_lbs_out,
+            closing_lbs_balance: dl.totals.closing_lbs_balance,
+            total_days_on: overview.summary.total_days_on,
+            storage_subtotal: overview.summary.storage_subtotal,
+            loading_unloading_total: overview.summary.loading_unloading_total,
+            subtotal: overview.summary.total_subtotal,
+            iva_amount: overview.summary.total_iva,
+            total_with_iva: overview.summary.total_with_iva,
+            daily_rows: dl.rows,
+            items: overview.containers.map(c => ({
+                container_code: c.code, container_name: c.name, was_active_power: c.is_active_power,
+                days_on: c.days_on, daily_rate: c.daily_rate, subtotal: c.storage_subtotal,
+                iva_amount: c.iva_amount, total_with_iva: c.total_with_iva
+            }))
         };
-        items = overview.containers.map(c => ({
-            code: c.code,
-            name: c.name,
-            status_label: c.is_active_power ? 'ENCENDIDO' : 'DISPONIBLE / APAGADO',
-            days_on: parseFloat(c.days_on || 0),
-            daily_rate: parseFloat(c.daily_rate || DEFAULT_DAILY_RATE),
-            subtotal: parseFloat(c.subtotal || 0),
-            iva_amount: parseFloat(c.iva_amount || 0),
-            total_with_iva: parseFloat(c.total_with_iva || 0),
-            notes: c.notes || ''
-        }));
     }
 
-    const displayItems = include_zero === '0' ? items.filter(i => i.days_on > 0) : items;
-    const totalDays = +displayItems.reduce((s, i) => s + i.days_on, 0).toFixed(2);
-    const totalSubtotal = +displayItems.reduce((s, i) => s + i.subtotal, 0).toFixed(2);
-    const totalIva = +displayItems.reduce((s, i) => s + i.iva_amount, 0).toFixed(2);
-    const totalWithIva = +displayItems.reduce((s, i) => s + i.total_with_iva, 0).toFixed(2);
-    const periodText = `CORTE DEL ${reportPdfHelper.formatDate(headerInfo.period_start)} AL ${reportPdfHelper.formatDate(headerInfo.period_end)}`;
+    const periodText = `CORTE DEL ${reportPdfHelper.formatDate(cutData.period_start)} AL ${reportPdfHelper.formatDate(cutData.period_end)}`;
 
     if (format === 'excel') {
-        const excelRows = displayItems.map(it => ({
-            code: it.code,
-            name: it.name,
-            status_label: it.status_label,
-            days_on: it.days_on,
-            daily_rate: it.daily_rate,
-            subtotal: it.subtotal,
-            iva_amount: it.iva_amount,
-            total_with_iva: it.total_with_iva,
-            notes: it.notes
-        }));
-        excelRows.push({
-            code: 'TOTAL',
-            name: `${headerInfo.code} - ${headerInfo.customer_name}`,
-            status_label: periodText,
-            days_on: totalDays,
-            daily_rate: '',
-            subtotal: totalSubtotal,
-            iva_amount: totalIva,
-            total_with_iva: totalWithIva,
-            notes: headerInfo.previous_cutoff_date ? `Último corte: ${reportPdfHelper.formatDate(headerInfo.previous_cutoff_date)}` : ''
-        });
-        const buffer = await excelService.createExcelBuffer({
-            title: `ESTADO DE CUENTA DE CONTENEDORES DE ALMACENAMIENTO (${periodText})`,
-            sheets: [{
-                name: 'Estado de Cuenta',
-                columns: [
-                    { header: 'Código', key: 'code', width: 12 },
-                    { header: 'Contenedor', key: 'name', width: 24 },
-                    { header: 'Estado', key: 'status_label', width: 22 },
-                    { header: 'Días Encendido', key: 'days_on', width: 16 },
-                    { header: 'Tarifa / Día ($)', key: 'daily_rate', width: 16 },
-                    { header: 'Subtotal ($)', key: 'subtotal', width: 16 },
-                    { header: 'IVA 13% ($)', key: 'iva_amount', width: 16 },
-                    { header: 'Total + IVA ($)', key: 'total_with_iva', width: 18 },
-                    { header: 'Observaciones', key: 'notes', width: 28 }
-                ],
-                data: excelRows
-            }]
-        });
-        return excelService.sendExcelResponse(res, buffer, `estado_cuenta_contenedores_${headerInfo.period_end}.xlsx`);
-    }
-
-    return reportPdfHelper.buildPDF(res, 'portrait', (doc) => {
-        const subtitle = `ESTADO DE CUENTA: ${headerInfo.code}  •  CLIENTE: ${headerInfo.customer_name}`;
-        let y = reportPdfHelper.renderHeader(
-            doc,
-            company,
-            'ESTADO DE CUENTA - ALMACENAMIENTO EN CONTENEDORES DE FRIO',
-            periodText,
-            'portrait',
-            subtitle
-        );
-
-        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#334155');
-        const chainInfo = headerInfo.previous_cutoff_date
-            ? `ORIGEN DE CORTE: Partiendo desde el último corte realizado el ${reportPdfHelper.formatDate(headerInfo.previous_cutoff_date)}`
-            : 'ORIGEN DE CORTE: Primer período de corte registrado';
-        doc.text(chainInfo, 30, y);
-        if (headerInfo.notes) {
-            doc.font('Helvetica').fillColor('#475569').text(`Observaciones: ${headerInfo.notes}`, 340, y, { width: 240, align: 'right' });
-        }
-        y += 14;
-
-        const cols = [
-            { label: 'CÓDIGO', x: 30, w: 52, align: 'left' },
-            { label: 'CONTENEDOR', x: 82, w: 118, align: 'left' },
-            { label: 'ESTADO', x: 200, w: 85, align: 'left' },
-            { label: 'DÍAS ENC.', x: 285, w: 52, align: 'right' },
-            { label: 'TARIFA/DÍA', x: 337, w: 60, align: 'right' },
-            { label: 'SUBTOTAL', x: 397, w: 62, align: 'right' },
-            { label: 'IVA (13%)', x: 459, w: 55, align: 'right' },
-            { label: 'TOTAL + IVA', x: 514, w: 68, align: 'right' }
+        const dailyExcel = [
+            {
+                entry_date: 'LIBRAS (SALDO INICIAL)', lbs_in: '', lbs_out: '', lbs_balance: cutData.opening_lbs_balance,
+                daily_rate: '', containers_count: 'contenedores', days_amount: '', loading_unloading_cost: '',
+                withdrawal_count: '', income_count: '', active_containers_list: ''
+            },
+            ...(cutData.daily_rows || []).map(r => ({
+                entry_date: r.entry_date,
+                lbs_in: r.lbs_in || '',
+                lbs_out: r.lbs_out || '',
+                lbs_balance: r.lbs_balance,
+                daily_rate: r.daily_rate,
+                containers_count: r.containers_count,
+                days_amount: r.days_amount,
+                loading_unloading_cost: r.loading_unloading_cost,
+                withdrawal_count: r.withdrawal_count || '',
+                income_count: r.income_count || '',
+                active_containers_list: r.active_containers_list
+            })),
+            {
+                entry_date: 'TOTAL', lbs_in: cutData.total_lbs_in, lbs_out: cutData.total_lbs_out,
+                lbs_balance: cutData.closing_lbs_balance, daily_rate: '', containers_count: cutData.total_days_on,
+                days_amount: cutData.storage_subtotal, loading_unloading_cost: cutData.loading_unloading_total,
+                withdrawal_count: '', income_count: '', active_containers_list: ''
+            },
+            { entry_date: '', lbs_in: '', lbs_out: 'Libras en contenedores', lbs_balance: cutData.closing_lbs_balance },
+            { entry_date: '', lbs_in: '', lbs_out: 'Total de libras', lbs_balance: cutData.closing_lbs_balance },
+            { entry_date: '', lbs_in: '', lbs_out: 'Almacenamiento contenedores', days_amount: cutData.storage_subtotal },
+            { entry_date: '', lbs_in: '', lbs_out: 'Valor por descarga', days_amount: cutData.loading_unloading_total },
+            { entry_date: '', lbs_in: '', lbs_out: 'Total Estado de Cuenta', days_amount: cutData.subtotal }
         ];
 
-        const drawTableHeader = (topY) => {
-            doc.rect(30, topY, 552, 14).fill('#f1f5f9');
-            doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(30, topY + 14).lineTo(582, topY + 14).stroke();
-            doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
-            cols.forEach(c => doc.text(c.label, c.x + 2, topY + 4, { width: c.w - 4, align: c.align, lineBreak: false }));
-            return topY + 17;
-        };
+        const buffer = await excelService.createExcelBuffer({
+            title: `ALMACENAMIENTO EN CONTENEDOR - ${periodText}`,
+            sheets: [{
+                name: 'Almacenamiento Contenedor',
+                columns: [
+                    { header: 'FECHA', key: 'entry_date', width: 22 },
+                    { header: 'Ingreso (Lbs)', key: 'lbs_in', width: 15 },
+                    { header: 'Salida (Lbs)', key: 'lbs_out', width: 24 },
+                    { header: 'Saldo libras', key: 'lbs_balance', width: 16 },
+                    { header: '$ X Día', key: 'daily_rate', width: 12 },
+                    { header: '# de contenedores', key: 'containers_count', width: 18 },
+                    { header: 'Días $', key: 'days_amount', width: 15 },
+                    { header: 'CARGAS Y DESCARGAS', key: 'loading_unloading_cost', width: 20 },
+                    { header: 'RETIRO', key: 'withdrawal_count', width: 10 },
+                    { header: 'INGRESO', key: 'income_count', width: 10 },
+                    { header: 'N° CON.', key: 'active_containers_list', width: 22 }
+                ],
+                data: dailyExcel
+            }]
+        });
+        return excelService.sendExcelResponse(res, buffer, `estado_cuenta_contenedores_${cutData.period_end}.xlsx`);
+    }
 
-        y = drawTableHeader(y);
+    return reportPdfHelper.buildPDF(res, 'landscape', (doc) => {
+        const subtitle = `ESTADO DE CUENTA: ${cutData.cutoff_code}  •  ${cutData.customer_name}`;
+        let y = reportPdfHelper.renderHeader(doc, company, 'ESTADO DE CUENTA - ALMACENAMIENTO EN CONTENEDOR', periodText, 'landscape', subtitle);
 
-        displayItems.forEach((it, idx) => {
-            if (y > 700) {
-                doc.addPage();
-                y = reportPdfHelper.renderHeader(doc, company, 'ESTADO DE CUENTA - ALMACENAMIENTO EN CONTENEDORES DE FRIO', periodText, 'portrait', subtitle);
-                y = drawTableHeader(y);
-            }
-            if (idx % 2 === 1) {
-                doc.rect(30, y - 2, 552, 13).fill('#f8fafc');
-            }
-            doc.fontSize(7.5).font('Helvetica').fillColor('#1e293b');
-            doc.text(it.code, cols[0].x + 2, y, { width: cols[0].w - 4, lineBreak: false });
-            doc.font('Helvetica-Bold').text(reportPdfHelper.fitText(doc, it.name, cols[1].w - 4), cols[1].x + 2, y, { width: cols[1].w - 4, lineBreak: false });
-            doc.font('Helvetica').fillColor('#475569').text(it.status_label, cols[2].x + 2, y, { width: cols[2].w - 4, lineBreak: false });
-            doc.font('Helvetica-Bold').fillColor('#0f172a').text(String(it.days_on), cols[3].x + 2, y, { width: cols[3].w - 4, align: 'right', lineBreak: false });
-            doc.font('Helvetica').text(reportPdfHelper.fmt(it.daily_rate, false), cols[4].x + 2, y, { width: cols[4].w - 4, align: 'right', lineBreak: false });
-            doc.text(reportPdfHelper.fmt(it.subtotal), cols[5].x + 2, y, { width: cols[5].w - 4, align: 'right', lineBreak: false });
-            doc.text(reportPdfHelper.fmt(it.iva_amount), cols[6].x + 2, y, { width: cols[6].w - 4, align: 'right', lineBreak: false });
-            doc.font('Helvetica-Bold').text(reportPdfHelper.fmt(it.total_with_iva), cols[7].x + 2, y, { width: cols[7].w - 4, align: 'right', lineBreak: false });
+        const cols = [
+            { label: 'FECHA', x: 30, w: 68, align: 'left' },
+            { label: 'INGRESO (LBS)', x: 98, w: 68, align: 'right' },
+            { label: 'SALIDA (LBS)', x: 166, w: 64, align: 'right' },
+            { label: 'SALDO LIBRAS', x: 230, w: 74, align: 'right' },
+            { label: '$ X DÍA', x: 304, w: 52, align: 'right' },
+            { label: '# CONT.', x: 356, w: 48, align: 'center' },
+            { label: 'DÍAS $', x: 404, w: 68, align: 'right' },
+            { label: 'CARGAS/DESC. $', x: 472, w: 76, align: 'right' },
+            { label: 'RETIRO', x: 548, w: 45, align: 'center' },
+            { label: 'INGRESO', x: 593, w: 48, align: 'center' },
+            { label: 'N° CON.', x: 641, w: 121, align: 'left' }
+        ];
+
+        doc.rect(30, y, 732, 14).fill('#f1f5f9');
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(30, y + 14).lineTo(762, y + 14).stroke();
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        cols.forEach(c => doc.text(c.label, c.x + 2, y + 4, { width: c.w - 4, align: c.align, lineBreak: false }));
+        y += 17;
+
+        // Fila inicial: LIBRAS (Saldo anterior)
+        doc.rect(30, y - 2, 732, 13).fill('#eef2ff');
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#1e293b');
+        doc.text('LIBRAS (SALDO ANT.)', cols[0].x + 2, y, { width: 190, lineBreak: false });
+        doc.text(Number(cutData.opening_lbs_balance || 0).toLocaleString('en-US'), cols[3].x + 2, y, { width: cols[3].w - 4, align: 'right', lineBreak: false });
+        y += 14;
+
+        (cutData.daily_rows || []).forEach((r, idx) => {
+            if (idx % 2 === 1) doc.rect(30, y - 2, 732, 13).fill('#f8fafc');
+            doc.fontSize(7.5).font('Helvetica').fillColor('#0f172a');
+            doc.text(reportPdfHelper.formatDate(r.entry_date), cols[0].x + 2, y, { width: cols[0].w - 4, lineBreak: false });
+            doc.text(r.lbs_in > 0 ? Number(r.lbs_in).toLocaleString('en-US') : '', cols[1].x + 2, y, { width: cols[1].w - 4, align: 'right', lineBreak: false });
+            doc.text(r.lbs_out > 0 ? Number(r.lbs_out).toLocaleString('en-US') : '', cols[2].x + 2, y, { width: cols[2].w - 4, align: 'right', lineBreak: false });
+            doc.font('Helvetica-Bold').text(Number(r.lbs_balance || 0).toLocaleString('en-US'), cols[3].x + 2, y, { width: cols[3].w - 4, align: 'right', lineBreak: false });
+            doc.font('Helvetica').text(reportPdfHelper.fmt(r.daily_rate, false), cols[4].x + 2, y, { width: cols[4].w - 4, align: 'right', lineBreak: false });
+            doc.font('Helvetica-Bold').text(String(r.containers_count || 0), cols[5].x + 2, y, { width: cols[5].w - 4, align: 'center', lineBreak: false });
+            doc.text(reportPdfHelper.fmt(r.days_amount), cols[6].x + 2, y, { width: cols[6].w - 4, align: 'right', lineBreak: false });
+            doc.font('Helvetica').text(reportPdfHelper.fmt(r.loading_unloading_cost), cols[7].x + 2, y, { width: cols[7].w - 4, align: 'right', lineBreak: false });
+            doc.text(r.withdrawal_count > 0 ? String(r.withdrawal_count) : '', cols[8].x + 2, y, { width: cols[8].w - 4, align: 'center', lineBreak: false });
+            doc.text(r.income_count > 0 ? String(r.income_count) : '', cols[9].x + 2, y, { width: cols[9].w - 4, align: 'center', lineBreak: false });
+            doc.font('Helvetica-Bold').text(r.active_containers_list || '', cols[10].x + 2, y, { width: cols[10].w - 4, lineBreak: false });
             y += 13;
         });
 
-        doc.strokeColor('#94a3b8').lineWidth(0.8).moveTo(30, y + 1).lineTo(582, y + 1).stroke();
-        y += 5;
-        doc.rect(30, y - 2, 552, 16).fill('#f1f5f9');
+        doc.rect(30, y - 1, 732, 15).fill('#f1f5f9');
         doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a');
-        doc.text('TOTALES DEL CORTE / ESTADO DE CUENTA', cols[0].x + 2, y + 2, { width: 250, lineBreak: false });
-        doc.text(`${totalDays} d`, cols[3].x + 2, y + 2, { width: cols[3].w - 4, align: 'right', lineBreak: false });
-        doc.text(reportPdfHelper.fmt(totalSubtotal, false), cols[5].x + 2, y + 2, { width: cols[5].w - 4, align: 'right', lineBreak: false });
-        doc.text(reportPdfHelper.fmt(totalIva, false), cols[6].x + 2, y + 2, { width: cols[6].w - 4, align: 'right', lineBreak: false });
-        doc.text(reportPdfHelper.fmt(totalWithIva, false), cols[7].x + 2, y + 2, { width: cols[7].w - 4, align: 'right', lineBreak: false });
+        doc.text('TOTAL', cols[0].x + 2, y + 2, { width: cols[0].w - 4, lineBreak: false });
+        doc.text(Number(cutData.closing_lbs_balance || 0).toLocaleString('en-US'), cols[3].x + 2, y + 2, { width: cols[3].w - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(cutData.storage_subtotal, false), cols[6].x + 2, y + 2, { width: cols[6].w - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(cutData.loading_unloading_total, false), cols[7].x + 2, y + 2, { width: cols[7].w - 4, align: 'right', lineBreak: false });
         y += 22;
 
-        reportPdfHelper.renderClosingFooter(doc, 30, y, displayItems.length, 'Contenedores');
+        // Cuadro Resumen de Conceptos (idéntico al formato del cliente)
+        doc.rect(180, y, 420, 74).fill('#f8fafc').stroke('#cbd5e1');
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('Libras en contenedores:', 195, y + 8);
+        doc.text(`${Number(cutData.closing_lbs_balance || 0).toLocaleString('en-US')} lbs`, 450, y + 8, { width: 135, align: 'right' });
+        doc.text('Total de libras:', 195, y + 21);
+        doc.text(`${Number(cutData.closing_lbs_balance || 0).toLocaleString('en-US')} lbs`, 450, y + 21, { width: 135, align: 'right' });
+        doc.text('Almacenamiento contenedores:', 195, y + 36);
+        doc.text(reportPdfHelper.fmt(cutData.storage_subtotal, false), 450, y + 36, { width: 135, align: 'right' });
+        doc.text('Valor por descarga (Cargas y Descargas):', 195, y + 49);
+        doc.text(reportPdfHelper.fmt(cutData.loading_unloading_total, false), 450, y + 49, { width: 135, align: 'right' });
+        doc.fontSize(9).fillColor('#0f172a').text('TOTAL CONCEPTOS (SIN IVA):', 195, y + 61);
+        doc.text(reportPdfHelper.fmt(cutData.subtotal, false), 450, y + 61, { width: 135, align: 'right' });
+        y += 84;
+
+        reportPdfHelper.renderClosingFooter(doc, 30, y, (cutData.daily_rows || []).length, 'Días Registrados');
         reportPdfHelper.renderPageNumbers(doc);
         doc.end();
     });

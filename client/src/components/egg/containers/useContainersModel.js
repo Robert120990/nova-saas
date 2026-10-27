@@ -13,6 +13,7 @@ export default function useContainersModel() {
     const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'available' | 'active'
     const [searchTerm, setSearchTerm] = useState('');
     const [activeSectionTab, setActiveSectionTab] = useState('cutoffs'); // 'cutoffs' | 'table' | 'logs'
+    const [selectedLedgerView, setSelectedLedgerView] = useState('active'); // 'active' | cutoff.id
 
     // Period cutoff state (parte automáticamente desde el último corte realizado)
     const [periodStart, setPeriodStart] = useState('');
@@ -23,6 +24,7 @@ export default function useContainersModel() {
     // Modals state
     const [modalState, setModalState] = useState({ open: false, mode: 'add', container: null });
     const [cutoffModalOpen, setCutoffModalOpen] = useState(false);
+    const [dailyModalState, setDailyModalState] = useState({ open: false, row: null });
 
     // PDF Viewer Modal state for Estado de Cuenta
     const [pdfViewer, setPdfViewer] = useState({
@@ -45,15 +47,36 @@ export default function useContainersModel() {
             const payload = res.data || {};
             return {
                 containers: unwrapList({ data: payload.containers || [] }),
+                daily_ledger: payload.daily_ledger || {
+                    opening_lbs_balance: 0,
+                    rows: [],
+                    totals: {
+                        opening_lbs_balance: 0,
+                        total_lbs_in: 0,
+                        total_lbs_out: 0,
+                        closing_lbs_balance: 0,
+                        total_days_logged: 0,
+                        total_container_days: 0,
+                        storage_subtotal: 0,
+                        loading_unloading_total: 0,
+                        concepts_total: 0,
+                        iva_amount: 0,
+                        total_with_iva: 0
+                    }
+                },
                 summary: payload.summary || {
                     total_containers: 0,
                     available_count: 0,
                     active_count: 0,
                     total_days_on: 0,
+                    opening_lbs_balance: 0,
+                    current_lbs_balance: 0,
                     default_daily_rate: 195,
                     default_daily_iva: 25.35,
                     default_daily_with_iva: 220.35,
                     iva_rate_percent: 13,
+                    storage_subtotal: 0,
+                    loading_unloading_total: 0,
                     total_subtotal: 0,
                     total_iva: 0,
                     total_with_iva: 0
@@ -63,6 +86,7 @@ export default function useContainersModel() {
                     last_cutoff_id: null,
                     last_cutoff_code: null,
                     last_cutoff_date: null,
+                    last_cutoff_lbs_balance: 0,
                     next_period_start: new Date().toISOString().split('T')[0],
                     suggested_period_end: new Date().toISOString().split('T')[0],
                     total_cutoffs_count: 0
@@ -77,15 +101,36 @@ export default function useContainersModel() {
         () => (Array.isArray(overviewData?.containers) ? overviewData.containers : []),
         [overviewData]
     );
+    const dailyLedger = overviewData?.daily_ledger || {
+        opening_lbs_balance: 0,
+        rows: [],
+        totals: {
+            opening_lbs_balance: 0,
+            total_lbs_in: 0,
+            total_lbs_out: 0,
+            closing_lbs_balance: 0,
+            total_days_logged: 0,
+            total_container_days: 0,
+            storage_subtotal: 0,
+            loading_unloading_total: 0,
+            concepts_total: 0,
+            iva_amount: 0,
+            total_with_iva: 0
+        }
+    };
     const summary = overviewData?.summary || {
         total_containers: containers.length,
         available_count: 0,
         active_count: 0,
         total_days_on: 0,
+        opening_lbs_balance: 0,
+        current_lbs_balance: 0,
         default_daily_rate: 195,
         default_daily_iva: 25.35,
         default_daily_with_iva: 220.35,
         iva_rate_percent: 13,
+        storage_subtotal: 0,
+        loading_unloading_total: 0,
         total_subtotal: 0,
         total_iva: 0,
         total_with_iva: 0
@@ -95,6 +140,7 @@ export default function useContainersModel() {
         last_cutoff_id: null,
         last_cutoff_code: null,
         last_cutoff_date: null,
+        last_cutoff_lbs_balance: 0,
         next_period_start: new Date().toISOString().split('T')[0],
         suggested_period_end: new Date().toISOString().split('T')[0],
         total_cutoffs_count: 0
@@ -108,14 +154,13 @@ export default function useContainersModel() {
         [overviewData]
     );
 
-    // Sincronizar automáticamente el inicio del nuevo corte con el último corte realizado
     useEffect(() => {
         if (cutoffChain.next_period_start) {
             if (!periodStart || (cutoffChain.has_previous_cutoff && lockToLastCutoff)) {
                 setPeriodStart(cutoffChain.next_period_start);
             }
-            if (periodEnd < cutoffChain.next_period_start) {
-                setPeriodEnd(cutoffChain.suggested_period_end || cutoffChain.next_period_start);
+            if (cutoffChain.suggested_period_end) {
+                setPeriodEnd(cutoffChain.suggested_period_end);
             }
         }
         if (cutoffChain.last_customer_name && !customerName) {
@@ -128,7 +173,7 @@ export default function useContainersModel() {
         const s = new Date(`${periodStart}T00:00:00`).getTime();
         const e = new Date(`${periodEnd}T00:00:00`).getTime();
         if (Number.isNaN(s) || Number.isNaN(e) || e < s) return 0;
-        return Math.max(1, Math.round((e - s) / 86400000));
+        return Math.max(1, Math.round((e - s) / 86400000) + 1);
     }, [periodStart, periodEnd]);
 
     const filteredContainers = useMemo(() => {
@@ -150,6 +195,7 @@ export default function useContainersModel() {
         if (newData && Array.isArray(newData.containers)) {
             queryClient.setQueryData(['egg-containers-overview'], {
                 containers: unwrapList({ data: newData.containers }),
+                daily_ledger: newData.daily_ledger,
                 summary: newData.summary,
                 cutoff_chain: newData.cutoff_chain,
                 cutoffs: unwrapList({ data: newData.cutoffs || [] }),
@@ -162,11 +208,7 @@ export default function useContainersModel() {
 
     const togglePowerMutation = useMutation({
         mutationFn: async ({ id, is_active_power, days_on, notes }) => {
-            const res = await axios.post(`/api/egg-industrial/containers/${id}/toggle-power`, {
-                is_active_power,
-                days_on,
-                notes
-            });
+            const res = await axios.post(`/api/egg-industrial/containers/${id}/toggle-power`, { is_active_power, days_on, notes });
             return res.data;
         },
         onSuccess: (data, variables) => {
@@ -235,6 +277,37 @@ export default function useContainersModel() {
         onError: (err) => toast.error(err.response?.data?.message || 'Error al eliminar contenedor')
     });
 
+    const saveDailyRowMutation = useMutation({
+        mutationFn: async (payload) => {
+            if (payload.id) {
+                const res = await axios.put(`/api/egg-industrial/containers/daily-ledger/${payload.id}`, payload);
+                return res.data;
+            }
+            const res = await axios.post('/api/egg-industrial/containers/daily-ledger', payload);
+            return res.data;
+        },
+        onSuccess: (data) => {
+            setDaysDrafts({});
+            invalidateAndSync(data);
+            setDailyModalState({ open: false, row: null });
+            toast.success('Registro diario guardado y sincronizado con los contenedores');
+        },
+        onError: (err) => toast.error(err.response?.data?.message || 'Error al guardar registro diario')
+    });
+
+    const deleteDailyRowMutation = useMutation({
+        mutationFn: async (id) => {
+            const res = await axios.delete(`/api/egg-industrial/containers/daily-ledger/${id}`);
+            return res.data;
+        },
+        onSuccess: (data) => {
+            setDaysDrafts({});
+            invalidateAndSync(data);
+            toast.success('Fila diaria eliminada y saldos recalculados');
+        },
+        onError: (err) => toast.error(err.response?.data?.message || 'Error al eliminar fila diaria')
+    });
+
     const syncPeriodDaysMutation = useMutation({
         mutationFn: async (payload) => {
             const res = await axios.post('/api/egg-industrial/containers/sync-period-days', payload);
@@ -261,7 +334,7 @@ export default function useContainersModel() {
             if (data.cutoff_chain?.next_period_start) {
                 setPeriodStart(data.cutoff_chain.next_period_start);
             }
-            toast.success(`Corte ${data.created_cutoff_code || ''} registrado. El próximo corte parte desde ${formatDate(data.cutoff_chain?.last_cutoff_date)}`);
+            toast.success(`Corte ${data.created_cutoff_code || ''} registrado. El próximo corte parte con ${Number(data.cutoff_chain?.last_cutoff_lbs_balance || 0).toLocaleString('en-US')} lbs`);
             if (data.created_cutoff_id) {
                 handleOpenStatementPdf({ cutoff_id: data.created_cutoff_id, code: data.created_cutoff_code });
             }
@@ -277,7 +350,8 @@ export default function useContainersModel() {
         onSuccess: (data) => {
             setDaysDrafts({});
             invalidateAndSync(data);
-            toast.success('Último corte revertido; los días fueron restaurados a los contenedores');
+            setSelectedLedgerView('active');
+            toast.success('Último corte revertido; filas diarias y días restaurados al período vigente');
         },
         onError: (err) => toast.error(err.response?.data?.message || 'Error al revertir el último corte')
     });
@@ -286,40 +360,29 @@ export default function useContainersModel() {
         if (pdfViewer.pdfUrl) URL.revokeObjectURL(pdfViewer.pdfUrl);
         const sub = cutoff_id
             ? `Corte Oficial ${code || `#${cutoff_id}`}`
-            : `Período del ${formatDate(periodStart)} al ${formatDate(periodEnd)}`;
+            : `Período Vigente (${formatDate(periodStart)} al ${formatDate(periodEnd)})`;
         setPdfViewer({
-            isOpen: true,
-            pdfUrl: null,
-            isLoading: true,
-            error: null,
-            title: 'Estado de Cuenta - Contenedores de Almacenamiento',
+            isOpen: true, pdfUrl: null, isLoading: true, error: null,
+            title: 'Estado de Cuenta - Almacenamiento en Contenedor',
             subtitle: sub,
             fileName: `estado_cuenta_contenedores_${cutoff_id || periodEnd}.pdf`
         });
         try {
             const res = await axios.get('/api/egg-industrial/containers/statement-report', {
-                params: cutoff_id
-                    ? { cutoff_id }
-                    : { period_start: periodStart, period_end: periodEnd, customer_name: customerName },
+                params: cutoff_id ? { cutoff_id } : { period_start: periodStart, period_end: periodEnd, customer_name: customerName },
                 responseType: 'blob'
             });
             const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
             setPdfViewer(prev => ({ ...prev, pdfUrl: url, isLoading: false }));
         } catch (err) {
-            setPdfViewer(prev => ({
-                ...prev,
-                isLoading: false,
-                error: err.response?.data?.message || 'No se pudo generar el PDF del Estado de Cuenta.'
-            }));
+            setPdfViewer(prev => ({ ...prev, isLoading: false, error: err.response?.data?.message || 'No se pudo generar el PDF del Estado de Cuenta.' }));
         }
     };
 
     const handleExportStatementExcel = async ({ cutoff_id = null } = {}) => {
         try {
             const res = await axios.get('/api/egg-industrial/containers/statement-report', {
-                params: cutoff_id
-                    ? { cutoff_id, format: 'excel' }
-                    : { period_start: periodStart, period_end: periodEnd, customer_name: customerName, format: 'excel' },
+                params: cutoff_id ? { cutoff_id, format: 'excel' } : { period_start: periodStart, period_end: periodEnd, customer_name: customerName, format: 'excel' },
                 responseType: 'blob'
             });
             const url = URL.createObjectURL(new Blob([res.data]));
@@ -342,24 +405,31 @@ export default function useContainersModel() {
     };
 
     const handleSyncPeriodDays = (useFullPeriodSpan = true) => {
-        syncPeriodDaysMutation.mutate({
-            period_start: periodStart,
-            period_end: periodEnd,
-            lock_to_last_cutoff: lockToLastCutoff,
-            use_full_period_span: useFullPeriodSpan
-        });
+        syncPeriodDaysMutation.mutate({ period_start: periodStart, period_end: periodEnd, lock_to_last_cutoff: lockToLastCutoff, use_full_period_span: useFullPeriodSpan });
     };
 
     const handleRevertCutoff = async (cutoff) => {
         const ok = await confirm({
             title: `¿Revertir ${cutoff.cutoff_code}?`,
-            message: `Se deshará el corte del ${formatDate(cutoff.period_start)} al ${formatDate(cutoff.period_end)} y se restaurarán los ${cutoff.total_days_on} día(s) a los contenedores.`,
+            message: `Se deshará el corte del ${formatDate(cutoff.period_start)} al ${formatDate(cutoff.period_end)} y sus filas diarias regresarán al período vigente.`,
             confirmText: 'Sí, revertir último corte',
             cancelText: 'Cancelar',
             variant: 'danger'
         });
         if (!ok) return;
         revertCutoffMutation.mutate(cutoff.id);
+    };
+
+    const handleDeleteDailyRow = async (row) => {
+        const ok = await confirm({
+            title: `¿Eliminar registro del ${formatDate(row.entry_date)}?`,
+            message: 'Se recalcularán el saldo de libras y los días de los contenedores del período vigente.',
+            confirmText: 'Eliminar fila',
+            cancelText: 'Cancelar',
+            variant: 'danger'
+        });
+        if (!ok) return;
+        deleteDailyRowMutation.mutate(row.id);
     };
 
     const handleTogglePower = (container) => {
@@ -417,6 +487,9 @@ export default function useContainersModel() {
     const openEditModal = (container) => setModalState({ open: true, mode: 'edit', container });
     const openRateModal = () => setModalState({ open: true, mode: 'rate', container: null });
     const closeModal = () => setModalState({ open: false, mode: 'add', container: null });
+    const openDailyAddModal = () => setDailyModalState({ open: true, row: null });
+    const openDailyEditModal = (row) => setDailyModalState({ open: true, row });
+    const closeDailyModal = () => setDailyModalState({ open: false, row: null });
 
     const handleModalSave = (formPayload) => {
         if (modalState.mode === 'add') addContainerMutation.mutate(formPayload);
@@ -429,24 +502,24 @@ export default function useContainersModel() {
     };
 
     return {
-        containers, filteredContainers, summary, cutoffChain, cutoffs, logs, isLoading,
+        containers, filteredContainers, dailyLedger, summary, cutoffChain, cutoffs, logs, isLoading,
         statusFilter, setStatusFilter, searchTerm, setSearchTerm, activeSectionTab, setActiveSectionTab,
+        selectedLedgerView, setSelectedLedgerView,
         periodStart, setPeriodStart, periodEnd, setPeriodEnd, periodSpanDays,
         lockToLastCutoff, setLockToLastCutoff, customerName, setCustomerName,
         daysDrafts, modalState, openAddModal, openEditModal, openRateModal, closeModal, handleModalSave,
         cutoffModalOpen, setCutoffModalOpen,
+        dailyModalState, openDailyAddModal, openDailyEditModal, closeDailyModal,
+        saveDailyRowMutation, handleDeleteDailyRow,
         pdfViewer, closePdfViewer, handleOpenStatementPdf, handleExportStatementExcel,
         handleSyncPeriodDays, createCutoffMutation, handleRevertCutoff,
         handleTogglePower, handleAdjustDays, handleDaysInputChange, handleDaysInputCommit,
         handleResetCycle, handleDeleteContainer,
         isMutating:
-            togglePowerMutation.isPending ||
-            updateContainerMutation.isPending ||
-            addContainerMutation.isPending ||
-            updateDailyRateMutation.isPending ||
-            resetCycleMutation.isPending ||
-            syncPeriodDaysMutation.isPending ||
-            createCutoffMutation.isPending ||
-            revertCutoffMutation.isPending
+            togglePowerMutation.isPending || updateContainerMutation.isPending ||
+            addContainerMutation.isPending || updateDailyRateMutation.isPending ||
+            resetCycleMutation.isPending || syncPeriodDaysMutation.isPending ||
+            createCutoffMutation.isPending || revertCutoffMutation.isPending ||
+            saveDailyRowMutation.isPending || deleteDailyRowMutation.isPending
     };
 }

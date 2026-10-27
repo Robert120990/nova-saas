@@ -843,6 +843,8 @@ ORDER BY gc.fecha_turno DESC
 - id, company_id, cutoff_number, cutoff_code, customer_id, customer_name, previous_cutoff_id, previous_cutoff_date, period_start DATE, period_end DATE, total_containers, billed_containers_count, active_containers_count, total_days_on, daily_rate, subtotal, iva_amount, total_with_iva, keep_active_running, status, notes, user_id, user_name, created_at
 ### egg_storage_container_cutoff_items (Detalle por contenedor en cada corte / Estado de Cuenta)
 - id, cutoff_id, company_id, container_id, container_number, container_code, container_name, was_active_power, turned_on_at, turned_off_at, days_on, daily_rate, subtotal, iva_amount, total_with_iva, notes
+### egg_storage_container_daily_ledger (Tabla diaria de almacenamiento en contenedor: libras ingreso/salida/saldo, contenedores activos, días $ y cargas/descargas $)
+- id, company_id, cutoff_id, entry_date DATE, lbs_in, lbs_out, lbs_balance, daily_rate, containers_count, days_amount, loading_unloading_cost, withdrawal_count, income_count, active_containers_list, notes
 - created_at, updated_at
 
 `;

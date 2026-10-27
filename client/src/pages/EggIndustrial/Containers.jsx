@@ -4,9 +4,11 @@ import {
     ContainersCutoffBar,
     ContainersSummaryCards,
     ContainersGrid,
+    ContainersDailyLedgerSection,
     ContainersTableSection,
     ContainerFormModal,
-    ContainerCutoffModal
+    ContainerCutoffModal,
+    ContainerDailyEntryModal
 } from '../../components/egg/containers';
 import PdfViewerModal from '../../components/ui/PdfViewerModal';
 
@@ -27,6 +29,9 @@ export default function EggContainers() {
         handleModalSave,
         cutoffModalOpen,
         setCutoffModalOpen,
+        dailyModalState,
+        closeDailyModal,
+        saveDailyRowMutation,
         createCutoffMutation,
         pdfViewer,
         closePdfViewer,
@@ -47,11 +52,14 @@ export default function EggContainers() {
             {/* Panel de Estado de Cuenta al Cliente y Corte por Fechas (Parte desde el último corte) */}
             <ContainersCutoffBar model={model} />
 
-            {/* Tarjetas Visuales de Disponibilidad, Encendidos, Días y Cobro Total */}
+            {/* Tarjetas Visuales de Disponibilidad, Encendidos, Libras, Días y Cobro Total */}
             <ContainersSummaryCards model={model} />
 
-            {/* Representación Gráfica de los Contenedores (10 iniciales + adicionados) */}
+            {/* Representación Gráfica de los Contenedores (Sincronizada con el Archivo 1.2 Vigente) */}
             <ContainersGrid model={model} />
+
+            {/* Tabla Diaria Oficial de Almacenamiento en Contenedor (Archivo 1.2 Vigente y Cortes Anteriores) */}
+            <ContainersDailyLedgerSection model={model} />
 
             {/* Tabla Ordenable de Estados de Cuenta Emitidos, Período Actual y Bitácora */}
             <ContainersTableSection model={model} />
@@ -66,6 +74,17 @@ export default function EggContainers() {
                 defaultDailyRate={summary.default_daily_rate}
                 nextContainerNumber={maxContainerNumber + 1}
                 isSubmitting={isMutating}
+            />
+
+            {/* Modal para Registrar o Editar un Día en la Tabla Diaria */}
+            <ContainerDailyEntryModal
+                open={dailyModalState.open}
+                onClose={closeDailyModal}
+                onSave={(payload) => saveDailyRowMutation.mutate(payload)}
+                row={dailyModalState.row}
+                containers={containers}
+                defaultDailyRate={summary.default_daily_rate}
+                isSubmitting={saveDailyRowMutation.isPending}
             />
 
             {/* Modal para Realizar Corte por Fechas y Emitir Estado de Cuenta */}
