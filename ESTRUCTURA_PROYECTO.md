@@ -168,6 +168,7 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `dte.service.js` | Cliente HTTP hacia dte-api: emitir, firmar, transmitir, contingencia e invalidación. |
 | `dteQueryFilters.js` | Filtros SQL reutilizables para consultas de documentos DTE. |
 | `eggAccess.service.js` | Egg Access.service. |
+| `eggContainerCutoffs.service.js` | Egg Container Cutoffs.service. |
 | `eggContainers.service.js` | Egg Containers.service. |
 | `eggDispatchEmission.service.js` | Egg Dispatch Emission.service. |
 | `eggDispatchRecovery.service.js` | Egg Dispatch Recovery.service. |
@@ -651,7 +652,9 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 
 | Archivo | Descripción |
 |---|---|
+| `ContainerCutoffModal.jsx` | Container Cutoff Modal. |
 | `ContainerFormModal.jsx` | Container Form Modal. |
+| `ContainersCutoffBar.jsx` | Containers Cutoff Bar. |
 | `ContainersGrid.jsx` | Containers Grid. |
 | `ContainersHeader.jsx` | Containers Header. |
 | `ContainersSummaryCards.jsx` | Containers Summary Cards. |
@@ -1660,7 +1663,7 @@ oficiales viven en `cumplientoDTE/svfe-json-schemas/` y la firma en `services/si
 Patrón de nombres: `migration_v<N>_<descripcion>.{sql|js}` y un runner `run_migration_v<N>.js` por versión.
 
 - Rango de versiones detectado: **v2 → v639**
-- Total de archivos: **583** (193 .sql · 154 .js migración · 234 runners run_migration* · 2 .json · 0 otros)
+- Total de archivos: **585** (193 .sql · 155 .js migración · 235 runners run_migration* · 2 .json · 0 otros)
 
 > Los archivos NO se listan individualmente por su volumen: para conocer el esquema vigente usa
 > `SELECT ... FROM information_schema` o revisa `server/src/config/db.schema.js`,

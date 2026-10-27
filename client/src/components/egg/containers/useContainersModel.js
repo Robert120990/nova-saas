@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { unwrapList } from '../../../utils/apiUtils';
+import { formatDate } from '../../../utils/dateUtils';
 import { useConfirm } from '../../../context/ConfirmContext';
 
 export default function useContainersModel() {
@@ -11,13 +12,27 @@ export default function useContainersModel() {
 
     const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'available' | 'active'
     const [searchTerm, setSearchTerm] = useState('');
-    const [activeSectionTab, setActiveSectionTab] = useState('table'); // 'table' | 'logs'
+    const [activeSectionTab, setActiveSectionTab] = useState('cutoffs'); // 'cutoffs' | 'table' | 'logs'
 
-    // Modal state ('add' | 'edit' | 'rate')
-    const [modalState, setModalState] = useState({
-        open: false,
-        mode: 'add',
-        container: null
+    // Period cutoff state (parte automáticamente desde el último corte realizado)
+    const [periodStart, setPeriodStart] = useState('');
+    const [periodEnd, setPeriodEnd] = useState(() => new Date().toISOString().split('T')[0]);
+    const [lockToLastCutoff, setLockToLastCutoff] = useState(true);
+    const [customerName, setCustomerName] = useState('');
+
+    // Modals state
+    const [modalState, setModalState] = useState({ open: false, mode: 'add', container: null });
+    const [cutoffModalOpen, setCutoffModalOpen] = useState(false);
+
+    // PDF Viewer Modal state for Estado de Cuenta
+    const [pdfViewer, setPdfViewer] = useState({
+        isOpen: false,
+        pdfUrl: null,
+        isLoading: false,
+        error: null,
+        title: 'Estado de Cuenta - Contenedores de Frío',
+        subtitle: '',
+        fileName: 'estado_cuenta_contenedores.pdf'
     });
 
     // Local draft state for inline days editing per container id
@@ -43,6 +58,16 @@ export default function useContainersModel() {
                     total_iva: 0,
                     total_with_iva: 0
                 },
+                cutoff_chain: payload.cutoff_chain || {
+                    has_previous_cutoff: false,
+                    last_cutoff_id: null,
+                    last_cutoff_code: null,
+                    last_cutoff_date: null,
+                    next_period_start: new Date().toISOString().split('T')[0],
+                    suggested_period_end: new Date().toISOString().split('T')[0],
+                    total_cutoffs_count: 0
+                },
+                cutoffs: unwrapList({ data: payload.cutoffs || [] }),
                 logs: unwrapList({ data: payload.logs || [] })
             };
         }
@@ -65,10 +90,46 @@ export default function useContainersModel() {
         total_iva: 0,
         total_with_iva: 0
     };
+    const cutoffChain = overviewData?.cutoff_chain || {
+        has_previous_cutoff: false,
+        last_cutoff_id: null,
+        last_cutoff_code: null,
+        last_cutoff_date: null,
+        next_period_start: new Date().toISOString().split('T')[0],
+        suggested_period_end: new Date().toISOString().split('T')[0],
+        total_cutoffs_count: 0
+    };
+    const cutoffs = useMemo(
+        () => (Array.isArray(overviewData?.cutoffs) ? overviewData.cutoffs : []),
+        [overviewData]
+    );
     const logs = useMemo(
         () => (Array.isArray(overviewData?.logs) ? overviewData.logs : []),
         [overviewData]
     );
+
+    // Sincronizar automáticamente el inicio del nuevo corte con el último corte realizado
+    useEffect(() => {
+        if (cutoffChain.next_period_start) {
+            if (!periodStart || (cutoffChain.has_previous_cutoff && lockToLastCutoff)) {
+                setPeriodStart(cutoffChain.next_period_start);
+            }
+            if (periodEnd < cutoffChain.next_period_start) {
+                setPeriodEnd(cutoffChain.suggested_period_end || cutoffChain.next_period_start);
+            }
+        }
+        if (cutoffChain.last_customer_name && !customerName) {
+            setCustomerName(cutoffChain.last_customer_name);
+        }
+    }, [cutoffChain.next_period_start, cutoffChain.has_previous_cutoff, cutoffChain.suggested_period_end, cutoffChain.last_customer_name, lockToLastCutoff]);
+
+    const periodSpanDays = useMemo(() => {
+        if (!periodStart || !periodEnd) return 0;
+        const s = new Date(`${periodStart}T00:00:00`).getTime();
+        const e = new Date(`${periodEnd}T00:00:00`).getTime();
+        if (Number.isNaN(s) || Number.isNaN(e) || e < s) return 0;
+        return Math.max(1, Math.round((e - s) / 86400000));
+    }, [periodStart, periodEnd]);
 
     const filteredContainers = useMemo(() => {
         return containers.filter(c => {
@@ -90,6 +151,8 @@ export default function useContainersModel() {
             queryClient.setQueryData(['egg-containers-overview'], {
                 containers: unwrapList({ data: newData.containers }),
                 summary: newData.summary,
+                cutoff_chain: newData.cutoff_chain,
+                cutoffs: unwrapList({ data: newData.cutoffs || [] }),
                 logs: unwrapList({ data: newData.logs || [] })
             });
         } else {
@@ -108,15 +171,9 @@ export default function useContainersModel() {
         },
         onSuccess: (data, variables) => {
             invalidateAndSync(data);
-            toast.success(
-                variables.is_active_power
-                    ? 'Contenedor encendido (En almacenamiento)'
-                    : 'Contenedor apagado (Disponible)'
-            );
+            toast.success(variables.is_active_power ? 'Contenedor encendido (En almacenamiento)' : 'Contenedor apagado (Disponible)');
         },
-        onError: (err) => {
-            toast.error(err.response?.data?.message || 'Error al cambiar estado del contenedor');
-        }
+        onError: (err) => toast.error(err.response?.data?.message || 'Error al cambiar estado del contenedor')
     });
 
     const updateContainerMutation = useMutation({
@@ -124,12 +181,8 @@ export default function useContainersModel() {
             const res = await axios.put(`/api/egg-industrial/containers/${id}`, payload);
             return res.data;
         },
-        onSuccess: (data) => {
-            invalidateAndSync(data);
-        },
-        onError: (err) => {
-            toast.error(err.response?.data?.message || 'Error al actualizar contenedor');
-        }
+        onSuccess: (data) => invalidateAndSync(data),
+        onError: (err) => toast.error(err.response?.data?.message || 'Error al actualizar contenedor')
     });
 
     const addContainerMutation = useMutation({
@@ -142,9 +195,7 @@ export default function useContainersModel() {
             setModalState({ open: false, mode: 'add', container: null });
             toast.success('Contenedor(es) adicionado(s) correctamente');
         },
-        onError: (err) => {
-            toast.error(err.response?.data?.message || 'Error al adicionar contenedor');
-        }
+        onError: (err) => toast.error(err.response?.data?.message || 'Error al adicionar contenedor')
     });
 
     const updateDailyRateMutation = useMutation({
@@ -157,9 +208,7 @@ export default function useContainersModel() {
             setModalState({ open: false, mode: 'add', container: null });
             toast.success('Tarifa diaria actualizada en todos los contenedores');
         },
-        onError: (err) => {
-            toast.error(err.response?.data?.message || 'Error al actualizar tarifa diaria');
-        }
+        onError: (err) => toast.error(err.response?.data?.message || 'Error al actualizar tarifa diaria')
     });
 
     const resetCycleMutation = useMutation({
@@ -171,9 +220,7 @@ export default function useContainersModel() {
             invalidateAndSync(data);
             toast.success('Ciclo archivado en bitácora y contenedor reiniciado a 0 días');
         },
-        onError: (err) => {
-            toast.error(err.response?.data?.message || 'Error al reiniciar ciclo del contenedor');
-        }
+        onError: (err) => toast.error(err.response?.data?.message || 'Error al reiniciar ciclo del contenedor')
     });
 
     const deleteContainerMutation = useMutation({
@@ -185,70 +232,169 @@ export default function useContainersModel() {
             invalidateAndSync(data);
             toast.success('Contenedor eliminado');
         },
-        onError: (err) => {
-            toast.error(err.response?.data?.message || 'Error al eliminar contenedor');
-        }
+        onError: (err) => toast.error(err.response?.data?.message || 'Error al eliminar contenedor')
     });
+
+    const syncPeriodDaysMutation = useMutation({
+        mutationFn: async (payload) => {
+            const res = await axios.post('/api/egg-industrial/containers/sync-period-days', payload);
+            return res.data;
+        },
+        onSuccess: (data) => {
+            setDaysDrafts({});
+            invalidateAndSync(data);
+            toast.success('Días de contenedores encendidos calculados según las fechas del corte');
+        },
+        onError: (err) => toast.error(err.response?.data?.message || 'Error al sincronizar días del período')
+    });
+
+    const createCutoffMutation = useMutation({
+        mutationFn: async (payload) => {
+            const res = await axios.post('/api/egg-industrial/containers/cutoffs', payload);
+            return res.data;
+        },
+        onSuccess: (data) => {
+            setDaysDrafts({});
+            invalidateAndSync(data);
+            setCutoffModalOpen(false);
+            setActiveSectionTab('cutoffs');
+            if (data.cutoff_chain?.next_period_start) {
+                setPeriodStart(data.cutoff_chain.next_period_start);
+            }
+            toast.success(`Corte ${data.created_cutoff_code || ''} registrado. El próximo corte parte desde ${formatDate(data.cutoff_chain?.last_cutoff_date)}`);
+            if (data.created_cutoff_id) {
+                handleOpenStatementPdf({ cutoff_id: data.created_cutoff_id, code: data.created_cutoff_code });
+            }
+        },
+        onError: (err) => toast.error(err.response?.data?.message || 'Error al realizar el corte por fechas')
+    });
+
+    const revertCutoffMutation = useMutation({
+        mutationFn: async (cutoffId) => {
+            const res = await axios.delete(`/api/egg-industrial/containers/cutoffs/${cutoffId}`);
+            return res.data;
+        },
+        onSuccess: (data) => {
+            setDaysDrafts({});
+            invalidateAndSync(data);
+            toast.success('Último corte revertido; los días fueron restaurados a los contenedores');
+        },
+        onError: (err) => toast.error(err.response?.data?.message || 'Error al revertir el último corte')
+    });
+
+    const handleOpenStatementPdf = async ({ cutoff_id = null, code = null } = {}) => {
+        if (pdfViewer.pdfUrl) URL.revokeObjectURL(pdfViewer.pdfUrl);
+        const sub = cutoff_id
+            ? `Corte Oficial ${code || `#${cutoff_id}`}`
+            : `Período del ${formatDate(periodStart)} al ${formatDate(periodEnd)}`;
+        setPdfViewer({
+            isOpen: true,
+            pdfUrl: null,
+            isLoading: true,
+            error: null,
+            title: 'Estado de Cuenta - Contenedores de Almacenamiento',
+            subtitle: sub,
+            fileName: `estado_cuenta_contenedores_${cutoff_id || periodEnd}.pdf`
+        });
+        try {
+            const res = await axios.get('/api/egg-industrial/containers/statement-report', {
+                params: cutoff_id
+                    ? { cutoff_id }
+                    : { period_start: periodStart, period_end: periodEnd, customer_name: customerName },
+                responseType: 'blob'
+            });
+            const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+            setPdfViewer(prev => ({ ...prev, pdfUrl: url, isLoading: false }));
+        } catch (err) {
+            setPdfViewer(prev => ({
+                ...prev,
+                isLoading: false,
+                error: err.response?.data?.message || 'No se pudo generar el PDF del Estado de Cuenta.'
+            }));
+        }
+    };
+
+    const handleExportStatementExcel = async ({ cutoff_id = null } = {}) => {
+        try {
+            const res = await axios.get('/api/egg-industrial/containers/statement-report', {
+                params: cutoff_id
+                    ? { cutoff_id, format: 'excel' }
+                    : { period_start: periodStart, period_end: periodEnd, customer_name: customerName, format: 'excel' },
+                responseType: 'blob'
+            });
+            const url = URL.createObjectURL(new Blob([res.data]));
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `estado_cuenta_contenedores_${cutoff_id || periodEnd}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            toast.success('Estado de cuenta exportado a Excel');
+        } catch {
+            toast.error('Error al exportar Estado de Cuenta a Excel');
+        }
+    };
+
+    const closePdfViewer = () => {
+        if (pdfViewer.pdfUrl) URL.revokeObjectURL(pdfViewer.pdfUrl);
+        setPdfViewer(prev => ({ ...prev, isOpen: false, pdfUrl: null }));
+    };
+
+    const handleSyncPeriodDays = (useFullPeriodSpan = true) => {
+        syncPeriodDaysMutation.mutate({
+            period_start: periodStart,
+            period_end: periodEnd,
+            lock_to_last_cutoff: lockToLastCutoff,
+            use_full_period_span: useFullPeriodSpan
+        });
+    };
+
+    const handleRevertCutoff = async (cutoff) => {
+        const ok = await confirm({
+            title: `¿Revertir ${cutoff.cutoff_code}?`,
+            message: `Se deshará el corte del ${formatDate(cutoff.period_start)} al ${formatDate(cutoff.period_end)} y se restaurarán los ${cutoff.total_days_on} día(s) a los contenedores.`,
+            confirmText: 'Sí, revertir último corte',
+            cancelText: 'Cancelar',
+            variant: 'danger'
+        });
+        if (!ok) return;
+        revertCutoffMutation.mutate(cutoff.id);
+    };
 
     const handleTogglePower = (container) => {
         const nextPower = !container.is_active_power;
         const draftDays = daysDrafts[container.id];
         const currentDays = draftDays !== undefined ? parseFloat(draftDays) || 0 : parseFloat(container.days_on) || 0;
         const nextDays = nextPower && currentDays === 0 ? 1 : currentDays;
-
-        setDaysDrafts(prev => {
-            const copy = { ...prev };
-            delete copy[container.id];
-            return copy;
-        });
-
-        togglePowerMutation.mutate({
-            id: container.id,
-            is_active_power: nextPower,
-            days_on: nextDays
-        });
+        setDaysDrafts(prev => { const copy = { ...prev }; delete copy[container.id]; return copy; });
+        togglePowerMutation.mutate({ id: container.id, is_active_power: nextPower, days_on: nextDays });
     };
 
     const handleAdjustDays = (container, delta) => {
-        const currentVal = daysDrafts[container.id] !== undefined
-            ? parseFloat(daysDrafts[container.id]) || 0
-            : parseFloat(container.days_on) || 0;
+        const currentVal = daysDrafts[container.id] !== undefined ? parseFloat(daysDrafts[container.id]) || 0 : parseFloat(container.days_on) || 0;
         const nextVal = Math.max(0, +(currentVal + delta).toFixed(2));
         setDaysDrafts(prev => ({ ...prev, [container.id]: String(nextVal) }));
-        updateContainerMutation.mutate({
-            id: container.id,
-            days_on: nextVal,
-            log_change: true
-        });
+        updateContainerMutation.mutate({ id: container.id, days_on: nextVal, log_change: true });
     };
 
-    const handleDaysInputChange = (containerId, value) => {
-        setDaysDrafts(prev => ({ ...prev, [containerId]: value }));
-    };
+    const handleDaysInputChange = (containerId, value) => setDaysDrafts(prev => ({ ...prev, [containerId]: value }));
 
     const handleDaysInputCommit = (container) => {
         const raw = daysDrafts[container.id];
         if (raw === undefined) return;
         const nextVal = Math.max(0, parseFloat(raw) || 0);
-        setDaysDrafts(prev => {
-            const copy = { ...prev };
-            delete copy[container.id];
-            return copy;
-        });
+        setDaysDrafts(prev => { const copy = { ...prev }; delete copy[container.id]; return copy; });
         if (nextVal === parseFloat(container.days_on || 0)) return;
-        updateContainerMutation.mutate({
-            id: container.id,
-            days_on: nextVal,
-            log_change: true
-        });
+        updateContainerMutation.mutate({ id: container.id, days_on: nextVal, log_change: true });
         toast.success(`Días actualizados en ${container.name}`);
     };
 
     const handleResetCycle = async (container) => {
         const ok = await confirm({
-            title: `¿Cerrar ciclo y reiniciar ${container.name}?`,
-            message: `Se guardará el registro de ${container.days_on} día(s) en la bitácora y el contenedor quedará APAGADO (Disponible) con 0 días.`,
-            confirmText: 'Sí, cerrar ciclo y reiniciar',
+            title: `¿Cerrar ciclo individual de ${container.name}?`,
+            message: `Se guardará el registro de ${container.days_on} día(s) en la bitácora y el contenedor quedará APAGADO con 0 días.`,
+            confirmText: 'Sí, cerrar ciclo',
             cancelText: 'Cancelar'
         });
         if (!ok) return;
@@ -273,53 +419,34 @@ export default function useContainersModel() {
     const closeModal = () => setModalState({ open: false, mode: 'add', container: null });
 
     const handleModalSave = (formPayload) => {
-        if (modalState.mode === 'add') {
-            addContainerMutation.mutate(formPayload);
-        } else if (modalState.mode === 'edit' && modalState.container) {
+        if (modalState.mode === 'add') addContainerMutation.mutate(formPayload);
+        else if (modalState.mode === 'edit' && modalState.container) {
             updateContainerMutation.mutate(
                 { id: modalState.container.id, ...formPayload, log_change: true },
-                {
-                    onSuccess: () => {
-                        closeModal();
-                        toast.success('Contenedor actualizado correctamente');
-                    }
-                }
+                { onSuccess: () => { closeModal(); toast.success('Contenedor actualizado correctamente'); } }
             );
-        } else if (modalState.mode === 'rate') {
-            updateDailyRateMutation.mutate(formPayload.daily_rate);
-        }
+        } else if (modalState.mode === 'rate') updateDailyRateMutation.mutate(formPayload.daily_rate);
     };
 
     return {
-        containers,
-        filteredContainers,
-        summary,
-        logs,
-        isLoading,
-        statusFilter,
-        setStatusFilter,
-        searchTerm,
-        setSearchTerm,
-        activeSectionTab,
-        setActiveSectionTab,
-        daysDrafts,
-        modalState,
-        openAddModal,
-        openEditModal,
-        openRateModal,
-        closeModal,
-        handleModalSave,
-        handleTogglePower,
-        handleAdjustDays,
-        handleDaysInputChange,
-        handleDaysInputCommit,
-        handleResetCycle,
-        handleDeleteContainer,
+        containers, filteredContainers, summary, cutoffChain, cutoffs, logs, isLoading,
+        statusFilter, setStatusFilter, searchTerm, setSearchTerm, activeSectionTab, setActiveSectionTab,
+        periodStart, setPeriodStart, periodEnd, setPeriodEnd, periodSpanDays,
+        lockToLastCutoff, setLockToLastCutoff, customerName, setCustomerName,
+        daysDrafts, modalState, openAddModal, openEditModal, openRateModal, closeModal, handleModalSave,
+        cutoffModalOpen, setCutoffModalOpen,
+        pdfViewer, closePdfViewer, handleOpenStatementPdf, handleExportStatementExcel,
+        handleSyncPeriodDays, createCutoffMutation, handleRevertCutoff,
+        handleTogglePower, handleAdjustDays, handleDaysInputChange, handleDaysInputCommit,
+        handleResetCycle, handleDeleteContainer,
         isMutating:
             togglePowerMutation.isPending ||
             updateContainerMutation.isPending ||
             addContainerMutation.isPending ||
             updateDailyRateMutation.isPending ||
-            resetCycleMutation.isPending
+            resetCycleMutation.isPending ||
+            syncPeriodDaysMutation.isPending ||
+            createCutoffMutation.isPending ||
+            revertCutoffMutation.isPending
     };
 }

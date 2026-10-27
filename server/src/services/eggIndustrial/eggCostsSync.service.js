@@ -281,7 +281,7 @@ const computeSystemCostsData = async (companyId, { month, year, projected_batche
         const [closedCycleRows] = await pool.query(
             `SELECT COALESCE(SUM(days_on), 0) AS closed_days, COALESCE(SUM(subtotal), 0) AS closed_subtotal
              FROM egg_storage_container_logs
-             WHERE company_id = ? AND action_type = 'cierre_ciclo'
+             WHERE company_id = ? AND action_type IN ('cierre_ciclo', 'corte_fechas')
                AND MONTH(created_at) = ? AND YEAR(created_at) = ?`,
             [companyId, currentMonth, currentYear]
         );

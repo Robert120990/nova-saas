@@ -839,6 +839,10 @@ ORDER BY gc.fecha_turno DESC
 - id, company_id, container_number INT, code VARCHAR(30), name VARCHAR(120), is_active_power TINYINT(1), days_on DECIMAL(10,2), daily_rate DECIMAL(12,2), turned_on_at DATETIME, turned_off_at DATETIME, notes VARCHAR(255)
 ### egg_storage_container_logs (Bitácora de ciclos y encendido/apagado de contenedores industriales)
 - id, company_id, container_id, container_name, action_type, days_on, daily_rate, subtotal, iva_amount, total_with_iva, started_at, ended_at, notes, user_id, user_name, created_at
+### egg_storage_container_cutoffs (Cortes por fechas / Estados de Cuenta de contenedores industriales)
+- id, company_id, cutoff_number, cutoff_code, customer_id, customer_name, previous_cutoff_id, previous_cutoff_date, period_start DATE, period_end DATE, total_containers, billed_containers_count, active_containers_count, total_days_on, daily_rate, subtotal, iva_amount, total_with_iva, keep_active_running, status, notes, user_id, user_name, created_at
+### egg_storage_container_cutoff_items (Detalle por contenedor en cada corte / Estado de Cuenta)
+- id, cutoff_id, company_id, container_id, container_number, container_code, container_name, was_active_power, turned_on_at, turned_off_at, days_on, daily_rate, subtotal, iva_amount, total_with_iva, notes
 - created_at, updated_at
 
 `;

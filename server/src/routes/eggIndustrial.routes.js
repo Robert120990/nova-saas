@@ -281,6 +281,10 @@ const containerPermits = permit('manage_egg_containers', 'manage_packaging', 'ma
 router.get('/containers', containerPermits, eggContainersController.getContainersOverview);
 router.post('/containers', containerPermits, eggContainersController.addContainer);
 router.put('/containers/daily-rate', containerPermits, eggContainersController.updateGlobalDailyRate);
+router.post('/containers/sync-period-days', containerPermits, eggContainersController.syncContainerDaysForPeriod);
+router.get('/containers/statement-report', containerPermits, eggContainersController.exportContainerStatementReport);
+router.post('/containers/cutoffs', containerPermits, eggContainersController.createContainerCutoff);
+router.delete('/containers/cutoffs/:id', containerPermits, eggContainersController.revertLastContainerCutoff);
 router.post('/containers/:id/toggle-power', containerPermits, eggContainersController.toggleContainerPower);
 router.post('/containers/:id/reset-cycle', containerPermits, eggContainersController.resetContainerCycle);
 router.put('/containers/:id', containerPermits, eggContainersController.updateContainer);

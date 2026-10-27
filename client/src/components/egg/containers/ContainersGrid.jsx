@@ -9,7 +9,7 @@ import {
     CheckCircle2
 } from 'lucide-react';
 import Money from '../../ui/Money';
-import { formatDateTime } from '../../../utils/dateUtils';
+import { formatDate, formatDateTime } from '../../../utils/dateUtils';
 
 export default function ContainersGrid({ model }) {
     const {
@@ -190,6 +190,7 @@ export default function ContainersGrid({ model }) {
                                                         ? `Activo desde ${formatDateTime(container.turned_on_at)}`
                                                         : 'Almacenando producto'
                                                     : 'Apagado • Listo para carga'}
+                                                {container.last_cutoff_date ? ` • Últ. corte: ${formatDate(container.last_cutoff_date)}` : ''}
                                             </p>
                                         </div>
 
