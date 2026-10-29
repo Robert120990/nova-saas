@@ -1132,7 +1132,11 @@ const AusenciasTab = ({ visible, selected, ausencias, ausenciaMutation, deleteAu
         const colors = {
             falta: 'bg-orange-50 text-orange-600',
             inasistencia: 'bg-red-50 text-red-600',
-            incapacidad: 'bg-blue-50 text-blue-600'
+            incapacidad: 'bg-blue-50 text-blue-600',
+            permiso: 'bg-indigo-50 text-indigo-600',
+            licencia_ley: 'bg-sky-50 text-sky-700',
+            vacaciones: 'bg-emerald-50 text-emerald-700',
+            comision: 'bg-teal-50 text-teal-700'
         };
         return colors[tipo] || 'bg-slate-50 text-slate-600';
     };

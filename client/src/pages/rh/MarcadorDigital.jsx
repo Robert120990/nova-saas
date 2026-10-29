@@ -3,9 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import {
     Fingerprint, Radio, Settings, Plus, RefreshCw,
-    FileText, Sliders, Lock, UserPlus
+    FileText, Sliders, Lock, UserPlus, CalendarX
 } from 'lucide-react';
-import { getTodayString } from '../../utils/dateUtils';
+import { getTodayString, normalizeDateRangeInput } from '../../utils/dateUtils';
 import { unwrapList } from '../../utils/apiUtils';
 import {
     BiometricDeviceModal,
@@ -17,12 +17,13 @@ import {
 } from '../../components/rh';
 import {
     BiometricLogsTab,
-    BiometricOvertimeCortesTab
+    BiometricOvertimeCortesTab,
+    BiometricAbsencesTab
 } from '../../components/rh/tabs';
 
 const MarcadorDigital = () => {
     const today = getTodayString();
-    const [mainTab, setMainTab] = useState('marcaciones'); // 'marcaciones' | 'cortes_horas'
+    const [mainTab, setMainTab] = useState('marcaciones');
 
     // Filtros de la pestaña de marcaciones
     const [startDate, setStartDate] = useState(today);
@@ -42,8 +43,6 @@ const MarcadorDigital = () => {
     const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
     const [isEmployeeModalOpen, setIsEmployeeModalOpen] = useState(false);
 
-
-    // Debounce de búsqueda para marcaciones
     useEffect(() => {
         const handler = setTimeout(() => {
             setDebouncedSearch(searchTerm.trim());
@@ -52,13 +51,9 @@ const MarcadorDigital = () => {
         return () => clearTimeout(handler);
     }, [searchTerm]);
 
-    // Consultar dispositivos para estado de conexión LAN
     const { data: rawDevices = [], refetch: refetchDevices } = useQuery({
         queryKey: ['rh-biometric-devices'],
-        queryFn: async () => {
-            const res = await axios.get('/api/rh/biometric/devices');
-            return unwrapList(res);
-        },
+        queryFn: async () => unwrapList(await axios.get('/api/rh/biometric/devices')),
         refetchInterval: 15000
     });
 
@@ -66,7 +61,14 @@ const MarcadorDigital = () => {
     const activeDevice = devices.length > 0 ? devices[0] : null;
     const isOnline = !!activeDevice?.is_online;
 
-    // Consultar bitácora de marcaciones
+    const { data: radarToday = {}, refetch: refetchRadarToday } = useQuery({
+        queryKey: ['rh-biometric-daily-radar', today, '', 'todos'],
+        queryFn: async () => (await axios.get('/api/rh/biometric/absences/daily-radar', { params: { date: today } })).data || {},
+        refetchInterval: 30000
+    });
+
+    const alertCount = Number(radarToday?.summary?.sin_justificar || 0) + Number(radarToday?.summary?.pendientes_autorizar || 0);
+
     const {
         data: responseData = { data: [], pagination: {}, summary: {} },
         isLoading,
@@ -93,14 +95,31 @@ const MarcadorDigital = () => {
     });
 
     const logs = Array.isArray(responseData?.data) ? responseData.data : [];
-    const pagination = responseData?.pagination || { total: 0, totalPages: 1, page: 1, limit: 20 };
-    const summary = responseData?.summary || { total_hoy: 0, entradas_hoy: 0, salidas_hoy: 0, empleados_activos_hoy: 0 };
+    const pagination = responseData?.pagination || {
+        total: Number(responseData?.total || 0),
+        totalPages: Number(responseData?.totalPages || 1),
+        page: Number(responseData?.page || page),
+        limit: Number(responseData?.limit || limit)
+    };
+    const summary = responseData?.summary || {
+        total_hoy: 0,
+        entradas_hoy: 0,
+        salidas_hoy: 0,
+        empleados_activos_hoy: 0,
+        is_today_range: startDate === today && endDate === today
+    };
+
+    const handleDateChange = (field, val) => {
+        const next = normalizeDateRangeInput(field, val, startDate, endDate);
+        setStartDate(next.startDate);
+        setEndDate(next.endDate);
+        setPage(1);
+    };
 
     const handleRefresh = () => {
         refetchDevices();
-        if (mainTab === 'marcaciones') {
-            refetchLogs();
-        }
+        refetchRadarToday();
+        if (mainTab === 'marcaciones') refetchLogs();
     };
 
     return (
@@ -156,7 +175,6 @@ const MarcadorDigital = () => {
                         <FileText className="w-4 h-4 text-emerald-600" />
                         <span>Reporte Asistencia</span>
                     </button>
-
                     <button
                         type="button"
                         onClick={() => setIsConfigModalOpen(true)}
@@ -202,12 +220,12 @@ const MarcadorDigital = () => {
                 </div>
             </div>
 
-            {/* Pestañas Principales (Orquestador de vistas) */}
-            <div className="flex border-b border-slate-200 gap-3 overflow-x-auto">
+            {/* Pestañas Principales */}
+            <div className="flex border-b border-slate-200 gap-4 overflow-x-auto">
                 <button
                     type="button"
                     onClick={() => setMainTab('marcaciones')}
-                    className={`flex items-center gap-2 pb-3 px-2 text-xs font-bold border-b-2 transition-all ${
+                    className={`flex items-center gap-2 pb-3 px-2 text-xs font-bold border-b-2 whitespace-nowrap transition-all ${
                         mainTab === 'marcaciones'
                             ? 'border-indigo-600 text-indigo-600'
                             : 'border-transparent text-slate-500 hover:text-slate-700'
@@ -218,8 +236,25 @@ const MarcadorDigital = () => {
                 </button>
                 <button
                     type="button"
+                    onClick={() => setMainTab('inasistencias')}
+                    className={`flex items-center gap-2 pb-3 px-2 text-xs font-bold border-b-2 whitespace-nowrap transition-all ${
+                        mainTab === 'inasistencias'
+                            ? 'border-indigo-600 text-indigo-600'
+                            : 'border-transparent text-slate-500 hover:text-slate-700'
+                    }`}
+                >
+                    <CalendarX className="w-4 h-4 text-rose-500" />
+                    <span>Inasistencias y Permisos</span>
+                    {alertCount > 0 && (
+                        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-100 text-rose-700 border border-rose-200">
+                            {alertCount}
+                        </span>
+                    )}
+                </button>
+                <button
+                    type="button"
                     onClick={() => setMainTab('cortes_horas')}
-                    className={`flex items-center gap-2 pb-3 px-2 text-xs font-bold border-b-2 transition-all ${
+                    className={`flex items-center gap-2 pb-3 px-2 text-xs font-bold border-b-2 whitespace-nowrap transition-all ${
                         mainTab === 'cortes_horas'
                             ? 'border-indigo-600 text-indigo-600'
                             : 'border-transparent text-slate-500 hover:text-slate-700'
@@ -243,56 +278,47 @@ const MarcadorDigital = () => {
                     searchTerm={searchTerm}
                     onSearchChange={setSearchTerm}
                     startDate={startDate}
-                    onStartDateChange={(val) => { setStartDate(val); setPage(1); }}
+                    onStartDateChange={(val) => handleDateChange('start', val)}
                     endDate={endDate}
-                    onEndDateChange={(val) => { setEndDate(val); setPage(1); }}
+                    onEndDateChange={(val) => handleDateChange('end', val)}
+                    onApplyRange={(s, e) => { setStartDate(s); setEndDate(e); setPage(1); }}
                     punchType={punchType}
                     onPunchTypeChange={(val) => { setPunchType(val); setPage(1); }}
                     source={source}
                     onSourceChange={(val) => { setSource(val); setPage(1); }}
                 />
+            ) : mainTab === 'inasistencias' ? (
+                <BiometricAbsencesTab />
             ) : (
                 <BiometricOvertimeCortesTab />
             )}
 
             {/* Modales Compartidos */}
-            <BiometricReportModal
-                open={isReportModalOpen}
-                onClose={() => setIsReportModalOpen(false)}
-            />
-
-            <BiometricConfigModal
-                open={isConfigModalOpen}
-                onClose={() => setIsConfigModalOpen(false)}
-            />
-
+            <BiometricReportModal open={isReportModalOpen} onClose={() => setIsReportModalOpen(false)} />
+            <BiometricConfigModal open={isConfigModalOpen} onClose={() => setIsConfigModalOpen(false)} />
             <BiometricDeviceModal
                 open={isDeviceModalOpen}
                 onClose={() => setIsDeviceModalOpen(false)}
                 device={activeDevice}
                 onSuccess={() => refetchDevices()}
             />
-
             <BiometricManualPunchModal
                 open={isPunchModalOpen}
                 onClose={() => setIsPunchModalOpen(false)}
-                onSuccess={() => refetchLogs()}
+                onSuccess={() => { refetchLogs(); refetchRadarToday(); }}
             />
-
             <BiometricAgentModal
                 open={isAgentModalOpen}
                 onClose={() => setIsAgentModalOpen(false)}
                 device={activeDevice}
                 onDeviceUpdated={() => refetchDevices()}
             />
-
             <BiometricEmployeeModal
                 open={isEmployeeModalOpen}
                 onClose={() => setIsEmployeeModalOpen(false)}
                 onSuccess={() => handleRefresh()}
             />
         </div>
-
     );
 };
 

@@ -16,6 +16,8 @@ export { default as BiometricCortesHistoryTable } from './BiometricCortesHistory
 export { default as BiometricOvertimeTable } from './BiometricOvertimeTable';
 export { default as BiometricEmployeeModal } from './BiometricEmployeeModal';
 export { default as BiometricImportZkModal } from './BiometricImportZkModal';
+export { default as BiometricAbsenceModal } from './BiometricAbsenceModal';
+export { default as BiometricAbsenceAuthorizeModal } from './BiometricAbsenceAuthorizeModal';
+export { default as BiometricDailyRadarView } from './BiometricDailyRadarView';
+export { default as BiometricAbsencesHistoryView } from './BiometricAbsencesHistoryView';
 export { BiometricPendingBanner, BiometricFrozenBanner } from './BiometricOvertimeBanners';
-
-

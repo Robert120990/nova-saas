@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { Lock, X, AlertTriangle } from 'lucide-react';
+import { Lock, X, AlertTriangle, Clock } from 'lucide-react';
 import { formatDate } from '../../utils/dateUtils';
 
 const BiometricFreezePeriodModal = ({ open, onClose, suggestedRange, onSuccess }) => {
@@ -26,6 +26,24 @@ const BiometricFreezePeriodModal = ({ open, onClose, suggestedRange, onSuccess }
             setObservaciones('');
         }
     }, [suggestedRange, open]);
+
+    const { data: pendingPermsResp = {} } = useQuery({
+        queryKey: ['rh-biometric-absences-freeze-check', fechaInicio, fechaFin],
+        queryFn: async () => {
+            const res = await axios.get('/api/rh/biometric/absences', {
+                params: {
+                    startDate: fechaInicio,
+                    endDate: fechaFin,
+                    estadoAutorizacion: 'pendiente',
+                    limit: 5
+                }
+            });
+            return res.data || {};
+        },
+        enabled: !!(open && fechaInicio && fechaFin && fechaInicio <= fechaFin)
+    });
+
+    const pendingPermissionsCount = Number(pendingPermsResp?.summary?.pendientes || 0);
 
     const mutation = useMutation({
         mutationFn: async (payload) => {
@@ -54,12 +72,10 @@ const BiometricFreezePeriodModal = ({ open, onClose, suggestedRange, onSuccess }
             toast.error('Complete el nombre y el rango de fechas para el corte.');
             return;
         }
-
         if (fechaInicio > fechaFin) {
             toast.error('La fecha de inicio no puede ser posterior a la fecha de fin.');
             return;
         }
-
         mutation.mutate({
             nombre: nombre.trim(),
             fecha_inicio: fechaInicio,
@@ -71,7 +87,6 @@ const BiometricFreezePeriodModal = ({ open, onClose, suggestedRange, onSuccess }
     return (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg border border-slate-100 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150">
-                {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/70">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 border border-sky-100 flex items-center justify-center">
@@ -95,20 +110,31 @@ const BiometricFreezePeriodModal = ({ open, onClose, suggestedRange, onSuccess }
                     </button>
                 </div>
 
-                {/* Content */}
                 <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
-                    {/* Alerta explicativa */}
                     <div className="p-3.5 bg-amber-50 border border-amber-200/80 rounded-xl flex items-start gap-2.5 text-amber-900 leading-relaxed">
                         <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                         <div>
                             <p className="font-bold">¿Cómo funciona el congelamiento?</p>
                             <p className="text-[11px] text-amber-800 mt-0.5">
-                                Las marcaciones del reloj en este rango quedarán resguardadas. Posteriormente, la pantalla mostrará únicamente el <strong>rango de horas pendiente para reportar</strong>. Si necesita ajustar alguna marcación de este período, podrá <strong>editar las horas extra únicamente</strong> en el historial de cortes.
+                                Las marcaciones del reloj en este rango quedarán resguardadas. Posteriormente, la pantalla mostrará únicamente el <strong>rango de horas pendiente para reportar</strong>.
                             </p>
                         </div>
                     </div>
 
-                    {/* Nombre del Corte */}
+                    {pendingPermissionsCount > 0 && (
+                        <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2.5 text-rose-900 leading-relaxed">
+                            <Clock className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                            <div>
+                                <p className="font-bold">
+                                    Atención: {pendingPermissionsCount} permiso(s) pendiente(s) de autorizar
+                                </p>
+                                <p className="text-[11px] text-rose-700 mt-0.5">
+                                    Existen solicitudes en estado <strong>Pendiente de Autorizar</strong> dentro de este período. Se recomienda resolverlas en la pestaña <strong>Inasistencias y Permisos</strong> antes de cerrar planilla.
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="space-y-1.5">
                         <label className="text-[11px] font-bold text-slate-600 uppercase">
                             Nombre o Descripción del Corte <span className="text-rose-500">*</span>
@@ -118,12 +144,11 @@ const BiometricFreezePeriodModal = ({ open, onClose, suggestedRange, onSuccess }
                             required
                             value={nombre}
                             onChange={(e) => setNombre(e.target.value)}
-                            placeholder="Ej. 1ª Quincena Septiembre 2026"
+                            placeholder="Ej. 1ª Quincena Octubre 2026"
                             className="w-full text-xs font-semibold border border-slate-300 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 bg-white"
                         />
                     </div>
 
-                    {/* Rango de Fechas */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="space-y-1.5">
                             <label className="text-[11px] font-bold text-slate-600 uppercase">
@@ -151,7 +176,6 @@ const BiometricFreezePeriodModal = ({ open, onClose, suggestedRange, onSuccess }
                         </div>
                     </div>
 
-                    {/* Observaciones opcionales */}
                     <div className="space-y-1.5">
                         <label className="text-[11px] font-bold text-slate-600 uppercase">
                             Observaciones Generales (Opcional)
@@ -165,7 +189,6 @@ const BiometricFreezePeriodModal = ({ open, onClose, suggestedRange, onSuccess }
                         />
                     </div>
 
-                    {/* Actions */}
                     <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
                         <button
                             type="button"
@@ -179,7 +202,7 @@ const BiometricFreezePeriodModal = ({ open, onClose, suggestedRange, onSuccess }
                             disabled={mutation.isPending}
                             className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-xl transition-all shadow-sm shadow-sky-200 disabled:opacity-50"
                         >
-                            <Lock className="w-4 h-4" />
+                            <Lock className="w-3.5 h-3.5" />
                             <span>{mutation.isPending ? 'Congelando...' : 'Congelar Período'}</span>
                         </button>
                     </div>

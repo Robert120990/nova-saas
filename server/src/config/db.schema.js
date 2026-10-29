@@ -815,7 +815,7 @@ ORDER BY gc.fecha_turno DESC
 ### rh_empleado_ausencias (Faltas, inasistencias e incapacidades)
 - id, company_id, empleado_id FK -> rh_empleados
 - tipo ENUM('falta','inasistencia','incapacidad')
-- fecha_inicio DATE, fecha_fin DATE, motivo TEXT, justificada TINYINT(1), created_at
+- fecha_inicio DATE, fecha_fin DATE, motivo TEXT, justificada TINYINT(1), categoria ENUM('ley','interna','injustificada'), subtipo VARCHAR(60), pidio_permiso TINYINT(1), estado_autorizacion ENUM('sin_solicitud','pendiente','autorizado','rechazado'), goce_sueldo TINYINT(1), afecta_septimo_dia TINYINT(1), modalidad_tiempo ENUM('dia_completo','medio_dia','por_horas'), horas_ausencia DECIMAL(5,2), hora_inicio TIME, hora_fin TIME, documento_referencia VARCHAR(120), solicitado_por INT, autorizado_por INT, fecha_autorizacion DATETIME, notas_autorizacion TEXT, origen VARCHAR(30), created_at, updated_at
 
 ### rh_planilla_vacaciones (Planilla de vacaciones)
 - id, company_id, empleado_id FK -> rh_empleados

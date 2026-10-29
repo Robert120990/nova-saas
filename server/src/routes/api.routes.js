@@ -319,6 +319,7 @@ router.post('/public/scan-session/:sessionId/upload', memoryUpload.single('file'
 // Rutas de Agente Marcador Biométrico (autenticadas por x-agent-key)
 router.post('/rh/biometric/sync', rhBiometricController.syncFromAgent);
 router.post('/rh/biometric/heartbeat', rhBiometricController.heartbeatFromAgent);
+router.get('/rh/biometric/agent-script', rhBiometricController.downloadAgentScriptByKey);
 
 // Routes
 router.use(verifyToken);
@@ -1405,6 +1406,13 @@ router.get('/rh/biometric/zk-import/folders', tenantMiddleware, checkPermission(
 router.post('/rh/biometric/zk-import/preview', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.previewZkFolder);
 router.post('/rh/biometric/zk-import/import', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.importZkFolder);
 router.get('/rh/biometric/zk-import/export-excel', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.exportZkConsolidatedExcel);
+router.get('/rh/biometric/absences/catalog', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.getAbsenceCatalog);
+router.get('/rh/biometric/absences/daily-radar', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.getDailyAttendanceRadar);
+router.get('/rh/biometric/absences', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.getBiometricAbsences);
+router.post('/rh/biometric/absences', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.createBiometricAbsence);
+router.put('/rh/biometric/absences/:id', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.updateBiometricAbsence);
+router.patch('/rh/biometric/absences/:id/authorize', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.authorizeBiometricAbsence);
+router.delete('/rh/biometric/absences/:id', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.deleteBiometricAbsence);
 
 
 router.get('/logs/stream/:service', verifyToken, checkPermission('manage_server_terminal'), settingsController.streamLogs);

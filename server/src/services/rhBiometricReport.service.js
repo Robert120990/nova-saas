@@ -2,40 +2,25 @@ const pool = require('../config/db');
 const reportPdfHelper = require('../utils/reportPdfHelper');
 const excelService = require('./excel.service');
 const { getSettings, getHolidays } = require('./rhBiometricConfig.service');
-
-function timeStringToMinutes(timeStr) {
-    if (!timeStr) return 0;
-    const parts = timeStr.split(':');
-    return parseInt(parts[0], 10) * 60 + parseInt(parts[1] || '0', 10);
-}
-
-function extractTime(dt) {
-    if (!dt) return '---';
-    try {
-        const d = new Date(dt);
-        return isNaN(d.getTime()) ? '---' : d.toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-    } catch { return '---'; }
-}
-
-function extractDateOnly(dt) {
-    if (!dt) return '';
-    try {
-        const d = new Date(dt);
-        if (isNaN(d.getTime())) return '';
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    } catch { return ''; }
-}
+const { enrichReportWithAbsences } = require('./rhBiometricReportAbsences.helper');
+const {
+    extractDateOnly,
+    extractTime,
+    timeStringToMinutes,
+    diffMinutesLocal,
+    normalizeDateRange,
+    appendPunchTimeBounds
+} = require('./rhBiometricDate.helper');
 
 async function getAttendanceReportData(companyId, filters = {}) {
-    const startDate = filters.startDate || filters.start_date;
-    const endDate = filters.endDate || filters.end_date;
+    const rawStart = filters.startDate || filters.start_date;
+    const rawEnd = filters.endDate || filters.end_date;
     const { branchId, departamentoId, search } = filters;
     const settings = await getSettings(companyId);
     const conditions = ['l.company_id = ?'];
     const params = [companyId];
 
-    if (startDate) { conditions.push('DATE(l.punch_time) >= ?'); params.push(startDate); }
-    if (endDate) { conditions.push('DATE(l.punch_time) <= ?'); params.push(endDate); }
+    const { startDate, endDate } = appendPunchTimeBounds(conditions, params, 'l', rawStart, rawEnd);
     if (branchId && branchId !== 'todos') { conditions.push('e.branch_id = ?'); params.push(branchId); }
     if (departamentoId && departamentoId !== 'todos') { conditions.push('e.departamento_personal_id = ?'); params.push(departamentoId); }
     if (search && search.trim()) {
@@ -45,15 +30,15 @@ async function getAttendanceReportData(companyId, filters = {}) {
     }
 
     const [punches] = await pool.query(
-        `SELECT l.id, l.device_uid, l.empleado_id, l.punch_time, l.punch_type, l.source,
+        `SELECT l.id, l.device_uid, l.empleado_id,
+                DATE_FORMAT(l.punch_time, '%Y-%m-%d %H:%i:%s') as punch_time_str,
+                l.punch_type, l.source,
                 e.codigo as empleado_codigo, e.nombres as empleado_nombres, e.apellidos as empleado_apellidos,
                 CONCAT(COALESCE(e.nombres, ''), ' ', COALESCE(e.apellidos, '')) as empleado_nombre,
                 c.descripcion as cargo_nombre, dep.descripcion as departamento_nombre,
                 COALESCE(e.exento_horas_extras, 0) as exento_horas_extras,
-                e.turno_id,
-                t.nombre as turno_nombre,
-                t.hora_entrada as turno_hora_entrada,
-                t.hora_salida as turno_hora_salida,
+                e.turno_id, t.nombre as turno_nombre,
+                t.hora_entrada as turno_hora_entrada, t.hora_salida as turno_hora_salida,
                 t.tolerancia_entrada_minutos as turno_tolerancia,
                 t.horas_jornada_diaria as turno_jornada_horas
          FROM rh_biometric_attendance_logs l
@@ -72,23 +57,26 @@ async function getAttendanceReportData(companyId, filters = {}) {
         if (h.is_active) holidayMap.add(`${String(h.mes).padStart(2, '0')}-${String(h.dia).padStart(2, '0')}`);
     });
 
-    let adjMap = new Map();
+    const adjMap = new Map();
     if (startDate && endDate) {
         const [adjustments] = await pool.query(
-            `SELECT device_uid, fecha, horas_extra_aprobadas, es_editado, observacion, congelado
+            `SELECT empleado_id, device_uid, DATE_FORMAT(fecha, '%Y-%m-%d') as fecha_str,
+                    horas_extra_aprobadas, es_editado, observacion, congelado
              FROM rh_biometric_daily_overtime
              WHERE company_id = ? AND fecha >= ? AND fecha <= ?`,
             [companyId, startDate, endDate]
         );
         adjustments.forEach(a => {
-            const fKey = extractDateOnly(a.fecha);
-            adjMap.set(`${a.device_uid}_${fKey}`, a);
+            const fKey = a.fecha_str;
+            if (a.device_uid) adjMap.set(`${a.device_uid}_${fKey}`, a);
+            if (a.empleado_id) adjMap.set(`emp_${a.empleado_id}_${fKey}`, a);
         });
     }
 
     const grouped = new Map();
     for (const p of punches) {
-        const dateKey = extractDateOnly(p.punch_time);
+        const ptStr = p.punch_time_str;
+        const dateKey = extractDateOnly(ptStr);
         if (!dateKey) continue;
         const key = `${p.empleado_id || `uid_${p.device_uid}`}_${dateKey}`;
         if (!grouped.has(key)) {
@@ -96,7 +84,6 @@ async function getAttendanceReportData(companyId, filters = {}) {
                 empleado_id: p.empleado_id,
                 device_uid: p.device_uid,
                 codigo: p.empleado_codigo || p.device_uid,
-
                 nombre: p.empleado_nombre ? p.empleado_nombre.trim() : `Empleado UID ${p.device_uid}`,
                 departamento: p.departamento_nombre || 'Sin Depto',
                 cargo: p.cargo_nombre || 'Sin Cargo',
@@ -109,7 +96,7 @@ async function getAttendanceReportData(companyId, filters = {}) {
                 punches: []
             });
         }
-        grouped.get(key).punches.push(p);
+        grouped.get(key).punches.push(ptStr);
     }
 
     const reportRows = [];
@@ -118,19 +105,19 @@ async function getAttendanceReportData(companyId, filters = {}) {
     let totalHorasExtra = 0;
 
     for (const item of grouped.values()) {
-        const sorted = item.punches.sort((a, b) => new Date(a.punch_time) - new Date(b.punch_time));
-        let horaEntrada = sorted[0].punch_time;
+        const sorted = item.punches.sort();
+        const horaEntrada = sorted[0];
         let horaSalidaAlmuerzo = null, horaEntradaAlmuerzo = null, horaSalida = null;
 
         if (sorted.length === 2) {
-            horaSalida = sorted[1].punch_time;
+            horaSalida = sorted[1];
         } else if (sorted.length === 3) {
-            horaSalidaAlmuerzo = sorted[1].punch_time;
-            horaSalida = sorted[2].punch_time;
+            horaSalidaAlmuerzo = sorted[1];
+            horaSalida = sorted[2];
         } else if (sorted.length >= 4) {
-            horaSalidaAlmuerzo = sorted[1].punch_time;
-            horaEntradaAlmuerzo = sorted[2].punch_time;
-            horaSalida = sorted[sorted.length - 1].punch_time;
+            horaSalidaAlmuerzo = sorted[1];
+            horaEntradaAlmuerzo = sorted[2];
+            horaSalida = sorted[sorted.length - 1];
         }
 
         const entradaEsperadaMins = timeStringToMinutes(item.hora_entrada_esperada);
@@ -148,9 +135,9 @@ async function getAttendanceReportData(companyId, filters = {}) {
 
         let minutosTrabajados = 0;
         if (horaEntrada && horaSalida) {
-            let diffMins = Math.max(0, Math.floor((new Date(horaSalida) - new Date(horaEntrada)) / 60000));
+            let diffMins = diffMinutesLocal(horaEntrada, horaSalida);
             if (horaSalidaAlmuerzo && horaEntradaAlmuerzo) {
-                const lunchMins = Math.max(0, Math.floor((new Date(horaEntradaAlmuerzo) - new Date(horaSalidaAlmuerzo)) / 60000));
+                const lunchMins = diffMinutesLocal(horaSalidaAlmuerzo, horaEntradaAlmuerzo);
                 diffMins = Math.max(0, diffMins - lunchMins);
             }
             minutosTrabajados = diffMins;
@@ -163,7 +150,9 @@ async function getAttendanceReportData(companyId, filters = {}) {
             horasExtra = parseFloat((horasTrabajadas - item.jornada_horas).toFixed(2));
         }
 
-        const adj = adjMap.get(`${item.device_uid}_${item.fecha}`) || adjMap.get(`${item.codigo}_${item.fecha}`);
+        const adj = adjMap.get(`${item.device_uid}_${item.fecha}`)
+            || (item.empleado_id ? adjMap.get(`emp_${item.empleado_id}_${item.fecha}`) : null)
+            || adjMap.get(`${item.codigo}_${item.fecha}`);
         if (adj && adj.horas_extra_aprobadas !== null) {
             horasExtra = parseFloat(Number(adj.horas_extra_aprobadas).toFixed(2));
         }
@@ -193,26 +182,24 @@ async function getAttendanceReportData(companyId, filters = {}) {
             exento_horas_extras: item.exento_horas_extras,
             es_festivo: holidayMap.has(`${m}-${d}`)
         });
-
     }
 
-    return {
-        rows: reportRows,
-        summary: {
-            total_registros: reportRows.length,
-            total_horas_trabajadas: parseFloat((totalMinutosTrabajados / 60).toFixed(2)),
-            total_llegadas_tarde: totalLlegadasTarde,
-            total_horas_extra: parseFloat(totalHorasExtra.toFixed(2))
-        }
+    const summary = {
+        total_registros: reportRows.length,
+        total_horas_trabajadas: parseFloat((totalMinutosTrabajados / 60).toFixed(2)),
+        total_llegadas_tarde: totalLlegadasTarde,
+        total_horas_extra: parseFloat(totalHorasExtra.toFixed(2))
     };
+    await enrichReportWithAbsences(companyId, { ...filters, startDate, endDate }, reportRows, summary, holidayMap, settings);
+
+    return { rows: reportRows, summary };
 }
 
 async function generateAttendancePdf(companyId, filters = {}) {
     const data = await getAttendanceReportData(companyId, filters);
     const [compRows] = await pool.query('SELECT * FROM companies WHERE id = ?', [companyId]);
     const company = compRows[0] || {};
-    const startDate = filters.startDate || filters.start_date;
-    const endDate = filters.endDate || filters.end_date;
+    const { startDate, endDate } = normalizeDateRange(filters.startDate || filters.start_date, filters.endDate || filters.end_date);
     const periodText = startDate && endDate ? `DEL ${startDate} AL ${endDate}` : 'HISTÓRICO';
     const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
 
@@ -251,10 +238,17 @@ async function generateAttendancePdf(companyId, filters = {}) {
         doc.font('Helvetica-Bold').text(r.nombre, cols[2].x, y, { width: cols[2].w, align: 'left', lineBreak: false });
         doc.font('Helvetica').text(r.turno || 'General', cols[3].x, y, { width: cols[3].w, align: 'left', lineBreak: false });
         doc.text(r.departamento, cols[4].x, y, { width: cols[4].w, align: 'left', lineBreak: false });
-        doc.text(r.entrada, cols[5].x, y, { width: cols[5].w, align: 'center', lineBreak: false });
-        doc.text(r.salida_almuerzo, cols[6].x, y, { width: cols[6].w, align: 'center', lineBreak: false });
-        doc.text(r.entrada_almuerzo, cols[7].x, y, { width: cols[7].w, align: 'center', lineBreak: false });
-        doc.text(r.salida, cols[8].x, y, { width: cols[8].w, align: 'center', lineBreak: false });
+
+        if (r.es_ausencia) {
+            const absColor = r.ausencia_estado === 'pendiente' ? '#b45309' : (r.ausencia_goce ? '#0369a1' : '#b91c1c');
+            doc.font('Helvetica-Bold').fillColor(absColor).text(r.observacion || r.entrada, cols[5].x, y, { width: 174, align: 'left', lineBreak: false });
+            doc.font('Helvetica').fillColor('#334155');
+        } else {
+            doc.text(r.entrada, cols[5].x, y, { width: cols[5].w, align: 'center', lineBreak: false });
+            doc.text(r.salida_almuerzo, cols[6].x, y, { width: cols[6].w, align: 'center', lineBreak: false });
+            doc.text(r.entrada_almuerzo, cols[7].x, y, { width: cols[7].w, align: 'center', lineBreak: false });
+            doc.text(r.salida, cols[8].x, y, { width: cols[8].w, align: 'center', lineBreak: false });
+        }
         doc.text(r.horas_trabajadas > 0 ? r.horas_trabajadas.toFixed(2) : '—', cols[9].x, y, { width: cols[9].w, align: 'right', lineBreak: false });
 
         if (r.es_llegada_tarde) {
@@ -277,10 +271,12 @@ async function generateAttendancePdf(companyId, filters = {}) {
     y += 8;
     doc.rect(30, y, 702, 18).fill('#f8fafc');
     doc.strokeColor('#e2e8f0').lineWidth(0.5).rect(30, y, 702, 18).stroke();
-    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
     doc.text(`TOTAL HORAS: ${data.summary.total_horas_trabajadas} hrs`, 40, y + 5, { lineBreak: false });
-    doc.text(`LLEGADAS TARDE: ${data.summary.total_llegadas_tarde}`, 220, y + 5, { lineBreak: false });
-    doc.text(`TOTAL HORAS EXTRAS: ${data.summary.total_horas_extra} hrs`, 400, y + 5, { lineBreak: false });
+    doc.text(`TARDANZAS: ${data.summary.total_llegadas_tarde}`, 195, y + 5, { lineBreak: false });
+    doc.text(`H. EXTRAS: ${data.summary.total_horas_extra} hrs`, 315, y + 5, { lineBreak: false });
+    doc.text(`AUSENCIAS JUSTIF.: ${data.summary.total_ausencias_justificadas || 0}`, 455, y + 5, { lineBreak: false });
+    doc.text(`INJUSTIF./PEND.: ${(data.summary.total_ausencias_injustificadas || 0) + (data.summary.total_permisos_pendientes || 0)}`, 595, y + 5, { lineBreak: false });
 
     y += 26;
     reportPdfHelper.renderClosingFooter(doc, 30, y, data.rows.length, 'Registros de Asistencia');
@@ -307,7 +303,8 @@ async function generateAttendanceExcel(companyId, filters = {}) {
         minutos_tardanza: r.minutos_tardanza || 0,
         horas_extra: r.horas_extra || 0,
         exento_horas_extras: r.exento_horas_extras ? 'SÍ' : 'NO',
-        es_festivo: r.es_festivo ? 'SÍ' : 'NO'
+        es_festivo: r.es_festivo ? 'SÍ' : 'NO',
+        observacion: r.observacion || ''
     }));
 
     return await excelService.createExcelBuffer({
@@ -329,15 +326,12 @@ async function generateAttendanceExcel(companyId, filters = {}) {
                 { header: 'Minutos Tarde', key: 'minutos_tardanza', width: 14 },
                 { header: 'Horas Extra', key: 'horas_extra', width: 14 },
                 { header: 'Exento H.E.', key: 'exento_horas_extras', width: 12 },
-                { header: 'Festivo', key: 'es_festivo', width: 10 }
+                { header: 'Festivo', key: 'es_festivo', width: 10 },
+                { header: 'Justificación / Observaciones', key: 'observacion', width: 38 }
             ],
             data: rows
         }]
     });
 }
 
-module.exports = {
-    getAttendanceReportData,
-    generateAttendancePdf,
-    generateAttendanceExcel
-};
+module.exports = { getAttendanceReportData, generateAttendancePdf, generateAttendanceExcel };
