@@ -674,6 +674,13 @@ const getSales = async (req, res) => {
         if (docType && docType !== 'all') {
             if (docType === 'COMPLEMENTARIA') {
                 whereClause += " AND h.observaciones LIKE '%Complementaria%'";
+            } else if (typeof docType === 'string' && docType.includes(',')) {
+                const types = docType.split(',').map(t => t.trim()).filter(Boolean);
+                if (types.length > 0) {
+                    const placeholders = types.map(() => '?').join(',');
+                    whereClause += ` AND (h.tipo_documento IN (${placeholders}) OR h.dte_type IN (${placeholders}))`;
+                    whereParams.push(...types, ...types);
+                }
             } else {
                 whereClause += ' AND (h.tipo_documento = ? OR h.dte_type = ?)';
                 whereParams.push(docType, docType);

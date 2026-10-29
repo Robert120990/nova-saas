@@ -58,16 +58,35 @@ const SalesTerminal = () => {
     const DRAFT_KEY = `sipe_pos_sale_draft_${user?.id || '0'}_${user?.company_id || '0'}_${user?.branch_id || '0'}`;
     const SELLER_KEY = `sipe_pos_seller_session_${user?.id || '0'}_${user?.company_id || '0'}_${user?.branch_id || '0'}`;
 
+    // Helper para obtener y validar un borrador guardado en localStorage
+    // Regla de Negocio: Un borrador SOLO es válido si contiene productos en el carrito.
+    // Si no contiene productos, se descarta y limpia inmediatamente para evitar que queden clientes o tipos de DTE precargados.
+    const getValidStoredDraft = () => {
+        try {
+            const raw = localStorage.getItem(DRAFT_KEY);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            if (parsed && Array.isArray(parsed.cart) && parsed.cart.length > 0) {
+                return parsed;
+            }
+            // Borrador residual sin ítems: eliminarlo inmediatamente del almacenamiento
+            localStorage.removeItem(DRAFT_KEY);
+            return null;
+        } catch {
+            try { localStorage.removeItem(DRAFT_KEY); } catch {}
+            return null;
+        }
+    };
+
     // Logistic/Seller Auth State
     const [sellerSession, setSellerSession] = useState(() => {
         try {
-            const rawDraft = localStorage.getItem(DRAFT_KEY);
+            const validDraft = getValidStoredDraft();
             const rawSeller = sessionStorage.getItem(SELLER_KEY);
-            if (!rawSeller) return null;
+            if (!rawSeller || !validDraft) return null;
             const parsed = JSON.parse(rawSeller);
-            const parsedDraft = rawDraft ? JSON.parse(rawDraft) : null;
             // Solo restaurar la sesión del vendedor si existe un borrador activo con productos en la misma sucursal
-            if (parsedDraft && Array.isArray(parsedDraft.cart) && parsedDraft.cart.length > 0 && Number(parsed.branch_id) === Number(user?.branch_id)) {
+            if (Number(parsed.branch_id) === Number(user?.branch_id)) {
                 return parsed;
             }
         } catch {}
@@ -76,13 +95,12 @@ const SalesTerminal = () => {
     });
     const [isAuthModalOpen, setIsAuthModalOpen] = useState(() => {
         try {
-            const rawDraft = localStorage.getItem(DRAFT_KEY);
+            const validDraft = getValidStoredDraft();
             const rawSeller = sessionStorage.getItem(SELLER_KEY);
-            if (rawDraft && rawSeller) {
-                const parsedDraft = JSON.parse(rawDraft);
+            if (validDraft && rawSeller) {
                 const parsedSeller = JSON.parse(rawSeller);
                 // Si hay un borrador con partidas activo para este vendedor en esta sucursal, no mostrar modal
-                if (Array.isArray(parsedDraft.cart) && parsedDraft.cart.length > 0 && Number(parsedSeller.branch_id) === Number(user?.branch_id)) {
+                if (Number(parsedSeller.branch_id) === Number(user?.branch_id)) {
                     return false;
                 }
             }
@@ -93,58 +111,45 @@ const SalesTerminal = () => {
     
     // Header State
     const [customerId, setCustomerId] = useState(() => {
-        try {
-            const raw = localStorage.getItem(DRAFT_KEY);
-            return raw ? (JSON.parse(raw).customerId || '') : '';
-        } catch { return ''; }
+        const draft = getValidStoredDraft();
+        return draft?.customerId || '';
     });
     const [customerBranchId, setCustomerBranchId] = useState(() => {
-        try {
-            const raw = localStorage.getItem(DRAFT_KEY);
-            return raw ? (JSON.parse(raw).customerBranchId || '') : '';
-        } catch { return ''; }
+        const draft = getValidStoredDraft();
+        return draft?.customerBranchId || '';
     });
     const [customerExemptOverride, setCustomerExemptOverride] = useState(null);
     const [sellerId, setSellerId] = useState(() => {
-        try {
-            const rawDraft = localStorage.getItem(DRAFT_KEY);
-            const parsedDraft = rawDraft ? JSON.parse(rawDraft) : null;
-            if (parsedDraft && Array.isArray(parsedDraft.cart) && parsedDraft.cart.length > 0) {
+        const draft = getValidStoredDraft();
+        if (draft) {
+            try {
                 const rawSeller = sessionStorage.getItem(SELLER_KEY);
                 if (rawSeller) {
                     const parsed = JSON.parse(rawSeller);
                     if (Number(parsed.branch_id) === Number(user?.branch_id)) return parsed.seller_id || '';
                 }
-                return parsedDraft.sellerId || '';
-            }
-        } catch { return ''; }
+            } catch {}
+            return draft.sellerId || '';
+        }
         return '';
     });
     const [tipoDte, setTipoDte] = useState(() => {
-        try {
-            const raw = localStorage.getItem(DRAFT_KEY);
-            return raw ? (JSON.parse(raw).tipoDte || '01') : '01';
-        } catch { return '01'; }
+        const draft = getValidStoredDraft();
+        return draft?.tipoDte || '01';
     });
     const [condicionPago, setCondicionPago] = useState(() => {
-        try {
-            const raw = localStorage.getItem(DRAFT_KEY);
-            return raw ? (JSON.parse(raw).condicionPago || '1') : '1';
-        } catch { return '1'; }
+        const draft = getValidStoredDraft();
+        return draft?.condicionPago || '1';
     });
     const [manualCustomerName, setManualCustomerName] = useState(() => {
-        try {
-            const raw = localStorage.getItem(DRAFT_KEY);
-            return raw ? (JSON.parse(raw).manualCustomerName || '') : '';
-        } catch { return ''; }
+        const draft = getValidStoredDraft();
+        return draft?.manualCustomerName || '';
     });
     
     // Linked Documents (NC, NR)
     const [linkedDocs, setLinkedDocs] = useState(() => {
-        try {
-            const raw = localStorage.getItem(DRAFT_KEY);
-            return raw ? (JSON.parse(raw).linkedDocs || []) : [];
-        } catch { return []; }
+        const draft = getValidStoredDraft();
+        return draft?.linkedDocs || [];
     });
     const [isLinkedDocModalOpen, setIsLinkedDocModalOpen] = useState(false);
     const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
@@ -152,48 +157,36 @@ const SalesTerminal = () => {
 
     // Export Data (FEX)
     const [fexData, setFexData] = useState(() => {
-        try {
-            const raw = localStorage.getItem(DRAFT_KEY);
-            return raw && JSON.parse(raw).fexData ? JSON.parse(raw).fexData : { itemType: 1, enclosure: '', country: '' };
-        } catch { return { itemType: 1, enclosure: '', country: '' }; }
+        const draft = getValidStoredDraft();
+        return draft?.fexData || { itemType: 1, enclosure: '', country: '' };
     });
 
     // Remission Data (NR)
     const [nrData, setNrData] = useState(() => {
-        try {
-            const raw = localStorage.getItem(DRAFT_KEY);
-            return raw && JSON.parse(raw).nrData ? JSON.parse(raw).nrData : { type: '02', transporterName: '', vehiclePlate: '' };
-        } catch { return { type: '02', transporterName: '', vehiclePlate: '' }; }
+        const draft = getValidStoredDraft();
+        return draft?.nrData || { type: '02', transporterName: '', vehiclePlate: '' };
     });
     
     // Items State
     const [cart, setCart] = useState(() => {
-        try {
-            const raw = localStorage.getItem(DRAFT_KEY);
-            return raw && Array.isArray(JSON.parse(raw).cart) ? JSON.parse(raw).cart : [];
-        } catch { return []; }
+        const draft = getValidStoredDraft();
+        return draft?.cart || [];
     });
     const [generalDiscount, setGeneralDiscount] = useState(() => {
-        try {
-            const raw = localStorage.getItem(DRAFT_KEY);
-            return raw ? (JSON.parse(raw).generalDiscount || 0) : 0;
-        } catch { return 0; }
+        const draft = getValidStoredDraft();
+        return draft?.generalDiscount || 0;
     });
     const [generalDiscountPercentage, setGeneralDiscountPercentage] = useState(() => {
-        try {
-            const raw = localStorage.getItem(DRAFT_KEY);
-            return raw ? (JSON.parse(raw).generalDiscountPercentage ?? null) : null;
-        } catch { return null; }
+        const draft = getValidStoredDraft();
+        return draft?.generalDiscountPercentage ?? null;
     });
     const [isGeneralDiscountModalOpen, setIsGeneralDiscountModalOpen] = useState(false);
     const [selectedDiscountItem, setSelectedDiscountItem] = useState(null);
 
     // Payment State
     const [payments, setPayments] = useState(() => {
-        try {
-            const raw = localStorage.getItem(DRAFT_KEY);
-            return raw && Array.isArray(JSON.parse(raw).payments) ? JSON.parse(raw).payments : [];
-        } catch { return []; }
+        const draft = getValidStoredDraft();
+        return draft?.payments || [];
     });
     const [currentPayment, setCurrentPayment] = useState({
         metodo_pago: '01',
@@ -203,10 +196,8 @@ const SalesTerminal = () => {
         last_digits: ''
     });
     const [entregado, setEntregado] = useState(() => {
-        try {
-            const raw = localStorage.getItem(DRAFT_KEY);
-            return raw ? (JSON.parse(raw).entregado || '') : '';
-        } catch { return ''; }
+        const draft = getValidStoredDraft();
+        return draft?.entregado || '';
     });
     
     // UI State
@@ -278,13 +269,14 @@ const SalesTerminal = () => {
     const scanEntryRef = useRef(null);
     const quickAddFocusRef = useRef(false);
 
-    useDirtyTracker('terminal', cart.length > 0 || customerId || linkedDocs.length > 0 || entregado);
+    useDirtyTracker('terminal', Array.isArray(cart) && cart.length > 0);
 
     // Auto-guardado dinámico de borrador de venta en localStorage
     useEffect(() => {
         if (!user?.id || !user?.company_id) return;
-        const hasData = (cart && cart.length > 0) || customerId || (linkedDocs && linkedDocs.length > 0) || manualCustomerName || (payments && payments.length > 0);
-        if (hasData) {
+        // Regla: Un borrador SOLO se guarda si el usuario ha agregado productos reales al carrito
+        const hasValidDraft = Array.isArray(cart) && cart.length > 0;
+        if (hasValidDraft) {
             try {
                 const draft = {
                     cart,
@@ -308,25 +300,28 @@ const SalesTerminal = () => {
                 console.warn('Error guardando borrador de venta:', e);
             }
         } else {
+            // Si el carrito está vacío, no existe borrador a retener
             localStorage.removeItem(DRAFT_KEY);
         }
     }, [cart, customerId, customerBranchId, manualCustomerName, sellerId, tipoDte, condicionPago, linkedDocs, fexData, nrData, generalDiscount, generalDiscountPercentage, payments, entregado, DRAFT_KEY, user?.id, user?.company_id]);
 
-    // Notificar al montar si se recuperó un borrador previo
+    // Notificar al montar si se recuperó un borrador previo válido
     useEffect(() => {
         try {
             const raw = localStorage.getItem(DRAFT_KEY);
             if (raw) {
                 const parsed = JSON.parse(raw);
-                if ((parsed.cart && parsed.cart.length > 0) || parsed.customerId) {
+                if (Array.isArray(parsed?.cart) && parsed.cart.length > 0) {
                     toast.info('Borrador de venta recuperado automáticamente', {
                         id: 'pos-draft-restored',
                         duration: 3500
                     });
+                } else {
+                    localStorage.removeItem(DRAFT_KEY);
                 }
             }
         } catch {}
-    }, []);
+    }, [DRAFT_KEY]);
 
     // Queries
     const { data: currentCompany } = useQuery({
@@ -555,12 +550,6 @@ const SalesTerminal = () => {
             refetchLots();
         }
     }, [isLotModalOpen, hasEggLots, refetchLots]);
-
-    const { data: customerSales = [], isLoading: isLoadingCustomerSales } = useQuery({
-        queryKey: ['customer-sales', customerId],
-        queryFn: async () => (await axios.get(`/api/sales?customer_id=${customerId}&status=emitido&only_processed=true&exclude_has_nc=true&limit=100`)).data?.data || [],
-        enabled: !!customerId && tipoDte === '05'
-    });
 
     const { data: customerDiscounts = [] } = useQuery({
         queryKey: ['customer-discounts', sellerSession?.branch_id],
@@ -1629,6 +1618,8 @@ const SalesTerminal = () => {
         setLinkedDocs([]);
         setPayments([]);
         setEntregado('');
+        setTipoDte('01');
+        setCondicionPago('1');
         setSellerSession(null);
         setSellerId('');
         setAuthPassword('');
@@ -3323,12 +3314,12 @@ const SalesTerminal = () => {
                                             <th className="px-4 py-4 text-right">Desc.</th>
                                             <th className="px-4 py-4 text-right">Subtotal</th>
                                             <th className="pr-6 py-4 text-right">
-                                                {cart.length > 0 && (
+                                                {(cart.length > 0 || customerId || (tipoDte && tipoDte !== '01') || manualCustomerName) && (
                                                     <button
                                                         type="button"
                                                         onClick={handleDiscardDraft}
                                                         className="text-[9px] font-bold text-rose-500 hover:text-rose-700 uppercase tracking-wider transition-colors hover:underline"
-                                                        title="Limpiar carrito y descartar borrador"
+                                                        title="Limpiar y descartar borrador"
                                                     >
                                                         Limpiar
                                                     </button>
@@ -4001,8 +3992,6 @@ const SalesTerminal = () => {
                 onClose={() => setIsLinkedDocModalOpen(false)}
                 tipoDte={tipoDte}
                 customerId={customerId}
-                isLoadingCustomerSales={isLoadingCustomerSales}
-                customerSales={customerSales}
                 linkedDocs={linkedDocs}
                 setLinkedDocs={setLinkedDocs}
                 setReferencingSale={setReferencingSale}
