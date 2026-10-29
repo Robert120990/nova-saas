@@ -113,6 +113,7 @@ export default function usePlanillas() {
             if (e.key === 'F3') {
                 e.preventDefault();
                 if (activeTab === 'nuevo' && !operationRef.current && !loadingEmployee && !generando && !guardandoManual) {
+                    if (!periodoGeneradoRef.current) { toast.warning('Primero presione "Generar Planilla" para abrir la quincena con todos los empleados activos.'); return; }
                     setIsEmpModalOpen(true);
                 }
             }
@@ -154,9 +155,22 @@ export default function usePlanillas() {
 
     const esEstePeriodoAbierto = Boolean(
         planillasAbiertas.some(
-            ab => ab.periodo_anio === periodoAnio && ab.periodo_mes === periodoMes && ab.quincena === quincena
+            ab => Number(ab.periodo_anio) === Number(periodoAnio) && Number(ab.periodo_mes) === Number(periodoMes) && ab.quincena === quincena
         )
     );
+
+    const { data: currentPeriodGroup } = useQuery({
+        staleTime: 0, refetchOnWindowFocus: true,
+        queryKey: ['rh-planillas-grupos', 'periodo-actual', companyId, periodoAnio, periodoMes, quincena],
+        queryFn: async () => (await axios.get('/api/rh/planillas/grupos', {
+            params: { anio: periodoAnio, mes: periodoMes, quincena, limit: 1 }
+        })).data,
+        enabled: Boolean(companyId && activeTab === 'nuevo' && periodoAnio && periodoMes && quincena)
+    });
+
+    const periodoGenerado = Boolean(periodoBloqueado || esEstePeriodoAbierto || (currentPeriodGroup?.total > 0));
+    const periodoGeneradoRef = useRef(false);
+    useEffect(() => { periodoGeneradoRef.current = periodoGenerado; }, [periodoGenerado]);
 
     const { data: cuentasActivas = [] } = useQuery({
         staleTime: 0, refetchOnWindowFocus: true,
@@ -484,6 +498,7 @@ export default function usePlanillas() {
         if (hayOtraAbierta) {
             return toast.error('No se puede buscar o registrar empleados mientras exista otra planilla abierta.');
         }
+        if (!periodoGenerado) return toast.warning('Primero presione "Generar Planilla" para abrir la quincena con todos los empleados activos.');
         if (!codigoInput.trim()) return;
         try {
             const res = await axios.get('/api/rh/empleados', { params: { search: codigoInput.trim(), limit: 1, solo_activos: 1 } });
@@ -502,6 +517,7 @@ export default function usePlanillas() {
         if (hayOtraAbierta) {
             return toast.error('No se puede registrar empleados mientras exista otra planilla abierta.');
         }
+        if (!periodoGenerado) return toast.warning('Primero presione "Generar Planilla" para abrir la quincena con todos los empleados activos.');
         loadEmpleado(emp.id);
         setIsEmpModalOpen(false);
     };
@@ -1032,5 +1048,5 @@ const changePeriod = async (field, value) => {
         setQuincena(field === 'quincena' ? value : previous.quincena);
     };
     
-return { hasConflict, conflict, setConflict, reviewConflict, resolveConflict, activeTab, changePeriod, unsaved, saveError, loadingEmployee, handleNuevaPlanillaClick, tieneAbiertas, primeraAbierta, handleVerDetalle, handleCerrarPeriodo, filterAnio, setFilterAnio, setPage, filterMes, setFilterMes, filterQuincena, setFilterQuincena, items, isLoading, handleEliminarPeriodo, setExportModalConfig, page, response, handleVolverListado, periodoBloqueado, periodoMes, periodoAnio, quincena, handleVerPlanillaActual, handleVerRecibosActual, esEstePeriodoAbierto, cerrarMutation, setPeriodoAnio, setPeriodoMes, setQuincena, diasTrabajados, handleDiasTrabajadosChange, handleSincronizar, sincronizarMutation, handleSincronizarComisionesHuevo, syncingHuevo, setPeriodoBloqueado, handleGenerar, generando, hayOtraAbierta, employeeInputRef, codigoInput, setCodigoInput, handleCodigoSearch, setIsEmpModalOpen, empleadoData, saveCurrentEmployee, guardandoManual, savingRef, selected, handleExcluirEmpleado, excluirMutation, handleAgregarEmpleado, autoSaveRef, sinEmpleado, detalles, handleValorChange, sueldoQuincActual, ingresosAdicActual, percTotal, calculando, calculo, otrasDedActual, otraAbiertaItem, isEmpModalOpen, handleSelectEmployee, previewPeriodo, setPreviewPeriodo, exportModalConfig, handleConfirmExport };
+return { hasConflict, conflict, setConflict, reviewConflict, resolveConflict, activeTab, changePeriod, unsaved, saveError, loadingEmployee, handleNuevaPlanillaClick, tieneAbiertas, primeraAbierta, handleVerDetalle, handleCerrarPeriodo, filterAnio, setFilterAnio, setPage, filterMes, setFilterMes, filterQuincena, setFilterQuincena, items, isLoading, handleEliminarPeriodo, setExportModalConfig, page, response, handleVolverListado, periodoBloqueado, periodoGenerado, periodoMes, periodoAnio, quincena, handleVerPlanillaActual, handleVerRecibosActual, esEstePeriodoAbierto, cerrarMutation, setPeriodoAnio, setPeriodoMes, setQuincena, diasTrabajados, handleDiasTrabajadosChange, handleSincronizar, sincronizarMutation, handleSincronizarComisionesHuevo, syncingHuevo, setPeriodoBloqueado, handleGenerar, generando, hayOtraAbierta, employeeInputRef, codigoInput, setCodigoInput, handleCodigoSearch, setIsEmpModalOpen, empleadoData, saveCurrentEmployee, guardandoManual, savingRef, selected, handleExcluirEmpleado, excluirMutation, handleAgregarEmpleado, autoSaveRef, sinEmpleado, detalles, handleValorChange, sueldoQuincActual, ingresosAdicActual, percTotal, calculando, calculo, otrasDedActual, otraAbiertaItem, isEmpModalOpen, handleSelectEmployee, previewPeriodo, setPreviewPeriodo, exportModalConfig, handleConfirmExport };
 }

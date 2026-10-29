@@ -3,7 +3,7 @@ import { Loader2, CheckCircle, Zap, RefreshCw, Award } from 'lucide-react';
 
 import { fieldCls, labelCls, years, months } from './planillaUtils';
 const PlanillaHeader = ({ model }) => {
-    const { periodoAnio, changePeriod, periodoBloqueado, periodoMes, quincena, diasTrabajados, handleDiasTrabajadosChange, handleSincronizar, sincronizarMutation, handleSincronizarComisionesHuevo, syncingHuevo, handleGenerar, generando, hayOtraAbierta } = model;
+    const { periodoAnio, changePeriod, periodoBloqueado, periodoGenerado, periodoMes, quincena, diasTrabajados, handleDiasTrabajadosChange, handleSincronizar, sincronizarMutation, handleSincronizarComisionesHuevo, syncingHuevo, handleGenerar, generando, hayOtraAbierta } = model;
     return (<div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 items-end">
                             <div>
@@ -53,7 +53,7 @@ const PlanillaHeader = ({ model }) => {
                                 />
                             </div>
                             <div className="sm:col-span-2 lg:col-span-2 flex items-end">
-                                {periodoBloqueado ? (
+                                {periodoBloqueado || periodoGenerado ? (
                                     <div className="w-full flex flex-wrap items-center justify-between gap-2 bg-slate-50 text-slate-700 px-3 py-2 rounded-xl text-xs font-semibold border border-slate-200">
                                         <div className="flex flex-wrap items-center gap-2">
                                             <span className="flex items-center gap-1 text-emerald-600 font-bold">

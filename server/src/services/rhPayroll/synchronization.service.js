@@ -210,7 +210,7 @@ const sincronizarPlanilla = async (req, res, pool) => {
             const aplicaRentaEmpA = (emp.aplica_renta === 1 || emp.aplica_renta === undefined || emp.aplica_renta === null);
             const q1Data = q1PlanillaMap.get(emp.id) || null;
 
-            const { descuentoRenta } = computeEmployeeRenta({
+            let { descuentoRenta } = computeEmployeeRenta({
                 modo: rentaCtx.calculoRentaModo,
                 brackets: rentaCtx.brackets,
                 ingresoGravado,
@@ -409,7 +409,7 @@ const sincronizarPlanilla = async (req, res, pool) => {
                 const aplicaRentaEmpB = (emp.aplica_renta === 1 || emp.aplica_renta === undefined || emp.aplica_renta === null);
                 const q1Data = q1PlanillaMap.get(emp.id) || null;
 
-                const { descuentoRenta } = computeEmployeeRenta({
+                let { descuentoRenta } = computeEmployeeRenta({
                     modo: rentaCtx.calculoRentaModo,
                     brackets: rentaCtx.brackets,
                     ingresoGravado,
@@ -456,7 +456,7 @@ const sincronizarPlanilla = async (req, res, pool) => {
                 const aplicaRentaEmpB = (emp.aplica_renta === 1 || emp.aplica_renta === undefined || emp.aplica_renta === null);
                 const q1Data = q1PlanillaMap.get(emp.id) || null;
 
-                const { descuentoRenta } = computeEmployeeRenta({
+                let { descuentoRenta } = computeEmployeeRenta({
                     modo: rentaCtx.calculoRentaModo,
                     brackets: rentaCtx.brackets,
                     ingresoGravado,
