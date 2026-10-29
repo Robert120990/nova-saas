@@ -140,6 +140,7 @@ async function generateAndelsaOvertimeExcel(companyId, filters = {}) {
             startDate = d <= 15 ? `${y}-${m}-01` : `${y}-${m}-16`;
         }
     }
+    if (startDate && endDate && startDate > endDate) { const tmp = startDate; startDate = endDate; endDate = tmp; }
     const { branchId, departamentoId, search } = filters;
 
     const [compRows] = await pool.query('SELECT * FROM companies WHERE id = ?', [companyId]);
@@ -178,9 +179,9 @@ async function generateAndelsaOvertimeExcel(companyId, filters = {}) {
                DATE_FORMAT(l.punch_time, '%Y-%m-%d') as fecha,
                DATE_FORMAT(l.punch_time, '%H:%i:%s') as hora
         FROM rh_biometric_attendance_logs l
-        WHERE l.company_id = ? AND DATE(l.punch_time) >= ? AND DATE(l.punch_time) <= ?
+        WHERE l.company_id = ? AND l.punch_time >= ? AND l.punch_time <= ?
         ORDER BY l.punch_time ASC
-    `, [companyId, startDate, endDate]);
+    `, [companyId, `${startDate} 00:00:00`, `${endDate} 23:59:59`]);
 
     const punchMap = new Map();
     punches.forEach(p => {

@@ -1,21 +1,41 @@
 const pool = require('../config/db');
 const crypto = require('crypto');
+const {
+    getTodayDateOnly,
+    formatToSqlDateTime,
+    isValidBiometricDateTime,
+    appendPunchTimeBounds
+} = require('./rhBiometricDate.helper');
 
 /**
  * Servicio de Control de Marcador Digital Biométrico (ZKTeco) en Recursos Humanos
  */
 
-const PUNCH_TYPE_MAP = { 0: 'entrada', 1: 'salida', 2: 'salida_almuerzo', 3: 'entrada_almuerzo', 4: 'horas_extra_entrada', 5: 'horas_extra_salida' };
-const VERIFY_TYPE_MAP = { 0: 'Contraseña', 1: 'Huella Digital', 2: 'Tarjeta RFID', 3: 'Contraseña', 4: 'Rostro / Facial', 15: 'Rostro / Facial' };
+const PUNCH_TYPE_MAP = {
+    0: 'entrada',
+    1: 'salida',
+    2: 'salida_almuerzo',
+    3: 'entrada_almuerzo',
+    4: 'horas_extra_entrada',
+    5: 'horas_extra_salida'
+};
 
-/**
- * Obtener dispositivos configurados por empresa
- */
+const VERIFY_TYPE_MAP = {
+    0: 'Contraseña',
+    1: 'Huella Digital',
+    2: 'Tarjeta RFID',
+    3: 'Contraseña',
+    4: 'Rostro / Facial',
+    15: 'Rostro / Facial'
+};
+
 async function getDevices(companyId) {
     const [rows] = await pool.query(
         `SELECT d.*, b.nombre as branch_name,
                 (CASE WHEN d.last_seen >= NOW() - INTERVAL 90 SECOND THEN 1 ELSE 0 END) as is_online,
-                (SELECT COUNT(*) FROM rh_biometric_attendance_logs WHERE device_id = d.id) as total_punches
+                (SELECT COUNT(*) FROM rh_biometric_attendance_logs
+                 WHERE device_id = d.id AND punch_time >= '2018-01-01 00:00:00'
+                   AND punch_time <= DATE_ADD(NOW(), INTERVAL 1 DAY)) as total_punches
          FROM rh_biometric_devices d
          LEFT JOIN branches b ON b.id = d.branch_id
          WHERE d.company_id = ?
@@ -25,9 +45,6 @@ async function getDevices(companyId) {
     return rows;
 }
 
-/**
- * Crear o actualizar dispositivo
- */
 async function saveDevice(companyId, data) {
     const { id, branch_id, nombre, ip_address, port, comm_key, protocol, is_active } = data;
     const ip = (ip_address || '192.168.3.201').trim();
@@ -45,22 +62,19 @@ async function saveDevice(companyId, data) {
         );
         const [updated] = await pool.query('SELECT * FROM rh_biometric_devices WHERE id = ?', [id]);
         return updated[0];
-    } else {
-        const agentKey = crypto.randomBytes(24).toString('hex');
-        const [res] = await pool.query(
-            `INSERT INTO rh_biometric_devices
-             (company_id, branch_id, nombre, ip_address, port, comm_key, protocol, agent_key, is_active, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'offline')`,
-            [companyId, branch_id || null, nombre || 'Marcador Digital ZKTeco', ip, tcpPort, keyComm, proto, agentKey, active]
-        );
-        const [created] = await pool.query('SELECT * FROM rh_biometric_devices WHERE id = ?', [res.insertId]);
-        return created[0];
     }
+
+    const agentKey = crypto.randomBytes(24).toString('hex');
+    const [res] = await pool.query(
+        `INSERT INTO rh_biometric_devices
+         (company_id, branch_id, nombre, ip_address, port, comm_key, protocol, agent_key, is_active, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'offline')`,
+        [companyId, branch_id || null, nombre || 'Marcador Digital ZKTeco', ip, tcpPort, keyComm, proto, agentKey, active]
+    );
+    const [created] = await pool.query('SELECT * FROM rh_biometric_devices WHERE id = ?', [res.insertId]);
+    return created[0];
 }
 
-/**
- * Regenerar Clave de Agente
- */
 async function regenerateAgentKey(companyId, deviceId) {
     const newKey = crypto.randomBytes(24).toString('hex');
     await pool.query(
@@ -70,9 +84,6 @@ async function regenerateAgentKey(companyId, deviceId) {
     return newKey;
 }
 
-/**
- * Obtener dispositivo por clave de conector local (para autenticar peticiones del agente)
- */
 async function getDeviceByAgentKey(agentKey) {
     if (!agentKey) return null;
     const [rows] = await pool.query(
@@ -86,9 +97,6 @@ async function getDeviceByAgentKey(agentKey) {
     return rows.length ? rows[0] : null;
 }
 
-/**
- * Actualizar estado y latido (heartbeat) desde el conector
- */
 async function updateDeviceHeartbeat(deviceId, deviceInfo = null, status = 'online') {
     const infoJson = deviceInfo ? JSON.stringify(deviceInfo) : null;
     await pool.query(
@@ -99,45 +107,16 @@ async function updateDeviceHeartbeat(deviceId, deviceInfo = null, status = 'onli
     );
 }
 
-function formatToSqlDateTime(val) {
-    if (!val) return null;
-    if (typeof val === 'string') {
-        const s = val.trim();
-        const match = s.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/);
-        if (match && !s.endsWith('Z')) {
-            return `${match[1]}-${match[2]}-${match[3]} ${match[4]}:${match[5]}:${match[6]}`;
-        }
-        const d = new Date(s);
-        if (isNaN(d.getTime())) return null;
-        const svParts = new Intl.DateTimeFormat('en-CA', {
-            timeZone: 'America/El_Salvador',
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false
-        }).formatToParts(d);
-        const getP = (type) => svParts.find(p => p.type === type)?.value;
-        return `${getP('year')}-${getP('month')}-${getP('day')} ${getP('hour')}:${getP('minute')}:${getP('second')}`;
-    }
-    if (val instanceof Date) {
-        if (isNaN(val.getTime())) return null;
-        const pad = (n) => String(n).padStart(2, '0');
-        return `${val.getFullYear()}-${pad(val.getMonth() + 1)}-${pad(val.getDate())} ${pad(val.getHours())}:${pad(val.getMinutes())}:${pad(val.getSeconds())}`;
-    }
-    return null;
-}
-
 /**
- * Obtener la última marcación registrada para un dispositivo en la empresa
+ * Obtiene la última marcación VÁLIDA registrada (excluyendo fechas corruptas de CMOS como año 2000 o 2118)
  */
 async function getDeviceLastPunch(deviceId, companyId) {
     const [rows] = await pool.query(
         `SELECT DATE_FORMAT(MAX(punch_time), '%Y-%m-%d %H:%i:%s') as last_punch_time, COUNT(*) as total_logs
          FROM rh_biometric_attendance_logs
-         WHERE device_id = ? AND company_id = ?`,
+         WHERE device_id = ? AND company_id = ?
+           AND punch_time >= '2018-01-01 00:00:00'
+           AND punch_time <= DATE_ADD(NOW(), INTERVAL 1 DAY)`,
         [deviceId, companyId]
     );
     return {
@@ -146,24 +125,19 @@ async function getDeviceLastPunch(deviceId, companyId) {
     };
 }
 
-/**
- * Guardar lote de marcaciones (desde el agente o sincronización)
- */
 async function processBatchPunches(companyId, deviceId, punches = []) {
     if (!Array.isArray(punches) || punches.length === 0) {
-        return { totalReceived: 0, insertedCount: 0 };
+        return { totalReceived: 0, insertedCount: 0, skippedInvalidDates: 0 };
     }
 
-    // Cache de mapeo de empleados en memoria para velocidad
     const [employees] = await pool.query(
-        `SELECT id, codigo, codigo_biometrico, CONCAT(nombres, ' ', apellidos) as nombre_completo
+        `SELECT id, codigo, codigo_biometrico
          FROM rh_empleados
          WHERE company_id = ?`,
         [companyId]
     );
 
     const empMap = new Map();
-    // Fallbacks secundarios (código e id)
     for (const emp of employees) {
         if (emp.codigo) {
             const num = String(emp.codigo).replace(/^0+/, '');
@@ -172,70 +146,60 @@ async function processBatchPunches(companyId, deviceId, punches = []) {
         }
         empMap.set(String(emp.id), emp.id);
     }
-    // Prioridad máxima: codigo_biometrico configurado
     for (const emp of employees) {
         if (emp.codigo_biometrico) {
-            empMap.set(String(emp.codigo_biometrico).trim().toLowerCase(), emp.id);
+            const bio = String(emp.codigo_biometrico).trim().toLowerCase();
+            empMap.set(bio, emp.id);
+            const bioNoZero = bio.replace(/^0+/, '');
+            if (bioNoZero) empMap.set(bioNoZero, emp.id);
         }
     }
 
     let insertedCount = 0;
+    let skippedInvalidDates = 0;
     const values = [];
 
     for (const p of punches) {
         const uid = String(p.device_uid || p.user_id || p.userId || p.uid || '').trim();
         if (!uid) continue;
 
-        let punchTimeStr = p.punch_time || p.record_time || p.timestamp || p.time;
+        const punchTimeStr = p.punch_time || p.record_time || p.timestamp || p.time;
         if (!punchTimeStr) continue;
 
-        // Normalizar fecha a la hora local exacta de El Salvador
         const normalizedTime = formatToSqlDateTime(punchTimeStr);
-        if (!normalizedTime) continue;
+        if (!normalizedTime || !isValidBiometricDateTime(normalizedTime)) {
+            skippedInvalidDates++;
+            continue;
+        }
 
-        // Resolver empleado
         const cleanUid = uid.toLowerCase();
         const cleanUidNoZero = cleanUid.replace(/^0+/, '');
         const empleadoId = empMap.get(cleanUid) || (cleanUidNoZero ? empMap.get(cleanUidNoZero) : null) || null;
 
-        const punchCode = typeof p.punch_code === 'number' ? p.punch_code : (typeof p.punch === 'number' ? p.punch : (typeof p.state === 'number' ? p.state : 0));
+        const punchCode = typeof p.punch_code === 'number'
+            ? p.punch_code
+            : (typeof p.punch === 'number' ? p.punch : (typeof p.state === 'number' ? p.state : 0));
         let punchType = p.punch_type || (p.punch_code !== undefined && p.punch_code > 0 ? PUNCH_TYPE_MAP[punchCode] : null);
         const timePart = normalizedTime.slice(11, 19);
         if (!punchType) {
-            if (timePart >= '15:00:00') {
-                punchType = 'salida';
-            } else if (timePart >= '11:30:00' && timePart < '13:00:00') {
-                punchType = 'salida_almuerzo';
-            } else if (timePart >= '13:00:00' && timePart < '14:30:00') {
-                punchType = 'entrada_almuerzo';
-            } else {
-                punchType = 'entrada';
-            }
+            if (timePart >= '15:00:00') punchType = 'salida';
+            else if (timePart >= '11:30:00' && timePart < '13:00:00') punchType = 'salida_almuerzo';
+            else if (timePart >= '13:00:00' && timePart < '14:30:00') punchType = 'entrada_almuerzo';
+            else punchType = 'entrada';
         }
 
         const verifyType = typeof p.verify_type === 'number' ? p.verify_type : (typeof p.verifyType === 'number' ? p.verifyType : 1);
         const verifyLabel = p.verify_label || VERIFY_TYPE_MAP[verifyType] || 'Huella Digital';
-
         const source = p.source || 'agent';
         const rawJson = p.raw_data ? JSON.stringify(p.raw_data) : JSON.stringify(p);
 
         values.push([
-            companyId,
-            deviceId || null,
-            uid,
-            empleadoId,
-            normalizedTime,
-            punchType,
-            punchCode,
-            verifyType,
-            verifyLabel,
-            source,
-            rawJson
+            companyId, deviceId || null, uid, empleadoId, normalizedTime,
+            punchType, punchCode, verifyType, verifyLabel, source, rawJson
         ]);
     }
 
     if (values.length > 0) {
-        // Inserción en bloques con INSERT IGNORE para omitir duplicados
         const [res] = await pool.query(
             `INSERT IGNORE INTO rh_biometric_attendance_logs
              (company_id, device_id, device_uid, empleado_id, punch_time, punch_type, punch_code, verify_type, verify_label, source, raw_data)
@@ -247,19 +211,14 @@ async function processBatchPunches(companyId, deviceId, punches = []) {
 
     if (deviceId) {
         await pool.query(
-            `UPDATE rh_biometric_devices
-             SET last_sync = NOW(), last_seen = NOW(), status = 'online'
-             WHERE id = ?`,
+            `UPDATE rh_biometric_devices SET last_sync = NOW(), last_seen = NOW(), status = 'online' WHERE id = ?`,
             [deviceId]
         );
     }
 
-    return { totalReceived: punches.length, insertedCount };
+    return { totalReceived: punches.length, insertedCount, skippedInvalidDates };
 }
 
-/**
- * Registrar Marcación Manual
- */
 async function createManualPunch(companyId, data) {
     const { empleado_id, punch_time, punch_type, notas, device_id } = data;
     if (!empleado_id) throw Object.assign(new Error('Seleccione un empleado.'), { status: 400 });
@@ -284,9 +243,6 @@ async function createManualPunch(companyId, data) {
     return { id: res.insertId, success: true };
 }
 
-/**
- * Listado de Marcaciones con Paginación y Filtros
- */
 async function getAttendanceLogs(companyId, query = {}) {
     const page = Math.max(1, parseInt(query.page, 10) || 1);
     const limit = Math.max(1, Math.min(200, parseInt(query.limit, 10) || 25));
@@ -295,27 +251,25 @@ async function getAttendanceLogs(companyId, query = {}) {
     const conditions = ['l.company_id = ?'];
     const params = [companyId];
 
-    const sDate = query.start_date || query.startDate;
-    const eDate = query.end_date || query.endDate;
+    const rawStart = query.start_date || query.startDate;
+    const rawEnd = query.end_date || query.endDate;
+    const { startDate, endDate } = appendPunchTimeBounds(conditions, params, 'l', rawStart, rawEnd);
+
     const pType = query.punch_type || query.punchType;
     const pSource = query.source;
     const dId = query.device_id || query.deviceId;
 
-    if (sDate) {
-        conditions.push('DATE(l.punch_time) >= ?');
-        params.push(sDate);
-    }
-    if (eDate) {
-        conditions.push('DATE(l.punch_time) <= ?');
-        params.push(eDate);
-    }
     if (pType && pType !== 'todos') {
         conditions.push('l.punch_type = ?');
         params.push(pType);
     }
     if (pSource && pSource !== 'todos') {
-        conditions.push('l.source = ?');
-        params.push(pSource);
+        if (pSource === 'biometrico' || pSource === 'reloj') {
+            conditions.push("(l.source IN ('agent', 'biometric', 'biometrico', '') OR l.source IS NULL)");
+        } else {
+            conditions.push('l.source = ?');
+            params.push(pSource);
+        }
     }
     if (dId && dId !== 'todos') {
         conditions.push('l.device_id = ?');
@@ -329,19 +283,23 @@ async function getAttendanceLogs(companyId, query = {}) {
 
     const whereSql = conditions.join(' AND ');
 
-    // Conteo total
-    const [countRes] = await pool.query(
-        `SELECT COUNT(*) as total
+    const [[statsRow]] = await pool.query(
+        `SELECT COUNT(*) as total,
+                SUM(CASE WHEN l.punch_type = 'entrada' THEN 1 ELSE 0 END) as entradas_rango,
+                SUM(CASE WHEN l.punch_type = 'salida' THEN 1 ELSE 0 END) as salidas_rango,
+                COUNT(DISTINCT COALESCE(l.empleado_id, l.device_uid)) as empleados_activos_rango
          FROM rh_biometric_attendance_logs l
          LEFT JOIN rh_empleados e ON e.id = l.empleado_id
          WHERE ${whereSql}`,
         params
     );
-    const total = countRes[0].total;
 
-    // Registros
+    const total = Number(statsRow?.total || 0);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+
     const [rows] = await pool.query(
         `SELECT l.*,
+                DATE_FORMAT(l.punch_time, '%Y-%m-%d %H:%i:%s') as punch_time_str,
                 e.codigo as empleado_codigo,
                 e.nombres as empleado_nombres,
                 e.apellidos as empleado_apellidos,
@@ -361,25 +319,29 @@ async function getAttendanceLogs(companyId, query = {}) {
         [...params, limit, offset]
     );
 
-    // Resumen del día de hoy
-    const [todaySummary] = await pool.query(
-        `SELECT
-            COUNT(*) as total_hoy,
-            SUM(CASE WHEN punch_type = 'entrada' THEN 1 ELSE 0 END) as entradas_hoy,
-            SUM(CASE WHEN punch_type = 'salida' THEN 1 ELSE 0 END) as salidas_hoy,
-            COUNT(DISTINCT empleado_id) as empleados_activos_hoy
-         FROM rh_biometric_attendance_logs
-         WHERE company_id = ? AND DATE(punch_time) = CURDATE()`,
-        [companyId]
-    );
+    const normalizedRows = rows.map(r => ({
+        ...r,
+        punch_time: r.punch_time_str || r.punch_time
+    }));
+
+    const today = getTodayDateOnly();
+    const isTodayRange = startDate === today && endDate === today;
 
     return {
-        data: rows,
+        data: normalizedRows,
         total,
         page,
         limit,
-        totalPages: Math.ceil(total / limit) || 1,
-        summary: todaySummary[0] || { total_hoy: 0, entradas_hoy: 0, salidas_hoy: 0, empleados_activos_hoy: 0 }
+        totalPages,
+        pagination: { total, page, limit, totalPages },
+        appliedRange: { startDate, endDate },
+        summary: {
+            total_hoy: total,
+            entradas_hoy: Number(statsRow?.entradas_rango || 0),
+            salidas_hoy: Number(statsRow?.salidas_rango || 0),
+            empleados_activos_hoy: Number(statsRow?.empleados_activos_rango || 0),
+            is_today_range: isTodayRange
+        }
     };
 }
 

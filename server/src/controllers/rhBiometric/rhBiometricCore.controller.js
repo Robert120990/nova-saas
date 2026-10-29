@@ -225,5 +225,16 @@ module.exports = {
     downloadConfig,
     downloadBat,
     downloadStopBat,
-    downloadAgentScript
+    downloadAgentScript,
+    downloadAgentScriptByKey: async (req, res) => {
+        try {
+            const agentKey = req.headers['x-agent-key'] || req.query?.agent_key;
+            if (!agentKey) return res.status(401).json({ message: 'Clave x-agent-key requerida.' });
+            const device = await rhBiometricService.getDeviceByAgentKey(agentKey);
+            if (!device) return res.status(403).json({ message: 'Dispositivo no autorizado.' });
+            return downloadAgentScript(req, res);
+        } catch (error) {
+            return res.status(500).json({ message: error.message });
+        }
+    }
 };

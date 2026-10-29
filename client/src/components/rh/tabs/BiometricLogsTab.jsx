@@ -18,6 +18,7 @@ const BiometricLogsTab = ({
     onStartDateChange,
     endDate,
     onEndDateChange,
+    onApplyRange,
     punchType,
     onPunchTypeChange,
     source,
@@ -25,10 +26,8 @@ const BiometricLogsTab = ({
 }) => {
     return (
         <div className="space-y-6">
-            {/* KPI Cards */}
             <BiometricSummaryCards summary={summary} />
 
-            {/* Filter Bar */}
             <BiometricFiltersBar
                 searchTerm={searchTerm}
                 onSearchChange={onSearchChange}
@@ -36,13 +35,13 @@ const BiometricLogsTab = ({
                 onStartDateChange={onStartDateChange}
                 endDate={endDate}
                 onEndDateChange={onEndDateChange}
+                onApplyRange={onApplyRange}
                 punchType={punchType}
                 onPunchTypeChange={onPunchTypeChange}
                 source={source}
                 onSourceChange={onSourceChange}
             />
 
-            {/* Attendance Logs Table */}
             <BiometricLogsTable
                 logs={logs}
                 isLoading={isLoading}

@@ -68,12 +68,16 @@ export const formatDateDMY = (dateStr) => {
     if (!dateStr) return '';
     if (typeof dateStr === 'string') {
         const cleanStr = dateStr.trim();
-        if (/^\d{4}-\d{2}-\d{2}/.test(cleanStr)) {
+        if (/^\d{4}-\d{2}-\d{2}/.test(cleanStr) && !cleanStr.endsWith('Z')) {
             const datePart = cleanStr.split('T')[0].split(' ')[0];
             const [year, month, day] = datePart.split('-');
             if (year && month && day) {
                 return `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
             }
+        }
+        if (/^\d{4}-\d{2}-\d{2}$/.test(cleanStr)) {
+            const [year, month, day] = cleanStr.split('-');
+            return `${day}/${month}/${year}`;
         }
     }
     const d = dateStr instanceof Date ? dateStr : new Date(dateStr);
@@ -132,6 +136,13 @@ export const formatDate = (dateStr, fallback = '---') => {
  */
 export const formatDateTime = (dateStr, fallback = '---') => {
     if (!dateStr) return fallback;
+    if (typeof dateStr === 'string') {
+        const clean = dateStr.trim();
+        const localMatch = clean.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/);
+        if (localMatch) {
+            return `${localMatch[3]}/${localMatch[2]}/${localMatch[1]} ${localMatch[4]}:${localMatch[5]}:${localMatch[6] || '00'}`;
+        }
+    }
     const d = dateStr instanceof Date ? dateStr : new Date(dateStr);
     if (isNaN(d.getTime())) return fallback;
     const dateFormatted = formatDateDMY(d);
@@ -149,6 +160,13 @@ export const formatDateTime = (dateStr, fallback = '---') => {
  */
 export const formatTime = (dateStr, fallback = '') => {
     if (!dateStr) return fallback;
+    if (typeof dateStr === 'string') {
+        const clean = dateStr.trim();
+        const tOnly = clean.match(/^(\d{2}):(\d{2})(?::(\d{2}))?$/);
+        if (tOnly) return `${tOnly[1]}:${tOnly[2]}:${tOnly[3] || '00'}`;
+        const localMatch = clean.match(/^\d{4}-\d{2}-\d{2}[T ](\d{2}):(\d{2})(?::(\d{2}))?$/);
+        if (localMatch) return `${localMatch[1]}:${localMatch[2]}:${localMatch[3] || '00'}`;
+    }
     const d = dateStr instanceof Date ? dateStr : new Date(dateStr);
     if (isNaN(d.getTime())) return fallback;
     const hours = String(d.getHours()).padStart(2, '0');
@@ -176,6 +194,76 @@ export const formatDecimalHours = (decimalHours, options = {}) => {
     if (h > 0 && m > 0) return `${h}h ${m}${minSuffix}`;
     if (h > 0) return options.short ? `${h}h` : `${h}h 00 min`;
     return `${m}${minSuffix}`;
+};
+
+/**
+ * Valida que una cadena YYYY-MM-DD tenga un año completo razonable (evita autoajustes mientras se teclea 0002 -> 2026).
+ */
+export const isValidInputDate = (val) => {
+    if (!val || typeof val !== 'string') return false;
+    const m = val.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return false;
+    const year = Number(m[1]);
+    return year >= 2000 && year <= 2100;
+};
+
+/**
+ * Sincroniza inteligentemente un rango de fechas para evitar rangos invertidos (startDate > endDate)
+ * sin interferir mientras el usuario escribe dígitos parciales del año en <input type="date">.
+ */
+export const normalizeDateRangeInput = (changedField, newValue, currentStart, currentEnd) => {
+    if (changedField === 'start') {
+        const nextStart = newValue;
+        const nextEnd = (isValidInputDate(nextStart) && isValidInputDate(currentEnd) && nextStart > currentEnd)
+            ? nextStart
+            : currentEnd;
+        return { startDate: nextStart, endDate: nextEnd };
+    }
+    const nextEnd = newValue;
+    const nextStart = (isValidInputDate(nextEnd) && isValidInputDate(currentStart) && nextEnd < currentStart)
+        ? nextEnd
+        : currentStart;
+    return { startDate: nextStart, endDate: nextEnd };
+};
+
+/**
+ * Devuelve rangos rápidos predefinidos (Hoy, Quincena Actual, Quincena Anterior, Mes Actual, Mes Anterior).
+ */
+export const getDateRangePreset = (preset, refDate = new Date()) => {
+    const now = refDate instanceof Date ? refDate : new Date(refDate);
+    const y = now.getFullYear();
+    const mIdx = now.getMonth();
+    const m = String(mIdx + 1).padStart(2, '0');
+    const day = now.getDate();
+    const today = getTodayString(now);
+
+    if (preset === 'hoy') {
+        return { startDate: today, endDate: today };
+    }
+    if (preset === 'quincena_actual') {
+        if (day <= 15) {
+            return { startDate: `${y}-${m}-01`, endDate: `${y}-${m}-15` };
+        }
+        return { startDate: `${y}-${m}-16`, endDate: getLastDayOfMonth(now) };
+    }
+    if (preset === 'quincena_anterior') {
+        if (day > 15) {
+            return { startDate: `${y}-${m}-01`, endDate: `${y}-${m}-15` };
+        }
+        const prevMonthLast = new Date(y, mIdx, 0);
+        const py = prevMonthLast.getFullYear();
+        const pm = String(prevMonthLast.getMonth() + 1).padStart(2, '0');
+        return { startDate: `${py}-${pm}-16`, endDate: getTodayString(prevMonthLast) };
+    }
+    if (preset === 'mes_actual') {
+        return { startDate: `${y}-${m}-01`, endDate: getLastDayOfMonth(now) };
+    }
+    if (preset === 'mes_anterior') {
+        const prevMonthFirst = new Date(y, mIdx - 1, 1);
+        const prevMonthLast = new Date(y, mIdx, 0);
+        return { startDate: getTodayString(prevMonthFirst), endDate: getTodayString(prevMonthLast) };
+    }
+    return { startDate: today, endDate: today };
 };
 
 /**
@@ -209,13 +297,18 @@ export const computeMpJulianLot = (dateInput) => {
 
 export default {
     getTodayString,
+    toDateInput,
+    getNowDateTimeLocal,
     getFirstDayOfMonth,
     getLastDayOfMonth,
     formatDateDMY,
+    formatDateRange,
     formatDate,
     formatDateTime,
     formatTime,
     formatDecimalHours,
+    isValidInputDate,
+    normalizeDateRangeInput,
+    getDateRangePreset,
     computeMpJulianLot
 };
-

@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
     Lock, RefreshCw, Clock, FileSpreadsheet, Loader2, FolderArchive
 } from 'lucide-react';
+import { normalizeDateRangeInput } from '../../../utils/dateUtils';
+import { unwrapList } from '../../../utils/apiUtils';
 import BiometricEditOvertimeModal from '../BiometricEditOvertimeModal';
 import BiometricFreezePeriodModal from '../BiometricFreezePeriodModal';
 import BiometricImportZkModal from '../BiometricImportZkModal';
@@ -14,9 +16,9 @@ import { BiometricPendingBanner, BiometricFrozenBanner } from '../BiometricOvert
 
 const BiometricOvertimeCortesTab = () => {
     const queryClient = useQueryClient();
-    const [subView, setSubView] = useState('pending'); // 'pending' | 'history'
+    const [subView, setSubView] = useState('pending');
     const [search, setSearch] = useState('');
-    const [onlyOvertime, setOnlyOvertime] = useState(true);
+    const [onlyOvertime, setOnlyOvertime] = useState(false);
     const [selectedCorte, setSelectedCorte] = useState(null);
     const [isExporting, setIsExporting] = useState(false);
 
@@ -26,16 +28,12 @@ const BiometricOvertimeCortesTab = () => {
     const [isFreezeModalOpen, setIsFreezeModalOpen] = useState(false);
     const [isZkImportModalOpen, setIsZkImportModalOpen] = useState(false);
 
-    // 1. Fetch pending summary (detects last frozen cutoff and pending date range)
     const {
         data: summaryData = {},
         refetch: refetchSummary
     } = useQuery({
         queryKey: ['rh-biometric-cortes-summary'],
-        queryFn: async () => {
-            const res = await axios.get('/api/rh/biometric/cortes/summary');
-            return res.data || {};
-        }
+        queryFn: async () => (await axios.get('/api/rh/biometric/cortes/summary')).data || {}
     });
 
     const lastCorte = summaryData?.ultimo_corte || null;
@@ -47,22 +45,27 @@ const BiometricOvertimeCortesTab = () => {
         total_editados: 0
     };
 
-    // Fechas para vista pendiente
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
+    const hasInitializedRange = useRef(false);
 
     useEffect(() => {
-        if (pendingRange.fecha_inicio && pendingRange.fecha_fin && !startDate && !endDate) {
+        if (!hasInitializedRange.current && pendingRange.fecha_inicio && pendingRange.fecha_fin) {
             setStartDate(pendingRange.fecha_inicio);
             setEndDate(pendingRange.fecha_fin);
+            hasInitializedRange.current = true;
         }
-    }, [pendingRange]);
+    }, [pendingRange.fecha_inicio, pendingRange.fecha_fin]);
 
-    // Fechas activas para la consulta de horas
-    const activeStartDate = selectedCorte ? selectedCorte.fecha_inicio : (startDate || pendingRange.fecha_inicio);
-    const activeEndDate = selectedCorte ? selectedCorte.fecha_fin : (endDate || pendingRange.fecha_fin);
+    const activeStartDate = selectedCorte ? selectedCorte.fecha_inicio : startDate;
+    const activeEndDate = selectedCorte ? selectedCorte.fecha_fin : endDate;
 
-    // 2. Fetch daily overtime rows
+    const handleDateChange = (field, val) => {
+        const next = normalizeDateRangeInput(field, val, startDate, endDate);
+        setStartDate(next.startDate);
+        setEndDate(next.endDate);
+    };
+
     const {
         data: overtimeData = { rows: [], summary: {} },
         isLoading: isOvertimeLoading,
@@ -92,35 +95,29 @@ const BiometricOvertimeCortesTab = () => {
         enabled: !!(activeStartDate && activeEndDate)
     });
 
-    // 3. Fetch list of frozen cortes
     const {
-        data: cortesList = [],
+        data: rawCortesList = [],
         isLoading: isCortesLoading,
         refetch: refetchCortes
     } = useQuery({
         queryKey: ['rh-biometric-cortes-list'],
-        queryFn: async () => {
-            const res = await axios.get('/api/rh/biometric/cortes');
-            return res.data?.data || [];
-        },
+        queryFn: async () => unwrapList(await axios.get('/api/rh/biometric/cortes')),
         enabled: subView === 'history'
     });
+    const cortesList = Array.isArray(rawCortesList) ? rawCortesList : [];
 
-    // Mutation: Descongelar / reabrir corte
     const unfreezeMutation = useMutation({
-        mutationFn: async (corteId) => {
-            const res = await axios.post(`/api/rh/biometric/cortes/${corteId}/unfreeze`);
-            return res.data;
-        },
+        mutationFn: async (corteId) => (await axios.post(`/api/rh/biometric/cortes/${corteId}/unfreeze`)).data,
         onSuccess: (data) => {
             toast.success(data?.message || 'Corte descongelado y reabierto.');
-            queryClient.invalidateQueries({ queryKey: ['rh-biometric-cortes-summary'] });
-            queryClient.invalidateQueries({ queryKey: ['rh-biometric-cortes-daily-overtime'] });
-            queryClient.invalidateQueries({ queryKey: ['rh-biometric-cortes-list'] });
+            hasInitializedRange.current = false;
             setSelectedCorte(null);
             setSubView('pending');
             setStartDate('');
             setEndDate('');
+            queryClient.invalidateQueries({ queryKey: ['rh-biometric-cortes-summary'] });
+            queryClient.invalidateQueries({ queryKey: ['rh-biometric-cortes-daily-overtime'] });
+            queryClient.invalidateQueries({ queryKey: ['rh-biometric-cortes-list'] });
         },
         onError: (err) => {
             toast.error(err.response?.data?.message || 'Error al descongelar el corte');
@@ -170,10 +167,15 @@ const BiometricOvertimeCortesTab = () => {
 
     const rows = Array.isArray(overtimeData?.rows) ? overtimeData.rows : [];
     const summary = overtimeData?.summary || {};
+    const bannerRange = {
+        ...pendingRange,
+        fecha_inicio: activeStartDate || pendingRange.fecha_inicio,
+        fecha_fin: activeEndDate || pendingRange.fecha_fin
+    };
 
     return (
         <div className="space-y-6">
-            {/* Selector de Sub-vistas (Pestañas internas) */}
+            {/* Selector de Sub-vistas */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/80 shadow-sm">
                 <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
                     <button
@@ -245,16 +247,14 @@ const BiometricOvertimeCortesTab = () => {
                 </div>
             </div>
 
-            {/* Banner: Rango Pendiente de Reportar */}
             {!selectedCorte && subView === 'pending' && (
                 <BiometricPendingBanner
-                    pendingRange={pendingRange}
+                    pendingRange={bannerRange}
                     lastCorte={lastCorte}
                     summary={summary}
                 />
             )}
 
-            {/* Banner: Modo Inspección de Corte Congelado */}
             {selectedCorte && (
                 <BiometricFrozenBanner
                     selectedCorte={selectedCorte}
@@ -268,7 +268,6 @@ const BiometricOvertimeCortesTab = () => {
                 />
             )}
 
-            {/* Listado de Cortes Congelados (Vista Historial) */}
             {subView === 'history' && !selectedCorte && (
                 <BiometricCortesHistoryTable
                     cortesList={cortesList}
@@ -277,7 +276,6 @@ const BiometricOvertimeCortesTab = () => {
                 />
             )}
 
-            {/* Tabla de Detalle y Edición de Horas (Visible en Rango Pendiente o en Corte Seleccionado) */}
             {(subView === 'pending' || selectedCorte) && (
                 <BiometricOvertimeTable
                     rows={rows}
@@ -285,9 +283,10 @@ const BiometricOvertimeCortesTab = () => {
                     search={search}
                     onSearchChange={setSearch}
                     startDate={startDate}
-                    onStartDateChange={setStartDate}
+                    onStartDateChange={(val) => handleDateChange('start', val)}
                     endDate={endDate}
-                    onEndDateChange={setEndDate}
+                    onEndDateChange={(val) => handleDateChange('end', val)}
+                    onApplyRange={(s, e) => { setStartDate(s); setEndDate(e); }}
                     onlyOvertime={onlyOvertime}
                     onOnlyOvertimeChange={setOnlyOvertime}
                     isFrozenView={!!selectedCorte}
@@ -295,7 +294,6 @@ const BiometricOvertimeCortesTab = () => {
                 />
             )}
 
-            {/* Modales */}
             <BiometricEditOvertimeModal
                 open={isEditModalOpen}
                 onClose={() => setIsEditModalOpen(false)}
@@ -306,8 +304,9 @@ const BiometricOvertimeCortesTab = () => {
             <BiometricFreezePeriodModal
                 open={isFreezeModalOpen}
                 onClose={() => setIsFreezeModalOpen(false)}
-                suggestedRange={pendingRange}
+                suggestedRange={bannerRange}
                 onSuccess={() => {
+                    hasInitializedRange.current = false;
                     setStartDate('');
                     setEndDate('');
                     refetchSummary();
