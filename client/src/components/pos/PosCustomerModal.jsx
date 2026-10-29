@@ -67,7 +67,7 @@ const PosCustomerModal = ({
             }
             maxWidth="max-w-2xl"
         >
-            <form onSubmit={handleCustomerSubmit} className="space-y-4">
+            <form onSubmit={handleCustomerSubmit} autoComplete="off" data-form-type="other" className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     <div className="sm:col-span-2">
                         <label className={customerLabelCls}>
@@ -77,6 +77,10 @@ const PosCustomerModal = ({
                             name="nombre" 
                             defaultValue={editingCustomer?.nombre} 
                             required 
+                            autoComplete="off"
+                            data-lpignore="true"
+                            data-1p-ignore="true"
+                            data-form-type="other"
                             placeholder="Ej: Comercializadora San Salvador S.A. de C.V."
                             className={customerFieldCls} 
                         />
@@ -87,6 +91,10 @@ const PosCustomerModal = ({
                         <input 
                             name="nombre_comercial" 
                             defaultValue={editingCustomer?.nombre_comercial} 
+                            autoComplete="off"
+                            data-lpignore="true"
+                            data-1p-ignore="true"
+                            data-form-type="other"
                             placeholder="Ej: Supertienda Central"
                             className={customerFieldCls} 
                         />
@@ -97,6 +105,7 @@ const PosCustomerModal = ({
                         <select 
                             name="tipo_documento" 
                             value={docType} 
+                            autoComplete="off"
                             onChange={(e) => {
                                 const nextType = e.target.value;
                                 setDocType(nextType);
@@ -119,6 +128,10 @@ const PosCustomerModal = ({
                         <input 
                             name="numero_documento" 
                             value={docNumberValue} 
+                            autoComplete="off"
+                            data-lpignore="true"
+                            data-1p-ignore="true"
+                            data-form-type="other"
                             onChange={(e) => {
                                 if (formatDocumentNumber) {
                                     setDocNumberValue(formatDocumentNumber(e.target.value, docType));
@@ -144,6 +157,10 @@ const PosCustomerModal = ({
                         <input 
                             name="nrc" 
                             value={nrcValue} 
+                            autoComplete="off"
+                            data-lpignore="true"
+                            data-1p-ignore="true"
+                            data-form-type="other"
                             onChange={(e) => {
                                 const formatted = formatNRC ? formatNRC(e.target.value) : e.target.value;
                                 setNrcValue(formatted);
@@ -210,6 +227,10 @@ const PosCustomerModal = ({
                         <input 
                             name="telefono" 
                             defaultValue={editingCustomer?.telefono} 
+                            autoComplete="off"
+                            data-lpignore="true"
+                            data-1p-ignore="true"
+                            data-form-type="other"
                             placeholder="2200-0000" 
                             className={customerFieldCls} 
                         />
@@ -221,6 +242,10 @@ const PosCustomerModal = ({
                             name="correo" 
                             type="email" 
                             defaultValue={editingCustomer?.correo} 
+                            autoComplete="off"
+                            data-lpignore="true"
+                            data-1p-ignore="true"
+                            data-form-type="other"
                             placeholder="cliente@ejemplo.com" 
                             className={customerFieldCls} 
                         />
@@ -244,6 +269,7 @@ const PosCustomerModal = ({
                             name="departamento" 
                             className={customerFieldCls} 
                             value={selectedDept} 
+                            autoComplete="off"
                             onChange={(e) => { 
                                 setSelectedDept(e.target.value); 
                                 setSelectedMun(''); 
@@ -262,6 +288,7 @@ const PosCustomerModal = ({
                         <select 
                             name="distrito" 
                             value={selectedDistrito} 
+                            autoComplete="off"
                             onChange={(e) => { 
                                 const sel = distritos.find(d => d.code === e.target.value); 
                                 setSelectedDistrito(e.target.value); 
@@ -281,6 +308,7 @@ const PosCustomerModal = ({
                         <select 
                             name="municipio" 
                             value={selectedMun} 
+                            autoComplete="off"
                             onChange={(e) => setSelectedMun(e.target.value)} 
                             className={customerFieldCls} 
                             required={isCustomerAddressRequired}
@@ -299,6 +327,10 @@ const PosCustomerModal = ({
                         name="direccion" 
                         defaultValue={editingCustomer?.direccion} 
                         required={isCustomerAddressRequired} 
+                        autoComplete="off"
+                        data-lpignore="true"
+                        data-1p-ignore="true"
+                        data-form-type="other"
                         placeholder={isCustomerAddressRequired ? "Dirección completa..." : "Dirección completa (opcional)..."} 
                         className={`${customerFieldCls} h-14 resize-none`} 
                     />

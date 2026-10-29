@@ -70,7 +70,7 @@ export default function QuickCustomerModal({ isOpen, onClose, onCustomerCreated 
                     </button>
                 </div>
 
-                <form onSubmit={handleSubmit} className="p-5 space-y-3.5">
+                <form onSubmit={handleSubmit} autoComplete="off" data-form-type="other" className="p-5 space-y-3.5">
                     <div>
                         <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
                             Nombre / Razón Social <span className="text-red-500">*</span>

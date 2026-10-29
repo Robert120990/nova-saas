@@ -777,7 +777,7 @@ const Customers = () => {
                 }
                 maxWidth="max-w-2xl"
             >
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form onSubmit={handleSubmit} autoComplete="off" data-form-type="other" className="space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                         <div className="sm:col-span-2">
                             <label className={labelCls}>
@@ -785,7 +785,7 @@ const Customers = () => {
                             </label>
                             <input 
                                 name="nombre" 
-                                defaultValue={selectedCustomer?.nombre} 
+                                defaultValue={selectedCustomer?.nombre} autoComplete="off" data-lpignore="true" data-1p-ignore="true" data-form-type="other" 
                                 required 
                                 placeholder="Ej: Comercializadora San Salvador S.A. de C.V."
                                 className={fieldCls} 
@@ -796,7 +796,7 @@ const Customers = () => {
                             <label className={labelCls}>Nombre Comercial</label>
                             <input 
                                 name="nombre_comercial" 
-                                defaultValue={selectedCustomer?.nombre_comercial} 
+                                defaultValue={selectedCustomer?.nombre_comercial} autoComplete="off" data-lpignore="true" data-1p-ignore="true" data-form-type="other" 
                                 placeholder="Ej: Supertienda Central"
                                 className={fieldCls} 
                             />
@@ -825,7 +825,7 @@ const Customers = () => {
                         <div>
                             <label className={labelCls}>Número de Documento (DUI / NIT)</label>
                             <input 
-                                name="numero_documento" 
+                                name="numero_documento" autoComplete="off" data-lpignore="true" data-1p-ignore="true" data-form-type="other" 
                                 value={docNumberValue} 
                                 onChange={(e) => setDocNumberValue(formatDocumentNumber(e.target.value, docType))}
                                 placeholder={docType === 'DUI' ? "00000000-0" : docType === 'NIT' ? "0000-000000-000-0" : "Número de documento"} 
@@ -844,7 +844,7 @@ const Customers = () => {
                         <div>
                             <label className={labelCls}>NRC (Registro de Contribuyente)</label>
                             <input 
-                                name="nrc" 
+                                name="nrc" autoComplete="off" data-lpignore="true" data-1p-ignore="true" data-form-type="other" 
                                 value={nrcValue} 
                                 onChange={(e) => {
                                     const formatted = formatNRC(e.target.value);
@@ -916,7 +916,7 @@ const Customers = () => {
                             <label className={labelCls}>Teléfono</label>
                             <input 
                                 name="telefono" 
-                                defaultValue={selectedCustomer?.telefono} 
+                                defaultValue={selectedCustomer?.telefono} autoComplete="off" data-lpignore="true" data-1p-ignore="true" data-form-type="other" 
                                 placeholder="2200-0000" 
                                 className={fieldCls} 
                             />
@@ -927,7 +927,7 @@ const Customers = () => {
                             <input 
                                 name="correo" 
                                 type="email" 
-                                defaultValue={selectedCustomer?.correo} 
+                                defaultValue={selectedCustomer?.correo} autoComplete="off" data-lpignore="true" data-1p-ignore="true" data-form-type="other" 
                                 placeholder="cliente@ejemplo.com" 
                                 className={fieldCls} 
                             />
@@ -996,7 +996,7 @@ const Customers = () => {
                         </label>
                         <textarea 
                             name="direccion" 
-                            defaultValue={selectedCustomer?.direccion} 
+                            defaultValue={selectedCustomer?.direccion} autoComplete="off" data-lpignore="true" data-1p-ignore="true" data-form-type="other" 
                             required={isAddressRequired} 
                             placeholder={isAddressRequired ? "Dirección completa..." : "Dirección completa (opcional)..."} 
                             className={`${fieldCls} h-14 resize-none`} 
@@ -1115,7 +1115,7 @@ const Customers = () => {
                     </div>
 
                     <div className="grid">
-                        <form onSubmit={handleBranchSubmit} className={`[grid-area:1/1] min-w-0 space-y-3 ${branchTab === 'form' ? '' : 'invisible pointer-events-none'}`}>
+                        <form onSubmit={handleBranchSubmit} autoComplete="off" data-form-type="other" className={`[grid-area:1/1] min-w-0 space-y-3 ${branchTab === 'form' ? '' : 'invisible pointer-events-none'}`}>
                             <h4 className="text-xs font-bold text-slate-500 uppercase">
                                 {editingBranch ? 'Editar Sucursal' : 'Nueva Sucursal'}
                             </h4>
