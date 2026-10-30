@@ -676,7 +676,7 @@ const Purchases = () => {
             const nosAgenteRetencion = currentCompany?.tipo_contribuyente === 'Grande';
             const proveedNoGC = !selectedProvider?.es_gran_contribuyente;
             const retencionRate = parseFloat(taxSettings?.retencion_rate || 1) / 100;
-            if (nosAgenteRetencion && proveedNoGC && gravada >= 100 && tipoDocId === '03') {
+            if (nosAgenteRetencion && proveedNoGC && gravada >= 100 && (tipoDocId === '03' || tipoDocId === '05')) {
                 autoRetencion = Math.round(gravada * retencionRate * 100) / 100;
             }
         }
@@ -685,7 +685,7 @@ const Purchases = () => {
         const proveedAgentePerc = selectedProvider?.es_gran_contribuyente;
         const nosNoGC = currentCompany?.tipo_contribuyente !== 'Grande';
         const percepcionRate = parseFloat(taxSettings?.percepcion_rate || 1) / 100;
-        if (proveedAgentePerc && nosNoGC && tipoDocId === '03') {
+        if (proveedAgentePerc && nosNoGC && (tipoDocId === '03' || tipoDocId === '05')) {
             autoPercepcion = Math.round(gravada * percepcionRate * 100) / 100;
         }
 

@@ -197,7 +197,9 @@ const PosLinkedDocModal = ({
                 doc_number: refDoc,
                 control_number: fullSale.numero_control || sale.numero_control || sale.dte_control || null,
                 emission_date: sale.fecha_emision ? sale.fecha_emision.split('T')[0] : getTodayString(),
-                generation_type: isElectronic ? 1 : 2
+                generation_type: isElectronic ? 1 : 2,
+                orig_iva_retenido: parseFloat(fullSale.iva_retenido || sale.iva_retenido || 0),
+                orig_iva_percibido: parseFloat(fullSale.iva_percibido || sale.iva_percibido || 0)
             }]);
 
             onClose();

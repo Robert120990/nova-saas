@@ -534,6 +534,8 @@ async function generateDTE(payload) {
 
     const globalNoGravado = round(parseFloat(payload.totalNoGravado ?? payload.propina ?? payload.tip ?? payload.tip_amount ?? payload.header?.totalNoGravado ?? payload.header?.propina ?? payload.header?.tip_amount ?? 0) || 0);
     const hasItemLevelNoGravado = Array.isArray(items) && items.some(it => parseFloat(it.noGravado ?? it.no_gravado ?? 0) > 0);
+    const payloadRet = round(parseFloat(payload.retencion ?? payload.header?.total_retencion ?? payload.header?.iva_retenido ?? 0) || 0);
+    const payloadPerc = round(parseFloat(payload.percepcion ?? payload.header?.total_percepcion ?? payload.header?.iva_percibido ?? 0) || 0);
 
     corpoItems = items.map((item, index) => {
         let itemNoGravado = 0;
@@ -654,9 +656,10 @@ async function generateDTE(payload) {
 
         if (tipoDte === '05' || tipoDte === '06') {
             baseItem.noGravado = itemNoGravado;
-            baseItem.ivaPerci = 0;
+            const itemVentaGrav = round(calcItem.ventaGravada || 0);
             baseItem.totalIva = 0;
-            baseItem.ivaRete = 0;
+            baseItem.ivaRete = (payloadRet > 0 && itemVentaGrav > 0) ? round(itemVentaGrav * 0.01) : 0;
+            baseItem.ivaPerci = (payloadPerc > 0 && itemVentaGrav > 0) ? round(itemVentaGrav * 0.01) : 0;
         }
 
         if (tipoDte === '01') {
@@ -667,6 +670,33 @@ async function generateDTE(payload) {
     });
 
     computedTotalNoGravado = (corpoItems || []).reduce((acc, it) => round(acc + (it.noGravado || 0)), 0);
+
+    if (tipoDte === '05' || tipoDte === '06') {
+        if (payloadRet > 0) {
+            const sumRete = (corpoItems || []).reduce((acc, it) => round(acc + (it.ivaRete || 0)), 0);
+            const diffRete = round(payloadRet - sumRete);
+            if (Math.abs(diffRete) > 0) {
+                for (let i = corpoItems.length - 1; i >= 0; i--) {
+                    if (corpoItems[i].ventaGravada > 0) {
+                        corpoItems[i].ivaRete = round(corpoItems[i].ivaRete + diffRete);
+                        break;
+                    }
+                }
+            }
+        }
+        if (payloadPerc > 0) {
+            const sumPerci = (corpoItems || []).reduce((acc, it) => round(acc + (it.ivaPerci || 0)), 0);
+            const diffPerci = round(payloadPerc - sumPerci);
+            if (Math.abs(diffPerci) > 0) {
+                for (let i = corpoItems.length - 1; i >= 0; i--) {
+                    if (corpoItems[i].ventaGravada > 0) {
+                        corpoItems[i].ivaPerci = round(corpoItems[i].ivaPerci + diffPerci);
+                        break;
+                    }
+                }
+            }
+        }
+    }
         } // Fin del else (tipoDte !== '07')
 
     // 5. Resumen
@@ -867,11 +897,13 @@ async function generateDTE(payload) {
             base.tributos = (base.tributos && base.tributos.length > 0) ? base.tributos : null;
         } else if (type === '05' || type === '06') {
             base.totalIva = 0; // Hacienda valida totalIva = 0 cuando el IVA se desglosa en tributos (consistente con CCF)
-            base.ivaPerci = 0;
-            base.ivaRete = 0;
-            base.codigoRetencionMH = null;
+            const ret = round(payload.retencion ?? payload.header?.total_retencion ?? payload.header?.iva_retenido ?? 0);
+            const perc = round(payload.percepcion ?? payload.header?.total_percepcion ?? payload.header?.iva_percibido ?? 0);
+            base.ivaPerci = perc;
+            base.ivaRete = ret;
+            base.codigoRetencionMH = ret > 0 ? (payload.codigoRetencionMH || '22') : null;
             base.totalNoGravado = computedTotalNoGravado;
-            base.totalPagar = round(totals.totalPagar + computedTotalNoGravado);
+            base.totalPagar = round(totals.totalPagar + computedTotalNoGravado - ret + perc);
             base.totalLetras = getAmountInWords(base.totalPagar);
             base.tributos = (base.tributos && base.tributos.length > 0) ? base.tributos : null;
             delete base.descuNoSuj;

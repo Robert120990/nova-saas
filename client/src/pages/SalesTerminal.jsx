@@ -258,7 +258,10 @@ const SalesTerminal = () => {
     const [fuelQty, setFuelQty] = useState('');
 
     // Reference Management State
-    const [referencingSale, setReferencingSale] = useState(null);
+    const [referencingSale, setReferencingSale] = useState(() => {
+        const draft = getValidStoredDraft();
+        return draft?.referencingSale || null;
+    });
 
     // Refs for Keyboard Navigation
     const barcodeInputRef = useRef(null);
@@ -287,6 +290,7 @@ const SalesTerminal = () => {
                     tipoDte,
                     condicionPago,
                     linkedDocs,
+                    referencingSale: referencingSale || null,
                     fexData,
                     nrData,
                     generalDiscount,
@@ -303,7 +307,7 @@ const SalesTerminal = () => {
             // Si el carrito está vacío, no existe borrador a retener
             localStorage.removeItem(DRAFT_KEY);
         }
-    }, [cart, customerId, customerBranchId, manualCustomerName, sellerId, tipoDte, condicionPago, linkedDocs, fexData, nrData, generalDiscount, generalDiscountPercentage, payments, entregado, DRAFT_KEY, user?.id, user?.company_id]);
+    }, [cart, customerId, customerBranchId, manualCustomerName, sellerId, tipoDte, condicionPago, linkedDocs, referencingSale, fexData, nrData, generalDiscount, generalDiscountPercentage, payments, entregado, DRAFT_KEY, user?.id, user?.company_id]);
 
     // Notificar al montar si se recuperó un borrador previo válido
     useEffect(() => {
@@ -1757,6 +1761,16 @@ const SalesTerminal = () => {
                         <div>FOVIAL</div>
                         <div>$${sale.totals.fovial.toFixed(2)}</div>
                     </div>` : ''}
+                    ${sale.totals.retencion > 0 ? `
+                    <div class="flex-between bold" style="color: #b91c1c;">
+                        <div>(-) RETENCIÓN IVA (1%)</div>
+                        <div>-$${parseFloat(sale.totals.retencion).toFixed(2)}</div>
+                    </div>` : ''}
+                    ${sale.totals.percepcion > 0 ? `
+                    <div class="flex-between bold">
+                        <div>(+) PERCEPCIÓN IVA (1%)</div>
+                        <div>+$${parseFloat(sale.totals.percepcion).toFixed(2)}</div>
+                    </div>` : ''}
                     <div class="flex-between bold" style="font-size: 1.2em; margin-top: 5px;">
                         <div>TOTAL A PAGAR</div>
                         <div>$${sale.totals.total.toFixed(2)}</div>
@@ -2120,11 +2134,20 @@ const SalesTerminal = () => {
         const retencionRate = parseFloat(taxSettings?.retencion_rate || 1) / 100;
         const percepcionRate = parseFloat(taxSettings?.percepcion_rate || 1) / 100;
 
-        if ((tipoDte === '03' || tipoDte === '01') && gravadoNeto >= 100) {
-            if (!nosAgenteRetencion && clienteGC) {
+        const origHadRetencion = (tipoDte === '05' || tipoDte === '06') && (
+            parseFloat(referencingSale?.iva_retenido || 0) > 0 ||
+            linkedDocs.some(d => parseFloat(d.orig_iva_retenido || 0) > 0)
+        );
+        const origHadPercepcion = (tipoDte === '05' || tipoDte === '06') && (
+            parseFloat(referencingSale?.iva_percibido || 0) > 0 ||
+            linkedDocs.some(d => parseFloat(d.orig_iva_percibido || 0) > 0)
+        );
+
+        if ((tipoDte === '03' || tipoDte === '01' || tipoDte === '05' || tipoDte === '06') && (gravadoNeto >= 100 || origHadRetencion || origHadPercepcion)) {
+            if ((!nosAgenteRetencion && clienteGC) || origHadRetencion) {
                 // Nosotros no somos GC, pero el Cliente SÍ lo es -> Ellos nos retienen el 1% de nuestra venta
                 retencion = gravadoNeto * retencionRate;
-            } else if (tipoDte === '03' && nosAgenteRetencion && !clienteGC) {
+            } else if (((tipoDte === '03' || tipoDte === '05' || tipoDte === '06') && nosAgenteRetencion && !clienteGC) || origHadPercepcion) {
                 // Nosotros somos GC, y el Cliente NO lo es -> Nosotros les percibimos el 1% adicional
                 percepcion = gravadoNeto * percepcionRate;
             }
@@ -2157,7 +2180,7 @@ const SalesTerminal = () => {
             totalSujetoRetencion,
             totalIVAretenido
         };
-    }, [cart, generalDiscount, currentCompany, selectedCustomerData, tipoDte, taxSettings, linkedDocs, customerExemptOverride]);
+    }, [cart, generalDiscount, currentCompany, selectedCustomerData, tipoDte, taxSettings, linkedDocs, referencingSale, customerExemptOverride]);
 
     const addToCart = (itemData, isCombo = false) => {
         const itemName = itemData.nombre || itemData.name;
