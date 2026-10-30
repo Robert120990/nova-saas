@@ -30,7 +30,23 @@ const getConfig = async (req, res) => {
 
 const updateConfig = async (req, res) => {
     try {
-        const { responsable_nombre, notario_nombre, notario_domicilio, notario_departamento, calculo_renta_modo } = req.body;
+        const {
+            responsable_nombre,
+            notario_nombre,
+            notario_domicilio,
+            notario_departamento,
+            calculo_renta_modo,
+            patrono_nombre,
+            patrono_edad,
+            patrono_sexo,
+            patrono_estado_civil,
+            patrono_profesion,
+            patrono_direccion,
+            patrono_nacionalidad,
+            patrono_dui,
+            patrono_dui_extendido,
+            patrono_nit
+        } = req.body;
         const data = {};
 
         if (responsable_nombre !== undefined) data.responsable_nombre = responsable_nombre || '';
@@ -40,6 +56,16 @@ const updateConfig = async (req, res) => {
         if (calculo_renta_modo !== undefined) {
             data.calculo_renta_modo = calculo_renta_modo === 'cada_quincena' ? 'cada_quincena' : 'segunda_quincena';
         }
+        if (patrono_nombre !== undefined) data.patrono_nombre = patrono_nombre || '';
+        if (patrono_edad !== undefined) data.patrono_edad = patrono_edad !== '' && patrono_edad !== null ? parseInt(patrono_edad, 10) : null;
+        if (patrono_sexo !== undefined) data.patrono_sexo = patrono_sexo || 'MASCULINO';
+        if (patrono_estado_civil !== undefined) data.patrono_estado_civil = patrono_estado_civil || 'CASADO';
+        if (patrono_profesion !== undefined) data.patrono_profesion = patrono_profesion || '';
+        if (patrono_direccion !== undefined) data.patrono_direccion = patrono_direccion || '';
+        if (patrono_nacionalidad !== undefined) data.patrono_nacionalidad = patrono_nacionalidad || 'SALVADOREÑA';
+        if (patrono_dui !== undefined) data.patrono_dui = patrono_dui || '';
+        if (patrono_dui_extendido !== undefined) data.patrono_dui_extendido = patrono_dui_extendido || '';
+        if (patrono_nit !== undefined) data.patrono_nit = patrono_nit || '';
 
         if (req.files) {
             if (req.files.firma && req.files.firma.length > 0) {

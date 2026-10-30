@@ -835,6 +835,18 @@ ORDER BY gc.fecha_turno DESC
 - dias_suspension INT, fecha_inicio_suspension DATE, fecha_fin_suspension DATE, accion_otra VARCHAR(255)
 - recursos_humanos VARCHAR(150), estado_firma ENUM('pendiente', 'firmado', 'se_nego_a_firmar')
 - testigo_nombre VARCHAR(150), observaciones TEXT, estado ENUM('borrador', 'aplicada', 'anulada') - created_at, updated_at
+
+### rh_contratos_laborales (Contratos Individuales de Trabajo)
+- id, company_id, empleado_id FK -> rh_empleados, codigo VARCHAR(30) (CT-YYYY-XXXX)
+- trabajador_nombre, fecha_nacimiento DATE, edad INT, sexo, estado_civil, profesion_oficio, direccion, nacionalidad
+- num_dui, dui_extendido_en, num_nit, num_isss
+- cargo_laboral, obligaciones, lugar_trabajo, jefe_inmediato
+- plazo_contrato, fecha_inicio DATE, lugar_creacion, fecha_creacion DATE
+- salario_mensual DECIMAL(12,2), lugar_pago, forma_pago
+- horario_dia_inicio, horario_dia_fin, horario_manana_desde, horario_manana_hasta, horario_tarde_desde, horario_tarde_hasta, horario_dia_extra, horario_extra_desde, horario_extra_hasta, total_horas_semana DECIMAL(5,2)
+- dependientes JSON (array de dependientes económicos con nombre, apellido, fecha_nacimiento, edad, direccion)
+- patrono_nombre, patrono_edad, patrono_sexo, patrono_estado_civil, patrono_profesion, patrono_direccion, patrono_nacionalidad, patrono_dui, patrono_dui_extendido, patrono_nit
+- herramientas_materiales, otras_estipulaciones, estado ENUM('vigente','finalizado','anulado'), created_at, updated_at
 ### egg_storage_containers (Contenedores de frío / almacenamiento industrial)
 - id, company_id, container_number INT, code VARCHAR(30), name VARCHAR(120), is_active_power TINYINT(1), days_on DECIMAL(10,2), daily_rate DECIMAL(12,2), turned_on_at DATETIME, turned_off_at DATETIME, notes VARCHAR(255)
 ### egg_storage_container_logs (Bitácora de ciclos y encendido/apagado de contenedores industriales)

@@ -67,7 +67,9 @@ const {
     planillaAguinaldosSchema,
     rhDescuentoSchema,
     rhDescuentoProgramadoSchema,
-    rhEmpleadoDescuentoSchema
+    rhEmpleadoDescuentoSchema,
+    contratoLaboralSchema,
+    contratoLaboralUpdateSchema
 } = require('../schemas/rhSchemas');
 const {
     pozoServicioSchema,
@@ -255,6 +257,7 @@ const rhCuentaPlanillaController = require('../controllers/rhCuentaPlanilla.cont
 const rhPlanillaController = require('../controllers/rhPlanilla.controller');
 const rhReportesController = require('../controllers/rhReportes.controller');
 const rhAccionPersonalController = require('../controllers/rhAccionPersonal.controller');
+const rhContratoLaboralController = require('../controllers/rhContratoLaboral.controller');
 const changelogController = require('../controllers/changelog.controller');
 const crmAgreementsController = require('../controllers/crmAgreements.controller');
 const crmQuotationController = require('../controllers/crmQuotation.controller');
@@ -1273,6 +1276,15 @@ router.get('/rh/acciones-personal/:id', rhAccionPersonalController.getAccion);
 router.put('/rh/acciones-personal/:id', validate(accionPersonalUpdateSchema), rhAccionPersonalController.updateAccion);
 router.delete('/rh/acciones-personal/:id', rhAccionPersonalController.deleteAccion);
 router.get('/rh/acciones-personal/:id/pdf', rhAccionPersonalController.exportPDF);
+
+// RRHH - Contratos Laborales
+router.get('/rh/contratos-laborales/patrono-defaults', rhContratoLaboralController.getPatronoDefaults);
+router.get('/rh/contratos-laborales', rhContratoLaboralController.getContratos);
+router.post('/rh/contratos-laborales', validate(contratoLaboralSchema), rhContratoLaboralController.createContrato);
+router.get('/rh/contratos-laborales/:id', rhContratoLaboralController.getContrato);
+router.put('/rh/contratos-laborales/:id', validate(contratoLaboralUpdateSchema), rhContratoLaboralController.updateContrato);
+router.delete('/rh/contratos-laborales/:id', rhContratoLaboralController.deleteContrato);
+router.get('/rh/contratos-laborales/:id/pdf', rhContratoLaboralController.exportPDF);
 
 // RRHH - Planilla de Vacaciones
 router.get('/rh/planilla-vacaciones/calcular', rhPlanillaVacacionesController.calcular);

@@ -103,6 +103,11 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
                 return true;
             }
         }
+        if (item.permission === 'manage_rh_contratos_laborales') {
+            if (isAdminRole || permissions.includes('manage_rh_contratos_laborales') || permissions.includes('manage_rh_empleados') || permissions.includes('view_rh')) {
+                return true;
+            }
+        }
         return permissions.includes(item.permission);
     };
 

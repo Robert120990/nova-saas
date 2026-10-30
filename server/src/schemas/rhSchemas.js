@@ -232,6 +232,80 @@ const rhDescuentoSchema = z.object({
     fecha_inicio: emptyToNull.nullable().optional()
 }).passthrough();
 
+// ==========================================
+// 6. CONTRATOS LABORALES
+// ==========================================
+const dependienteContratoSchema = z.object({
+    nombre: z.preprocess(val => (val === undefined || val === null ? '' : String(val).trim()), z.string().optional().default('')),
+    apellido: z.preprocess(val => (val === undefined || val === null ? '' : String(val).trim()), z.string().optional().default('')),
+    fecha_nacimiento: emptyToNull.nullable().optional(),
+    edad: z.preprocess(val => (val === '' || val === null || val === undefined ? null : Number(val)), z.number().nullable().optional()),
+    direccion: z.preprocess(val => (val === undefined || val === null ? '' : String(val).trim()), z.string().optional().default(''))
+}).passthrough();
+
+const contratoLaboralSchema = z.object({
+    empleado_id: z.coerce.number().nullable().optional(),
+    trabajador_nombre: z.string({ error: 'El nombre del trabajador es obligatorio' })
+        .trim()
+        .min(1, 'El nombre del trabajador no puede estar vacío'),
+    fecha_nacimiento: emptyToNull.nullable().optional(),
+    edad: z.coerce.number().nullable().optional(),
+    sexo: emptyToNull.nullable().optional().default('MASCULINO'),
+    estado_civil: emptyToNull.nullable().optional().default('SOLTERO'),
+    profesion_oficio: emptyToNull.nullable().optional().default('ESTUDIANTE'),
+    direccion: emptyToNull.nullable().optional(),
+    nacionalidad: emptyToNull.nullable().optional().default('SALVADOREÑO'),
+    num_dui: emptyToNull.nullable().optional(),
+    dui_extendido_en: emptyToNull.nullable().optional(),
+    num_nit: emptyToNull.nullable().optional(),
+    num_isss: emptyToNull.nullable().optional(),
+    cargo_laboral: z.string({ error: 'El cargo laboral es obligatorio' })
+        .trim()
+        .min(1, 'El cargo laboral no puede estar vacío'),
+    obligaciones: emptyToNull.nullable().optional(),
+    lugar_trabajo: z.string({ error: 'El lugar de trabajo es obligatorio' })
+        .trim()
+        .min(1, 'El lugar de trabajo no puede estar vacío'),
+    jefe_inmediato: emptyToNull.nullable().optional(),
+    plazo_contrato: emptyToNull.nullable().optional().default('TIEMPO INDEFINIDO'),
+    fecha_inicio: z.string({ error: 'La fecha de inicio es obligatoria' })
+        .trim()
+        .min(1, 'La fecha de inicio es obligatoria'),
+    lugar_creacion: emptyToNull.nullable().optional().default('SAN SALVADOR'),
+    fecha_creacion: z.string({ error: 'La fecha de creación es obligatoria' })
+        .trim()
+        .min(1, 'La fecha de creación es obligatoria'),
+    salario_mensual: z.coerce.number().min(0, 'El salario mensual no puede ser negativo').default(0),
+    lugar_pago: emptyToNull.nullable().optional(),
+    forma_pago: emptyToNull.nullable().optional().default('TRANFERENCIA BANCARIA'),
+    horario_dia_inicio: emptyToNull.nullable().optional().default('LUNES'),
+    horario_dia_fin: emptyToNull.nullable().optional().default('VIERNES'),
+    horario_manana_desde: emptyToNull.nullable().optional().default('8:00 A.M.'),
+    horario_manana_hasta: emptyToNull.nullable().optional().default('12:00 P.M.'),
+    horario_tarde_desde: emptyToNull.nullable().optional().default('1:00 P.M.'),
+    horario_tarde_hasta: emptyToNull.nullable().optional().default('5:00 P.M.'),
+    horario_dia_extra: emptyToNull.nullable().optional().default('SABADO'),
+    horario_extra_desde: emptyToNull.nullable().optional().default('8:00 A.M.'),
+    horario_extra_hasta: emptyToNull.nullable().optional().default('12:00 P.M.'),
+    total_horas_semana: z.coerce.number().min(0).optional().default(44),
+    dependientes: z.array(dependienteContratoSchema).optional().default([]),
+    patrono_nombre: emptyToNull.nullable().optional(),
+    patrono_edad: z.coerce.number().nullable().optional(),
+    patrono_sexo: emptyToNull.nullable().optional(),
+    patrono_estado_civil: emptyToNull.nullable().optional(),
+    patrono_profesion: emptyToNull.nullable().optional(),
+    patrono_direccion: emptyToNull.nullable().optional(),
+    patrono_nacionalidad: emptyToNull.nullable().optional(),
+    patrono_dui: emptyToNull.nullable().optional(),
+    patrono_dui_extendido: emptyToNull.nullable().optional(),
+    patrono_nit: emptyToNull.nullable().optional(),
+    herramientas_materiales: emptyToNull.nullable().optional(),
+    otras_estipulaciones: emptyToNull.nullable().optional(),
+    estado: emptyToNull.nullable().optional().default('vigente')
+}).passthrough();
+
+const contratoLaboralUpdateSchema = contratoLaboralSchema.partial().passthrough();
+
 module.exports = {
     empleadoSchema,
     empleadoUpdateSchema,
@@ -242,5 +316,7 @@ module.exports = {
     planillaAguinaldosSchema,
     rhDescuentoSchema,
     rhDescuentoProgramadoSchema,
-    rhEmpleadoDescuentoSchema
+    rhEmpleadoDescuentoSchema,
+    contratoLaboralSchema,
+    contratoLaboralUpdateSchema
 };

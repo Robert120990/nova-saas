@@ -391,6 +391,25 @@ function buildTree(items) {
         });
     }
 
+    // Asegurar Contrato Laboral en Recursos Humanos
+    const rhRoot = Object.values(itemMap).find(i =>
+        (!i.parent_id && (i.id === 94 || i.label === 'Recursos Humanos')) ||
+        (i.children && i.children.some(c => c.path === '/rh/empleados'))
+    );
+    if (rhRoot && !rhRoot.children.some(c => c.path === '/rh/contratos-laborales')) {
+        rhRoot.children.push({
+            id: 'virtual-rh-contratos-laborales',
+            label: 'Contrato Laboral',
+            path: '/rh/contratos-laborales',
+            permission: 'manage_rh_contratos_laborales',
+            permission_key: 'manage_rh_contratos_laborales',
+            hideInMenu: false,
+            sort_order: 2,
+            icon: iconMap.FileSignature || iconMap.FileText || iconMap.Circle,
+            children: []
+        });
+    }
+
     // Ordenar de forma determinista por sort_order
     Object.values(itemMap).forEach(node => {
         if (node.children && node.children.length > 0) {

@@ -2,7 +2,7 @@
 
 > **GENERADO AUTOMÁTICAMENTE** — no editar a mano.
 > Regenerar con: `node scripts/generate-project-structure.js`
-> Última generación: 2026-10-27
+> Última generación: 2026-10-30
 >
 > Mapa exhaustivo de la estructura física del repositorio con la función de
 > cada archivo. Para reglas de negocio y convenciones ver AGENTS.md, CLAUDE.md
@@ -212,11 +212,18 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `rhBenefitsCalculation.service.js` | Rh Benefits Calculation.service. |
 | `rhBenefitsPersistence.service.js` | Rh Benefits Persistence.service. |
 | `rhBiometric.service.js` | Rh Biometric.service. |
+| `rhBiometricAbsences.catalog.js` | Rh Biometric Absences.catalog. |
+| `rhBiometricAbsences.service.js` | Rh Biometric Absences.service. |
+| `rhBiometricAbsencesWrite.service.js` | Rh Biometric Absences Write.service. |
 | `rhBiometricAndelsaExcel.service.js` | Rh Biometric Andelsa Excel.service. |
 | `rhBiometricConfig.service.js` | Rh Biometric Config.service. |
 | `rhBiometricCortes.service.js` | Rh Biometric Cortes.service. |
+| `rhBiometricCortesWrite.service.js` | Rh Biometric Cortes Write.service. |
+| `rhBiometricDate.helper.js` | Rh Biometric Date.helper. |
 | `rhBiometricReport.service.js` | Rh Biometric Report.service. |
+| `rhBiometricReportAbsences.helper.js` | Rh Biometric Report Absences.helper. |
 | `rhBiometricZkImport.service.js` | Rh Biometric Zk Import.service. |
+| `rhContratoLaboralPdf.service.js` | Rh Contrato Laboral Pdf.service. |
 | `rhIsssReportExcel.service.js` | Rh Isss Report Excel.service. |
 | `rhReportPdf.service.js` | Rh Report Pdf.service. |
 | `rrsVentasTiendaAutoSync.service.js` | Rrs Ventas Tienda Auto Sync.service. |
@@ -338,6 +345,7 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `rhBiometric.controller.js` | Rh Biometric.controller. |
 | `rhCargo.controller.js` | CRUD de cargos/puestos de trabajo. |
 | `rhConfig.controller.js` | Configuración general de Recursos Humanos. |
+| `rhContratoLaboral.controller.js` | Rh Contrato Laboral.controller. |
 | `rhCuentaPlanilla.controller.js` | Mapeo de conceptos de planilla a cuentas contables. |
 | `rhDepartamento.controller.js` | CRUD de departamentos de la empresa. |
 | `rhDescuentoProgramado.controller.js` | Descuentos programados recurrentes a empleados (cuotas). |
@@ -1067,9 +1075,15 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 |---|---|
 | `accionPersonalConstants.js` | Accion Personal Constants. |
 | `AccionPersonalModal.jsx` | Accion Personal Modal. |
+| `BiometricAbsenceAuthFields.jsx` | Biometric Absence Auth Fields. |
+| `BiometricAbsenceAuthorizeModal.jsx` | Biometric Absence Authorize Modal. |
+| `biometricAbsenceConstants.js` | Biometric Absence Constants. |
+| `BiometricAbsenceModal.jsx` | Biometric Absence Modal. |
+| `BiometricAbsencesHistoryView.jsx` | Biometric Absences History View. |
 | `BiometricAgentModal.jsx` | Biometric Agent Modal. |
 | `BiometricConfigModal.jsx` | Biometric Config Modal. |
 | `BiometricCortesHistoryTable.jsx` | Biometric Cortes History Table. |
+| `BiometricDailyRadarView.jsx` | Biometric Daily Radar View. |
 | `BiometricDeviceModal.jsx` | Biometric Device Modal. |
 | `BiometricEditOvertimeModal.jsx` | Biometric Edit Overtime Modal. |
 | `BiometricEmployeeModal.jsx` | Biometric Employee Modal. |
@@ -1114,6 +1128,18 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 |---|---|
 | `RhBankFormatsConfigTab.jsx` | Rh Bank Formats Config Tab. |
 | `RhGeneralConfigTab.jsx` | Rh General Config Tab. |
+
+**`client/src/components/rh/contratos/`**
+
+| Archivo | Descripción |
+|---|---|
+| `contratoConstants.js` | Contrato Constants. |
+| `ContratoDependientesSection.jsx` | Contrato Dependientes Section. |
+| `ContratoLaboralModal.jsx` | Contrato Laboral Modal. |
+| `ContratoSalarioHorarioSection.jsx` | Contrato Salario Horario Section. |
+| `ContratosFiltersBar.jsx` | Contratos Filters Bar. |
+| `ContratoTrabajadorSection.jsx` | Contrato Trabajador Section. |
+| `index.js` | Index. |
 
 **`client/src/components/rh/liquidaciones/`**
 
@@ -1166,6 +1192,7 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 
 | Archivo | Descripción |
 |---|---|
+| `BiometricAbsencesTab.jsx` | Biometric Absences Tab. |
 | `BiometricEmployeeShiftsTab.jsx` | Biometric Employee Shifts Tab. |
 | `BiometricHolidaysTab.jsx` | Biometric Holidays Tab. |
 | `BiometricLogsTab.jsx` | Biometric Logs Tab. |
@@ -1514,6 +1541,7 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | `Aguinaldos.jsx` | Proceso y planilla de aguinaldos. |
 | `Cargos.jsx` | Catálogo de cargos. |
 | `ConfigRh.jsx` | Configuración general de RRHH. |
+| `ContratosLaborales.jsx` | Recursos Humanos: Contratos Laborales. |
 | `CuentasPlanillas.jsx` | Cuentas contables por concepto de planilla. |
 | `Departamentos.jsx` | Catálogo de departamentos. |
 | `DescuentosProgramados.jsx` | Descuentos programados a empleados. |
@@ -1665,8 +1693,8 @@ oficiales viven en `cumplientoDTE/svfe-json-schemas/` y la firma en `services/si
 
 Patrón de nombres: `migration_v<N>_<descripcion>.{sql|js}` y un runner `run_migration_v<N>.js` por versión.
 
-- Rango de versiones detectado: **v2 → v639**
-- Total de archivos: **587** (193 .sql · 156 .js migración · 236 runners run_migration* · 2 .json · 0 otros)
+- Rango de versiones detectado: **v2 → v640**
+- Total de archivos: **592** (193 .sql · 158 .js migración · 239 runners run_migration* · 2 .json · 0 otros)
 
 > Los archivos NO se listan individualmente por su volumen: para conocer el esquema vigente usa
 > `SELECT ... FROM information_schema` o revisa `server/src/config/db.schema.js`,
