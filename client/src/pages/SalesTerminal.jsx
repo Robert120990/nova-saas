@@ -2124,7 +2124,7 @@ const SalesTerminal = () => {
             if (!nosAgenteRetencion && clienteGC) {
                 // Nosotros no somos GC, pero el Cliente SÍ lo es -> Ellos nos retienen el 1% de nuestra venta
                 retencion = gravadoNeto * retencionRate;
-            } else if (nosAgenteRetencion && !clienteGC) {
+            } else if (tipoDte === '03' && nosAgenteRetencion && !clienteGC) {
                 // Nosotros somos GC, y el Cliente NO lo es -> Nosotros les percibimos el 1% adicional
                 percepcion = gravadoNeto * percepcionRate;
             }

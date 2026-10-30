@@ -353,7 +353,7 @@ router.post('/users/bulk-update-role', checkPermission('manage_user_access'), va
 router.post('/users/bulk-delete-access', checkPermission('manage_user_access'), validate(bulkDeleteAccessSchema), userController.bulkDeleteAccess);
 router.get('/companies/modules-matrix', checkPermission('manage_companies'), companyController.getCompanyModulesMatrix);
 router.put('/companies/:id/modules', checkPermission('manage_companies'), companyController.updateCompanyModules);
-router.get('/companies', checkPermission(['manage_companies', 'manage_user_access']), companyController.getCompanies);
+router.get('/companies', companyController.getCompanies);
 router.post('/companies', checkPermission('manage_companies'), upload.fields([{ name: 'logo', maxCount: 1 }, { name: 'certificate', maxCount: 1 }, { name: 'certificate_crt', maxCount: 1 }]), validate(companyCreateSchema), companyController.createCompany);
 router.put('/companies/:id', checkPermission('manage_companies'), upload.fields([{ name: 'logo', maxCount: 1 }, { name: 'certificate', maxCount: 1 }, { name: 'certificate_crt', maxCount: 1 }]), validate(companyUpdateSchema), companyController.updateCompany);
 router.delete('/companies/:id', checkPermission('manage_companies'), companyController.deleteCompany);

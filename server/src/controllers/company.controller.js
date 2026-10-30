@@ -38,7 +38,31 @@ const getCompanies = async (req, res) => {
             LEFT JOIN cat_001_ambiente env ON c.ambiente = env.code
             LEFT JOIN cat_029_tipo_persona tp ON c.tipo_persona = tp.code
         `);
-        res.json(rows.map(sanitizeCompanyRow));
+        let isGlobalAdmin = req.user?.role === 'SuperAdmin';
+        if (!isGlobalAdmin && req.user?.role) {
+            const [roleRows] = await pool.query('SELECT permissions FROM roles WHERE name = ?', [req.user.role]);
+            if (roleRows.length > 0) {
+                let perms = [];
+                try {
+                    perms = typeof roleRows[0].permissions === 'string' ? JSON.parse(roleRows[0].permissions) : (roleRows[0].permissions || []);
+                } catch {}
+                if (Array.isArray(perms) && (perms.includes('manage_companies') || perms.includes('manage_user_access'))) {
+                    isGlobalAdmin = true;
+                }
+            }
+        }
+        let filteredRows = rows;
+        if (!isGlobalAdmin) {
+            const [accessRows] = await pool.query(
+                'SELECT empresa_id FROM usuario_empresa WHERE usuario_id = ? AND has_access = 1',
+                [req.user?.id || 0]
+            );
+            const allowedIds = new Set(accessRows.map(r => Number(r.empresa_id)));
+            if (req.company_id) allowedIds.add(Number(req.company_id));
+            if (req.user?.company_id) allowedIds.add(Number(req.user.company_id));
+            filteredRows = rows.filter(r => allowedIds.has(Number(r.id)));
+        }
+        res.json(filteredRows.map(sanitizeCompanyRow));
     } catch (error) {
         res.status(500).json({ message: 'Error al obtener empresas' });
     }

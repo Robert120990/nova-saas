@@ -272,7 +272,7 @@ const Purchases = () => {
     // Queries
     const { data: currentCompany } = useQuery({
         queryKey: ['company', user?.company_id],
-        queryFn: async () => unwrapList(await axios.get(`/api/companies`)).find(c => c.id === user.company_id),
+        queryFn: async () => unwrapList(await axios.get(`/api/companies`)).find(c => c.id == user?.company_id),
         enabled: !!user?.company_id
     });
 
