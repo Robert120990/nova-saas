@@ -14,12 +14,17 @@ function formatAmountInWords(amount) {
     return `${prefix}${letras} CON ${String(decimal).padStart(2, '0')}/100 DOLARES`;
 }
 
+function fmtQty(val) {
+    const n = Number(val) || 0;
+    return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 /**
  * Generates the Detailed Customer Statement PDF (Estado de Cuenta Detallado).
  * Features:
- * - Products, vehicle plates, and odometer per line
+ * - Products, vehicle plates, odometer, and dispatched gallonage per line
  * - Line net accumulated balance
- * - Summary box with Total Valores, Abonos, and Net Acumulado
+ * - Summary box with Total Galones, Valores, Abonos, and Net Acumulado
  * - Promissory note: "Debo y pagare el valor de los productos..."
  * - Signatures: "FIRMA Y SELLO DEPTO DE COBROS" and "RECIBI CONFORME (CLIENTE)"
  */
@@ -63,17 +68,18 @@ const generateDetailedStatementPDF = async (data) => {
 
     currentY += 46;
 
-    // Table Column Definitions
+    // Table Column Definitions (total = 552)
     const colWidths = {
-        fecha: 52,
-        doc: 54,
-        tipo: 32,
-        producto: 160,
-        placas: 48,
+        fecha: 48,
+        doc: 52,
+        tipo: 28,
+        producto: 126,
+        placas: 44,
         odometro: 44,
-        valor: 58,
-        abono: 50,
-        acumulado: 54
+        galones: 46,
+        valor: 56,
+        abono: 52,
+        acumulado: 56
     };
 
     const colX = {
@@ -83,20 +89,22 @@ const generateDetailedStatementPDF = async (data) => {
         producto: startX + colWidths.fecha + colWidths.doc + colWidths.tipo,
         placas: startX + colWidths.fecha + colWidths.doc + colWidths.tipo + colWidths.producto,
         odometro: startX + colWidths.fecha + colWidths.doc + colWidths.tipo + colWidths.producto + colWidths.placas,
-        valor: startX + colWidths.fecha + colWidths.doc + colWidths.tipo + colWidths.producto + colWidths.placas + colWidths.odometro,
-        abono: startX + colWidths.fecha + colWidths.doc + colWidths.tipo + colWidths.producto + colWidths.placas + colWidths.odometro + colWidths.valor,
-        acumulado: startX + colWidths.fecha + colWidths.doc + colWidths.tipo + colWidths.producto + colWidths.placas + colWidths.odometro + colWidths.valor + colWidths.abono
+        galones: startX + colWidths.fecha + colWidths.doc + colWidths.tipo + colWidths.producto + colWidths.placas + colWidths.odometro,
+        valor: startX + colWidths.fecha + colWidths.doc + colWidths.tipo + colWidths.producto + colWidths.placas + colWidths.odometro + colWidths.galones,
+        abono: startX + colWidths.fecha + colWidths.doc + colWidths.tipo + colWidths.producto + colWidths.placas + colWidths.odometro + colWidths.galones + colWidths.valor,
+        acumulado: startX + colWidths.fecha + colWidths.doc + colWidths.tipo + colWidths.producto + colWidths.placas + colWidths.odometro + colWidths.galones + colWidths.valor + colWidths.abono
     };
 
     const drawTableHeader = (y) => {
         doc.rect(startX, y, contentWidth, 14).lineWidth(1).strokeColor('#0f172a').fillAndStroke('#f8fafc', '#0f172a');
-        doc.fontSize(6.8).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.fontSize(6.6).font('Helvetica-Bold').fillColor('#0f172a');
         doc.text('FECHA', colX.fecha + 2, y + 3.5, { width: colWidths.fecha - 4 });
         doc.text('DOCUMENTO', colX.doc + 2, y + 3.5, { width: colWidths.doc - 4 });
         doc.text('TIPO', colX.tipo + 1, y + 3.5, { width: colWidths.tipo - 2, align: 'center' });
         doc.text('PRODUCTO', colX.producto + 2, y + 3.5, { width: colWidths.producto - 4 });
         doc.text('PLACAS', colX.placas + 1, y + 3.5, { width: colWidths.placas - 2, align: 'center' });
         doc.text('ODOMETRO', colX.odometro, y + 3.5, { width: colWidths.odometro - 2, align: 'right' });
+        doc.text('GALONES', colX.galones, y + 3.5, { width: colWidths.galones - 4, align: 'right' });
         doc.text('VALOR', colX.valor, y + 3.5, { width: colWidths.valor - 4, align: 'right' });
         doc.text('ABONO', colX.abono, y + 3.5, { width: colWidths.abono - 4, align: 'right' });
         doc.text('ACUMULADO', colX.acumulado, y + 3.5, { width: colWidths.acumulado - 4, align: 'right' });
@@ -106,13 +114,16 @@ const generateDetailedStatementPDF = async (data) => {
     currentY = drawTableHeader(currentY);
 
     const movements = data.movements || [];
+    let totalCantidad = 0;
     let totalValor = 0;
     let totalAbono = 0;
 
     movements.forEach((m) => {
+        const cantidad = parseFloat(m.cantidad ?? m.galones ?? 0) || 0;
         const valor = parseFloat(m.valor || 0);
         const abono = parseFloat(m.abono || 0);
         const acumulado = parseFloat(m.acumulado !== undefined ? m.acumulado : (valor - abono));
+        totalCantidad += cantidad;
         totalValor += valor;
         totalAbono += abono;
 
@@ -124,6 +135,9 @@ const generateDetailedStatementPDF = async (data) => {
             currentY = drawTableHeader(currentY);
         }
 
+        const isReceipt = String(m.tipo || '').toUpperCase() === 'RECIBO';
+        const galonesText = isReceipt && cantidad === 0 ? '—' : fmtQty(cantidad);
+
         doc.fontSize(6.5).font('Helvetica').fillColor('#1e293b');
         doc.text(reportPdfHelper.formatDate(m.fecha), colX.fecha + 2, currentY + 1.5, { width: colWidths.fecha - 4 });
         doc.text(String(m.documento || '—'), colX.doc + 2, currentY + 1.5, { width: colWidths.doc - 4, truncate: true });
@@ -131,6 +145,7 @@ const generateDetailedStatementPDF = async (data) => {
         doc.text(String(m.producto || '—'), colX.producto + 2, currentY + 1.5, { width: colWidths.producto - 4, truncate: true });
         doc.text(String(m.placas || ''), colX.placas + 1, currentY + 1.5, { width: colWidths.placas - 2, align: 'center', truncate: true });
         doc.text(String(m.odometro !== undefined && m.odometro !== null && m.odometro !== '' ? m.odometro : '0.00'), colX.odometro, currentY + 1.5, { width: colWidths.odometro - 2, align: 'right' });
+        doc.text(galonesText, colX.galones, currentY + 1.5, { width: colWidths.galones - 4, align: 'right' });
         doc.text(reportPdfHelper.fmt(valor), colX.valor, currentY + 1.5, { width: colWidths.valor - 4, align: 'right' });
         doc.text(reportPdfHelper.fmt(abono), colX.abono, currentY + 1.5, { width: colWidths.abono - 4, align: 'right' });
         doc.text(reportPdfHelper.fmt(acumulado), colX.acumulado, currentY + 1.5, { width: colWidths.acumulado - 4, align: 'right' });
@@ -138,6 +153,7 @@ const generateDetailedStatementPDF = async (data) => {
         currentY += rowHeight;
     });
 
+    const finalTotalCantidad = data.totalCantidad !== undefined ? data.totalCantidad : totalCantidad;
     const totalAcumulado = data.totalAcumulado !== undefined ? data.totalAcumulado : (totalValor - totalAbono);
 
     // Defensive check to avoid cutting off totals, note, and signatures
@@ -150,21 +166,22 @@ const generateDetailedStatementPDF = async (data) => {
     currentY += 6;
 
     // TOTALS BOX
-    // Styled with solid borders matching reference image
-    const boxX = colX.placas - 45;
+    const boxX = colX.placas - 10;
     const boxW = (colX.acumulado + colWidths.acumulado) - boxX;
     const boxH = 17;
 
     doc.rect(boxX, currentY, boxW, boxH).lineWidth(1.2).strokeColor('#0f172a').stroke();
 
     // Vertical dividers inside totals box
+    doc.moveTo(colX.galones, currentY).lineTo(colX.galones, currentY + boxH).lineWidth(0.8).strokeColor('#0f172a').stroke();
     doc.moveTo(colX.valor, currentY).lineTo(colX.valor, currentY + boxH).lineWidth(0.8).strokeColor('#0f172a').stroke();
     doc.moveTo(colX.abono, currentY).lineTo(colX.abono, currentY + boxH).lineWidth(0.8).strokeColor('#0f172a').stroke();
     doc.moveTo(colX.acumulado, currentY).lineTo(colX.acumulado, currentY + boxH).lineWidth(0.8).strokeColor('#0f172a').stroke();
 
     // Content inside totals box
     doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
-    doc.text('TOTAL VALORES', boxX + 4, currentY + 4.5, { width: colX.valor - boxX - 10, align: 'right' });
+    doc.text('TOTAL VALORES', boxX + 4, currentY + 4.5, { width: colX.galones - boxX - 10, align: 'right' });
+    doc.text(fmtQty(finalTotalCantidad), colX.galones, currentY + 4.5, { width: colWidths.galones - 4, align: 'right' });
     doc.text(reportPdfHelper.fmt(totalValor), colX.valor, currentY + 4.5, { width: colWidths.valor - 4, align: 'right' });
     doc.text(reportPdfHelper.fmt(totalAbono), colX.abono, currentY + 4.5, { width: colWidths.abono - 4, align: 'right' });
     doc.text(reportPdfHelper.fmt(totalAcumulado), colX.acumulado, currentY + 4.5, { width: colWidths.acumulado - 4, align: 'right' });

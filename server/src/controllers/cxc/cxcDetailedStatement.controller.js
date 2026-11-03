@@ -2,7 +2,7 @@ const pool = require('../../config/db');
 const { dteValidoExistsSql, dteLatestColSql } = require('../../services/dteQueryFilters');
 const reportPdfHelper = require('../../utils/reportPdfHelper');
 const excelService = require('../../services/excel.service');
-const { generateDetailedStatementPDF, formatAmountInWords } = require('../../services/pdf/detailedStatementPdf.service');
+const { generateDetailedStatementPDF } = require('../../services/pdf/detailedStatementPdf.service');
 
 /**
  * Checks gas station configuration to see if closeout credits affect CXC.
@@ -68,6 +68,7 @@ const exportDetailedStatementPDF = async (req, res) => {
                     ELSE COALESCE(cat.description, h.tipo_documento)
                 END as tipo,
                 i.descripcion as producto,
+                CAST(COALESCE(i.cantidad, 0) AS DECIMAL(12,4)) as cantidad,
                 COALESCE(NULLIF(h.vehicle_plate, ''), '—') as placas,
                 '0.00' as odometro,
                 ROUND(COALESCE(i.cantidad * i.precio_unitario, i.venta_gravada + i.venta_exenta), 2) as valor,
@@ -121,6 +122,7 @@ const exportDetailedStatementPDF = async (req, res) => {
                     COALESCE(NULLIF(gcc.documento, ''), CAST(gcc.id AS CHAR)) as documento,
                     COALESCE(NULLIF(gcc.tipo_documento, ''), 'CCF') as tipo,
                     COALESCE(NULLIF(gcc.producto_descripcion, ''), 'COMBUSTIBLE') as producto,
+                    CAST(COALESCE(gcc.cantidad, 0) AS DECIMAL(12,4)) as cantidad,
                     COALESCE(NULLIF(gcc.placa, ''), '—') as placas,
                     COALESCE(NULLIF(gcc.kilometraje, ''), '0.00') as odometro,
                     CAST(gcc.monto AS DECIMAL(12,2)) as valor,
@@ -147,15 +149,11 @@ const exportDetailedStatementPDF = async (req, res) => {
         if (shouldIncludePayments) {
             let paymentsSql = `
                 SELECT 
-                    p.id,
-                    p.sale_id,
-                    p.gas_credito_id,
+                    p.id, p.sale_id, p.gas_credito_id,
                     p.fecha_pago as fecha,
                     COALESCE(NULLIF(p.referencia, ''), CONCAT('REC-', p.id)) as documento,
-                    'RECIBO' as tipo,
-                    p.metodo_pago,
-                    '—' as placas,
-                    '—' as odometro,
+                    'RECIBO' as tipo, p.metodo_pago,
+                    '—' as placas, '—' as odometro,
                     CAST(p.monto AS DECIMAL(12,2)) as abono
                 FROM customer_payments p
                 WHERE p.company_id = ? AND p.branch_id = ? AND p.customer_id = ?
@@ -181,7 +179,6 @@ const exportDetailedStatementPDF = async (req, res) => {
 
             const [rawPaymentRows] = await pool.query(paymentsSql, paymentParams);
 
-            // Batch resolve saldo_anterior for abonos
             const saleIds = Array.from(new Set(rawPaymentRows.map(p => p.sale_id).filter(Boolean)));
             const gasCreditoIds = Array.from(new Set(rawPaymentRows.map(p => p.gas_credito_id).filter(Boolean)));
 
@@ -235,6 +232,7 @@ const exportDetailedStatementPDF = async (req, res) => {
                     documento: p.documento,
                     tipo: p.tipo,
                     producto: `ABONO A CUENTA${metodo}`,
+                    cantidad: 0,
                     placas: p.placas,
                     odometro: p.odometro,
                     valor: saldoAnterior,
@@ -253,21 +251,19 @@ const exportDetailedStatementPDF = async (req, res) => {
         });
 
         // 5. Map calculations
+        let totalCantidad = 0;
         let totalValor = 0;
         let totalAbono = 0;
 
         const movements = combined.map(item => {
+            const cantidad = parseFloat(item.cantidad) || 0;
             const valor = parseFloat(item.valor) || 0;
             const abono = parseFloat(item.abono) || 0;
             const acumulado = item.acumulado !== undefined ? item.acumulado : (valor - abono);
+            totalCantidad += cantidad;
             totalValor += valor;
             totalAbono += abono;
-            return {
-                ...item,
-                valor,
-                abono,
-                acumulado
-            };
+            return { ...item, cantidad, valor, abono, acumulado };
         });
 
         const totalAcumulado = totalValor - totalAbono;
@@ -290,6 +286,7 @@ const exportDetailedStatementPDF = async (req, res) => {
                         { header: 'Producto', key: 'producto', width: 34 },
                         { header: 'Placas', key: 'placas', width: 16 },
                         { header: 'Odómetro', key: 'odometro', width: 14 },
+                        { header: 'Galones', key: 'cantidad', width: 14 },
                         { header: 'Valor', key: 'valor', width: 16 },
                         { header: 'Abono', key: 'abono', width: 16 },
                         { header: 'Acumulado', key: 'acumulado', width: 16 }
@@ -302,6 +299,7 @@ const exportDetailedStatementPDF = async (req, res) => {
                             producto: m.producto,
                             placas: m.placas,
                             odometro: m.odometro,
+                            cantidad: m.cantidad,
                             valor: m.valor,
                             abono: m.abono,
                             acumulado: m.acumulado
@@ -313,6 +311,7 @@ const exportDetailedStatementPDF = async (req, res) => {
                             producto: 'TOTAL VALORES',
                             placas: '',
                             odometro: '',
+                            cantidad: Math.round(totalCantidad * 100) / 100,
                             valor: totalValor,
                             abono: totalAbono,
                             acumulado: totalAcumulado
@@ -335,6 +334,7 @@ const exportDetailedStatementPDF = async (req, res) => {
             startDate: fromDate,
             endDate: toDate,
             movements,
+            totalCantidad,
             totalAcumulado,
             onlyConsumptions: !shouldIncludePayments
         };
