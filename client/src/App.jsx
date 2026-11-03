@@ -354,6 +354,7 @@ function App() {
                         <Route path="/cxc/reportes/documentos-pendientes" element={<PendingDocumentsDetailedReport />} />
                         <Route path="/cxc/reportes/estado-cuenta" element={<CustomerStatementReport />} />
                         <Route path="/cxc/reportes/estado-cuenta-detallado" element={<CustomerDetailedStatementReport />} />
+                        <Route path="/cxc/reportes/consumo-detallado" element={<CustomerDetailedStatementReport defaultMode="consumo_periodo" />} />
 
                         {/* Accounts Payable (CXP) */}
                         <Route path="/cxp/estado-cuenta" element={<ProviderStatement />} />

@@ -1,11 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
-import { 
-    GitBranch, 
-    Calendar,
-    User
-} from 'lucide-react';
+import { GitBranch, Calendar, User, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import ReportLayout from '../components/ui/ReportLayout';
@@ -13,12 +9,13 @@ import SearchableSelect from '../components/ui/SearchableSelect';
 import { getTodayString, getFirstDayOfMonth } from '../utils/dateUtils';
 import { unwrapList } from '../utils/apiUtils';
 
-const CustomerDetailedStatementReport = () => {
+const CustomerDetailedStatementReport = ({ defaultMode = 'detallado' }) => {
     const { user } = useAuth();
     const today = getTodayString();
     const firstDayOfMonth = getFirstDayOfMonth();
 
     // Filters State
+    const [mode, setMode] = useState(defaultMode); // 'detallado' | 'consumo_periodo'
     const [selectedBranch, setSelectedBranch] = useState(user?.branch_id || '');
     const [selectedCustomer, setSelectedCustomer] = useState('');
     const [selectedCustomerName, setSelectedCustomerName] = useState('');
@@ -27,6 +24,10 @@ const CustomerDetailedStatementReport = () => {
     const [isGenerating, setIsGenerating] = useState(false);
     const [includePayments, setIncludePayments] = useState(true);
     const [pdfUrl, setPdfUrl] = useState(null);
+
+    useEffect(() => {
+        setMode(defaultMode);
+    }, [defaultMode]);
 
     // Queries
     const { data: rawBranches = [] } = useQuery({
@@ -50,6 +51,21 @@ const CustomerDetailedStatementReport = () => {
         };
     }, [pdfUrl]);
 
+    const handleModeChange = (newMode) => {
+        if (newMode !== mode) {
+            setMode(newMode);
+            if (pdfUrl) {
+                URL.revokeObjectURL(pdfUrl);
+                setPdfUrl(null);
+            }
+        }
+    };
+
+    const getExtraParams = () => {
+        if (mode === 'consumo_periodo') return { all_consumptions: '1' };
+        return { include_payments: includePayments ? '1' : '0' };
+    };
+
     const handleGenerateReport = async () => {
         if (!selectedBranch) {
             toast.error('Debe seleccionar una sucursal');
@@ -63,12 +79,12 @@ const CustomerDetailedStatementReport = () => {
         setIsGenerating(true);
         try {
             const response = await axios.get('/api/cxc/reports/detailed-statement/pdf', {
-                params: { 
+                params: {
                     customer_id: selectedCustomer,
                     branch_id: selectedBranch,
                     start_date: startDate || undefined,
                     end_date: endDate || undefined,
-                    include_payments: includePayments ? '1' : '0'
+                    ...getExtraParams()
                 },
                 responseType: 'blob'
             });
@@ -80,15 +96,13 @@ const CustomerDetailedStatementReport = () => {
             }
 
             const blob = new Blob([response.data], { type: 'application/pdf' });
-            
             if (pdfUrl) URL.revokeObjectURL(pdfUrl);
-            
             const url = URL.createObjectURL(blob);
             setPdfUrl(url);
-            toast.success('Estado de cuenta detallado generado exitosamente');
+            toast.success('Reporte generado exitosamente');
         } catch (error) {
             console.error('Error generating detailed statement report:', error);
-            toast.error(error.message || 'Error al generar el estado de cuenta detallado');
+            toast.error(error.message || 'Error al generar el reporte');
         } finally {
             setIsGenerating(false);
         }
@@ -97,9 +111,10 @@ const CustomerDetailedStatementReport = () => {
     const handleDownload = () => {
         if (!pdfUrl) return;
         const cleanName = (selectedCustomerName || 'Cliente').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const prefix = mode === 'consumo_periodo' ? 'Consumo_Detallado_Periodo' : 'Estado_Cuenta_Detallado';
         const link = document.createElement('a');
         link.href = pdfUrl;
-        link.setAttribute('download', `Estado_Cuenta_Detallado_${cleanName}_${endDate || 'corte'}.pdf`);
+        link.setAttribute('download', `${prefix}_${cleanName}_${endDate || 'corte'}.pdf`);
         document.body.appendChild(link);
         link.click();
         link.remove();
@@ -113,28 +128,27 @@ const CustomerDetailedStatementReport = () => {
 
         const toastId = toast.loading('Generando archivo Excel...');
         try {
-            const params = { 
-                customer_id: selectedCustomer,
-                branch_id: selectedBranch,
-                start_date: startDate || undefined,
-                end_date: endDate || undefined,
-                include_payments: includePayments ? '1' : '0',
-                format: 'excel' 
-            };
-
             const response = await axios.get('/api/cxc/reports/detailed-statement/pdf', {
-                params,
+                params: {
+                    customer_id: selectedCustomer,
+                    branch_id: selectedBranch,
+                    start_date: startDate || undefined,
+                    end_date: endDate || undefined,
+                    ...getExtraParams(),
+                    format: 'excel'
+                },
                 responseType: 'blob'
             });
 
-            const blob = new Blob([response.data], { 
-                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+            const blob = new Blob([response.data], {
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             });
             const cleanName = (selectedCustomerName || 'Cliente').replace(/[^a-zA-Z0-9_-]/g, '_');
+            const prefix = mode === 'consumo_periodo' ? 'Consumo_Detallado_Periodo' : 'Estado_Cuenta_Detallado';
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `Estado_Cuenta_Detallado_${cleanName}.xlsx`);
+            link.setAttribute('download', `${prefix}_${cleanName}.xlsx`);
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -148,8 +162,8 @@ const CustomerDetailedStatementReport = () => {
 
     return (
         <ReportLayout
-            title="Estado de Cuenta Detallado"
-            subtitle="Detalle de consumos y movimientos con productos, placas, odómetro, pagaré legal y firmas."
+            title={mode === 'consumo_periodo' ? 'Consumo Detallado por Período' : 'Estado de Cuenta Detallado'}
+            subtitle="Detalle de consumos y movimientos con productos, placas, odómetro, galonaje, pagaré legal y firmas."
             category="Cuentas por Cobrar"
             pdfUrl={pdfUrl}
             isGenerating={isGenerating}
@@ -157,14 +171,29 @@ const CustomerDetailedStatementReport = () => {
             onDownload={handleDownload}
             onExportExcel={handleExportExcel}
             canGenerate={Boolean(selectedBranch && selectedCustomer)}
-            fileName={`Estado_Cuenta_Detallado_${(selectedCustomerName || 'Cliente').replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`}
+            fileName={`${mode === 'consumo_periodo' ? 'Consumo_Detallado_Periodo' : 'Estado_Cuenta_Detallado'}_${(selectedCustomerName || 'Cliente').replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`}
         >
+            {/* Modalidad */}
+            <div className="space-y-2">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <FileText size={12} className="text-indigo-500" /> Tipo de Reporte
+                </label>
+                <select
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all cursor-pointer"
+                    value={mode}
+                    onChange={(e) => handleModeChange(e.target.value)}
+                >
+                    <option value="detallado">ESTADO DE CUENTA DETALLADO</option>
+                    <option value="consumo_periodo">CONSUMO POR PERÍODO (INCLUYE CANCELADOS)</option>
+                </select>
+            </div>
+
             {/* Sucursal */}
             <div className="space-y-2">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <GitBranch size={12} className="text-indigo-500" /> Sucursal
                 </label>
-                <select 
+                <select
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
                     value={selectedBranch}
                     onChange={(e) => setSelectedBranch(e.target.value)}
@@ -181,7 +210,7 @@ const CustomerDetailedStatementReport = () => {
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <User size={12} className="text-indigo-500" /> Cliente
                 </label>
-                <SearchableSelect 
+                <SearchableSelect
                     loadOptions={loadCustomersOptions}
                     value={selectedCustomer}
                     onChange={(e, option) => {
@@ -207,7 +236,7 @@ const CustomerDetailedStatementReport = () => {
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <Calendar size={12} className="text-indigo-500" /> Fecha Inicio
                 </label>
-                <input 
+                <input
                     type="date"
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
                     value={startDate}
@@ -220,7 +249,7 @@ const CustomerDetailedStatementReport = () => {
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <Calendar size={12} className="text-indigo-500" /> Fecha Fin
                 </label>
-                <input 
+                <input
                     type="date"
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
                     value={endDate}
@@ -228,26 +257,36 @@ const CustomerDetailedStatementReport = () => {
                 />
             </div>
 
-            {/* Toggle Consultar Abonos / Solo Saldo Pendiente */}
-            <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between gap-3 shadow-xs">
-                <div className="space-y-0.5">
-                    <span className="block text-[11px] font-black text-slate-700 uppercase tracking-wider">
-                        Consultar Abonos
+            {mode === 'detallado' ? (
+                <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between gap-3 shadow-xs">
+                    <div className="space-y-0.5">
+                        <span className="block text-[11px] font-black text-slate-700 uppercase tracking-wider">
+                            Consultar Abonos
+                        </span>
+                        <span className="block text-[10px] font-medium text-slate-500">
+                            {includePayments ? 'Incluye facturas, créditos y recibos de abono' : 'Solo muestra documentos con saldo pendiente'}
+                        </span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input
+                            type="checkbox"
+                            checked={includePayments}
+                            onChange={(e) => setIncludePayments(e.target.checked)}
+                            className="sr-only peer"
+                        />
+                        <div className="relative w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-500/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-indigo-600 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
+                    </label>
+                </div>
+            ) : (
+                <div className="p-3 bg-indigo-50/70 border border-indigo-200/80 rounded-xl space-y-0.5">
+                    <span className="block text-[11px] font-black text-indigo-800 uppercase tracking-wider">
+                        Consumo del Período
                     </span>
-                    <span className="block text-[10px] font-medium text-slate-500">
-                        {includePayments ? 'Incluye facturas, créditos y recibos de abono' : 'Solo muestra documentos con saldo pendiente'}
+                    <span className="block text-[10px] font-medium text-indigo-600">
+                        Muestra todos los consumos del rango de fechas sin importar si están cancelados.
                     </span>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                    <input 
-                        type="checkbox" 
-                        checked={includePayments} 
-                        onChange={(e) => setIncludePayments(e.target.checked)} 
-                        className="sr-only peer" 
-                    />
-                    <div className="relative w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-500/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-indigo-600 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
-                </label>
-            </div>
+            )}
 
             {/* Accesos Rápidos de Fecha */}
             <div className="flex flex-wrap items-center gap-1.5 pt-0.5">

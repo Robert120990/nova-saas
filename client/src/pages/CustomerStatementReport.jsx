@@ -1,12 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
-import { 
-    GitBranch, 
-    Calendar,
-    User,
-    FileText
-} from 'lucide-react';
+import { GitBranch, Calendar, User, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import ReportLayout from '../components/ui/ReportLayout';
@@ -19,8 +14,8 @@ const CustomerStatementReport = () => {
     const today = getTodayString();
     const firstDayOfMonth = getFirstDayOfMonth();
 
-    // States
-    const [reportType, setReportType] = useState('credito'); // 'credito' | 'anticipado' | 'trupput' | 'detallado'
+    // States: 'credito' | 'detallado' | 'consumo_periodo' | 'anticipado' | 'trupput'
+    const [reportType, setReportType] = useState('credito');
     const [selectedBranch, setSelectedBranch] = useState(user?.branch_id || '');
     const [selectedCustomer, setSelectedCustomer] = useState('');
     const [selectedCustomerName, setSelectedCustomerName] = useState('');
@@ -30,7 +25,6 @@ const CustomerStatementReport = () => {
     const [isGenerating, setIsGenerating] = useState(false);
     const [pdfUrl, setPdfUrl] = useState(null);
 
-    // Queries
     const { data: branches = [] } = useQuery({
         queryKey: ['branches'],
         queryFn: async () => unwrapList(await axios.get('/api/branches'))
@@ -43,14 +37,12 @@ const CustomerStatementReport = () => {
         return data;
     };
 
-    // Revoke previous URL on unmount
     useEffect(() => {
         return () => {
             if (pdfUrl) URL.revokeObjectURL(pdfUrl);
         };
     }, [pdfUrl]);
 
-    // Reset pdf preview when changing report type
     const handleTypeChange = (newType) => {
         if (newType !== reportType) {
             setReportType(newType);
@@ -68,6 +60,7 @@ const CustomerStatementReport = () => {
             case 'trupput':
                 return '/api/cxc/trupput/statement/pdf';
             case 'detallado':
+            case 'consumo_periodo':
                 return '/api/cxc/reports/detailed-statement/pdf';
             case 'credito':
             default:
@@ -83,6 +76,8 @@ const CustomerStatementReport = () => {
                 return 'Estado de Cuenta Trupput';
             case 'detallado':
                 return 'Estado de Cuenta Detallado';
+            case 'consumo_periodo':
+                return 'Consumo Detallado por Período';
             case 'credito':
             default:
                 return 'Estado de Cuenta de Crédito';
@@ -97,10 +92,18 @@ const CustomerStatementReport = () => {
                 return 'Estado_Cuenta_Trupput';
             case 'detallado':
                 return 'Estado_Cuenta_Detallado';
+            case 'consumo_periodo':
+                return 'Consumo_Detallado_Periodo';
             case 'credito':
             default:
                 return 'Estado_Cuenta_Credito';
         }
+    };
+
+    const getExtraParams = () => {
+        if (reportType === 'detallado') return { include_payments: includePayments ? '1' : '0' };
+        if (reportType === 'consumo_periodo') return { all_consumptions: '1' };
+        return {};
     };
 
     const handleGenerateReport = async () => {
@@ -117,17 +120,16 @@ const CustomerStatementReport = () => {
         try {
             const endpoint = getEndpoint();
             const response = await axios.get(endpoint, {
-                params: { 
+                params: {
                     customer_id: selectedCustomer,
                     branch_id: selectedBranch,
                     start_date: startDate || undefined,
                     end_date: endDate || undefined,
-                    ...(reportType === 'detallado' ? { include_payments: includePayments ? '1' : '0' } : {})
+                    ...getExtraParams()
                 },
                 responseType: 'blob'
             });
 
-            // Verificar si el resultado es realmente un PDF o un JSON de error
             if (response.data.type !== 'application/pdf') {
                 const text = await response.data.text();
                 const error = JSON.parse(text);
@@ -135,15 +137,13 @@ const CustomerStatementReport = () => {
             }
 
             const blob = new Blob([response.data], { type: 'application/pdf' });
-            
             if (pdfUrl) URL.revokeObjectURL(pdfUrl);
-            
             const url = URL.createObjectURL(blob);
             setPdfUrl(url);
-            toast.success('Reporte de estado de cuenta generado correctamente');
+            toast.success('Reporte generado correctamente');
         } catch (error) {
             console.error('Error generating report:', error);
-            toast.error(error.message || 'Error al generar el estado de cuenta');
+            toast.error(error.message || 'Error al generar el reporte');
         } finally {
             setIsGenerating(false);
         }
@@ -169,22 +169,20 @@ const CustomerStatementReport = () => {
         const toastId = toast.loading('Generando archivo Excel...');
         try {
             const endpoint = getEndpoint();
-            const params = { 
-                customer_id: selectedCustomer,
-                branch_id: selectedBranch,
-                start_date: startDate || undefined,
-                end_date: endDate || undefined,
-                ...(reportType === 'detallado' ? { include_payments: includePayments ? '1' : '0' } : {}),
-                format: 'excel' 
-            };
-
             const response = await axios.get(endpoint, {
-                params,
+                params: {
+                    customer_id: selectedCustomer,
+                    branch_id: selectedBranch,
+                    start_date: startDate || undefined,
+                    end_date: endDate || undefined,
+                    ...getExtraParams(),
+                    format: 'excel'
+                },
                 responseType: 'blob'
             });
 
-            const blob = new Blob([response.data], { 
-                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+            const blob = new Blob([response.data], {
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             });
             const cleanName = (selectedCustomerName || 'Cliente').replace(/[^a-zA-Z0-9_-]/g, '_');
             const url = URL.createObjectURL(blob);
@@ -220,13 +218,14 @@ const CustomerStatementReport = () => {
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <FileText size={12} className="text-indigo-500" /> Modalidad de Cuenta
                 </label>
-                <select 
+                <select
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all cursor-pointer"
                     value={reportType}
                     onChange={(e) => handleTypeChange(e.target.value)}
                 >
                     <option value="credito">CRÉDITO (VENTAS Y ABONOS)</option>
                     <option value="detallado">DETALLADO (PRODUCTOS, PLACAS Y FIRMAS)</option>
+                    <option value="consumo_periodo">CONSUMO POR PERÍODO (INCLUYE CANCELADOS)</option>
                     <option value="anticipado">ANTICIPOS (DEPÓSITOS Y CONSUMOS)</option>
                     <option value="trupput">TRUPPUT (PREPAGO POR GALONAJE)</option>
                 </select>
@@ -237,7 +236,7 @@ const CustomerStatementReport = () => {
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <GitBranch size={12} className="text-indigo-500" /> Sucursal
                 </label>
-                <select 
+                <select
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
                     value={selectedBranch}
                     onChange={(e) => setSelectedBranch(e.target.value)}
@@ -249,12 +248,12 @@ const CustomerStatementReport = () => {
                 </select>
             </div>
 
-            {/* Cliente (Búsqueda remota) */}
+            {/* Cliente */}
             <div className="space-y-2">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <User size={12} className="text-indigo-500" /> Cliente
                 </label>
-                <SearchableSelect 
+                <SearchableSelect
                     loadOptions={loadCustomersOptions}
                     value={selectedCustomer}
                     onChange={(e, option) => {
@@ -280,7 +279,7 @@ const CustomerStatementReport = () => {
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <Calendar size={12} className="text-indigo-500" /> Fecha Inicio
                 </label>
-                <input 
+                <input
                     type="date"
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
                     value={startDate}
@@ -293,7 +292,7 @@ const CustomerStatementReport = () => {
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <Calendar size={12} className="text-indigo-500" /> Fecha Fin
                 </label>
-                <input 
+                <input
                     type="date"
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
                     value={endDate}
@@ -312,14 +311,25 @@ const CustomerStatementReport = () => {
                         </span>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                        <input 
-                            type="checkbox" 
-                            checked={includePayments} 
-                            onChange={(e) => setIncludePayments(e.target.checked)} 
-                            className="sr-only peer" 
+                        <input
+                            type="checkbox"
+                            checked={includePayments}
+                            onChange={(e) => setIncludePayments(e.target.checked)}
+                            className="sr-only peer"
                         />
                         <div className="relative w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-500/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-indigo-600 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
                     </label>
+                </div>
+            )}
+
+            {reportType === 'consumo_periodo' && (
+                <div className="p-3 bg-indigo-50/70 border border-indigo-200/80 rounded-xl space-y-0.5">
+                    <span className="block text-[11px] font-black text-indigo-800 uppercase tracking-wider">
+                        Consumo del Período
+                    </span>
+                    <span className="block text-[10px] font-medium text-indigo-600">
+                        Muestra todos los consumos del rango de fechas sin importar si están cancelados.
+                    </span>
                 </div>
             )}
 

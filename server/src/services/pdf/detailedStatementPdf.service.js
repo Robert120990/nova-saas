@@ -35,7 +35,7 @@ const generateDetailedStatementPDF = async (data) => {
     const title = 'ESTADO DE CUENTA DETALLADO';
     const subtitle = [
         data.branch_name ? `SUCURSAL: ${data.branch_name}` : null,
-        data.onlyConsumptions ? '(SOLO CONSUMOS)' : null
+        data.allConsumptions ? '(CONSUMO DEL PERÍODO)' : (data.onlyConsumptions ? '(SOLO CONSUMOS)' : null)
     ].filter(Boolean).join('    ') || null;
     const periodText = data.startDate && data.endDate
         ? `DEL ${reportPdfHelper.formatDate(data.startDate)} AL ${reportPdfHelper.formatDate(data.endDate)}`

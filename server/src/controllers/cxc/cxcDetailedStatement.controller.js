@@ -27,14 +27,19 @@ const getCreditosAfectanCxcConfig = async (companyId, branchId) => {
 
 /**
  * Exports Detailed Customer Statement (Estado de Cuenta Detallado) in PDF or Excel.
- * Only includes movements within the specified date range (no initial balance).
+ * Modes:
+ * - all_consumptions=1: All consumptions in date range regardless of whether paid/cancelled (no receipts).
+ * - include_payments=1 (default): All consumptions + payment receipts in date range.
+ * - include_payments=0: Only consumptions with pending balance in date range.
  */
 const exportDetailedStatementPDF = async (req, res) => {
-    const { customer_id, branch_id, start_date, end_date, startDate, endDate, format, include_payments, solo_consumos } = req.query;
+    const { customer_id, branch_id, start_date, end_date, startDate, endDate, format, include_payments, solo_consumos, all_consumptions } = req.query;
     const fromDate = (start_date || startDate || '').trim() || null;
     const toDate = (end_date || endDate || '').trim() || null;
     const company_id = req.company_id;
-    const shouldIncludePayments = solo_consumos !== '1' && solo_consumos !== 'true' && include_payments !== '0' && include_payments !== 'false';
+    const isAllConsumptions = all_consumptions === '1' || all_consumptions === 'true';
+    const shouldIncludePayments = !isAllConsumptions && solo_consumos !== '1' && solo_consumos !== 'true' && include_payments !== '0' && include_payments !== 'false';
+    const onlyPending = !shouldIncludePayments && !isAllConsumptions;
 
     if (!customer_id || !branch_id) {
         return res.status(400).json({ message: 'Cliente y Sucursal son obligatorios' });
@@ -84,7 +89,7 @@ const exportDetailedStatementPDF = async (req, res) => {
         `;
         const salesParams = [company_id, branch_id, customer_id];
 
-        if (!shouldIncludePayments) {
+        if (onlyPending) {
             salesSql += ' AND (h.total_pagar - COALESCE((SELECT SUM(p.monto) FROM customer_payments p WHERE p.sale_id = h.id), 0)) > 0.001';
         }
         if (fromDate) { salesSql += ' AND h.fecha_emision >= ?'; salesParams.push(fromDate); }
@@ -92,9 +97,8 @@ const exportDetailedStatementPDF = async (req, res) => {
 
         const [rawSalesRows] = await pool.query(salesSql, salesParams);
 
-        // If !shouldIncludePayments and a pending sale has a partial payment, allocate it across its items without duplicating
         const remainingSaleAbono = new Map();
-        if (!shouldIncludePayments) {
+        if (onlyPending) {
             rawSalesRows.forEach(r => {
                 const totalAb = parseFloat(r.sale_total_abono) || 0;
                 if (totalAb > 0 && !remainingSaleAbono.has(r.sale_id)) {
@@ -104,7 +108,7 @@ const exportDetailedStatementPDF = async (req, res) => {
         }
         const salesRows = rawSalesRows.map(r => {
             let itemAbono = 0;
-            if (!shouldIncludePayments && remainingSaleAbono.has(r.sale_id)) {
+            if (onlyPending && remainingSaleAbono.has(r.sale_id)) {
                 const rem = remainingSaleAbono.get(r.sale_id) || 0;
                 const val = parseFloat(r.valor) || 0;
                 itemAbono = Math.min(val, rem);
@@ -126,14 +130,14 @@ const exportDetailedStatementPDF = async (req, res) => {
                     COALESCE(NULLIF(gcc.placa, ''), '—') as placas,
                     COALESCE(NULLIF(gcc.kilometraje, ''), '0.00') as odometro,
                     CAST(gcc.monto AS DECIMAL(12,2)) as valor,
-                    ${!shouldIncludePayments ? 'CAST(COALESCE((SELECT SUM(p.monto) FROM customer_payments p WHERE p.gas_credito_id = gcc.id), 0) AS DECIMAL(12,2))' : '0'} as abono
+                    ${onlyPending ? 'CAST(COALESCE((SELECT SUM(p.monto) FROM customer_payments p WHERE p.gas_credito_id = gcc.id), 0) AS DECIMAL(12,2))' : '0'} as abono
                 FROM gas_station_closeout_creditos gcc
                 JOIN gas_station_closeouts c ON gcc.closeout_id = c.id
                 WHERE c.company_id = ? AND c.branch_id = ? AND gcc.cliente_id = ?
             `;
             const gasParams = [company_id, branch_id, customer_id];
 
-            if (!shouldIncludePayments) {
+            if (onlyPending) {
                 gasSql += ' AND (gcc.monto - COALESCE((SELECT SUM(p.monto) FROM customer_payments p WHERE p.gas_credito_id = gcc.id), 0)) > 0.001';
             }
             if (desdeFecha) { gasSql += ' AND c.fecha_turno >= ?'; gasParams.push(desdeFecha); }
@@ -178,7 +182,6 @@ const exportDetailedStatementPDF = async (req, res) => {
             if (toDate) { paymentsSql += ' AND p.fecha_pago <= ?'; paymentParams.push(toDate); }
 
             const [rawPaymentRows] = await pool.query(paymentsSql, paymentParams);
-
             const saleIds = Array.from(new Set(rawPaymentRows.map(p => p.sale_id).filter(Boolean)));
             const gasCreditoIds = Array.from(new Set(rawPaymentRows.map(p => p.gas_credito_id).filter(Boolean)));
 
@@ -187,7 +190,6 @@ const exportDetailedStatementPDF = async (req, res) => {
                 const [sList] = await pool.query('SELECT id, total_pagar FROM sales_headers WHERE id IN (?)', [saleIds]);
                 sList.forEach(s => salesMap.set(s.id, s));
             }
-
             const gasMap = new Map();
             if (gasCreditoIds.length > 0) {
                 const [gList] = await pool.query('SELECT id, monto FROM gas_station_closeout_creditos WHERE id IN (?)', [gasCreditoIds]);
@@ -210,7 +212,6 @@ const exportDetailedStatementPDF = async (req, res) => {
             paymentRows = rawPaymentRows.map(p => {
                 const abonoMonto = parseFloat(p.abono) || 0;
                 let saldoAnterior = abonoMonto;
-
                 const calcPrior = (key, id, total) => {
                     const pDate = new Date(p.fecha).getTime();
                     const prior = allPriorPayments.filter(p2 =>
@@ -219,13 +220,11 @@ const exportDetailedStatementPDF = async (req, res) => {
                     ).reduce((sum, p2) => sum + (parseFloat(p2.monto) || 0), 0);
                     return Math.max(abonoMonto, Math.round((total - prior) * 100) / 100);
                 };
-
                 if (p.sale_id) {
                     saldoAnterior = calcPrior('sale_id', p.sale_id, parseFloat(salesMap.get(p.sale_id)?.total_pagar) || 0);
                 } else if (p.gas_credito_id) {
                     saldoAnterior = calcPrior('gas_credito_id', p.gas_credito_id, parseFloat(gasMap.get(p.gas_credito_id)?.monto) || 0);
                 }
-
                 const metodo = p.metodo_pago ? ` (${p.metodo_pago})` : '';
                 return {
                     fecha: p.fecha,
@@ -275,7 +274,7 @@ const exportDetailedStatementPDF = async (req, res) => {
                 title: `ESTADO DE CUENTA DETALLADO - ${(customer.nombre || '').toUpperCase()}`,
                 subtitle: [
                     (fromDate && toDate) ? `PERÍODO DEL ${fromDate} AL ${toDate}` : '',
-                    !shouldIncludePayments ? '(SOLO CONSUMOS)' : ''
+                    isAllConsumptions ? '(CONSUMO DEL PERÍODO - INCLUYE CANCELADOS)' : (onlyPending ? '(SOLO CONSUMOS)' : '')
                 ].filter(Boolean).join(' - ') || undefined,
                 sheets: [{
                     name: 'Estado de Cuenta Detallado',
@@ -305,16 +304,11 @@ const exportDetailedStatementPDF = async (req, res) => {
                             acumulado: m.acumulado
                         })),
                         {
-                            fecha: '',
-                            documento: '',
-                            tipo: '',
+                            fecha: '', documento: '', tipo: '',
                             producto: 'TOTAL VALORES',
-                            placas: '',
-                            odometro: '',
+                            placas: '', odometro: '',
                             cantidad: Math.round(totalCantidad * 100) / 100,
-                            valor: totalValor,
-                            abono: totalAbono,
-                            acumulado: totalAcumulado
+                            valor: totalValor, abono: totalAbono, acumulado: totalAcumulado
                         }
                     ]
                 }]
@@ -336,7 +330,8 @@ const exportDetailedStatementPDF = async (req, res) => {
             movements,
             totalCantidad,
             totalAcumulado,
-            onlyConsumptions: !shouldIncludePayments
+            onlyConsumptions: onlyPending,
+            allConsumptions: isAllConsumptions
         };
 
         const pdfBuffer = await generateDetailedStatementPDF(pdfData);
@@ -345,7 +340,6 @@ const exportDetailedStatementPDF = async (req, res) => {
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename="Estado_Cuenta_Detallado_${cleanName}.pdf"`);
         res.send(pdfBuffer);
-
     } catch (error) {
         console.error('Error in exportDetailedStatementPDF:', error);
         res.status(500).json({ message: 'Error al generar estado de cuenta detallado', error: error.message });
