@@ -127,6 +127,8 @@ const fetchStoreProfitabilityData = async ({ companyId, branchId, startDate, end
     let whereClauses = [
         'sh.company_id = ?',
         "LOWER(sh.estado) = 'emitido'",
+        "COALESCE(sh.tipo_documento, '') != '07'",
+        "COALESCE(sh.dte_type, '') != '07'",
         'NOT EXISTS (SELECT 1 FROM dtes d WHERE d.venta_id = sh.id AND d.status = \'INVALIDADO\')',
         'DATE(sh.fecha_emision) BETWEEN ? AND ?',
         'sh.pos_id IN (?)'

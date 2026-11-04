@@ -380,7 +380,7 @@ const generateSalesByPOSPDF = async (data) => {
     let posTotal = 0;
     let grandTotal = 0;
     let rowCount = 0;
-    const rows = data.data || [];
+    const rows = (data.data || []).filter(r => r.tipo_documento !== '07' && r.dte_type !== '07');
 
     rows.forEach((row, index) => {
         // Agrupación por POS

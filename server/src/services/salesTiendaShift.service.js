@@ -146,6 +146,9 @@ const fetchStoreSalesByShiftData = async (companyId, branchId, startDate, endDat
           AND h.shift_id IN (?)
           AND LOWER(h.estado) = 'emitido'
           AND (d.status IS NULL OR d.status != 'INVALIDADO')
+          AND COALESCE(h.tipo_documento, '') != '07'
+          AND COALESCE(h.dte_type, '') != '07'
+          AND COALESCE(d.tipo_dte, '') != '07'
         ORDER BY h.shift_id ASC, h.id ASC
     `, [companyId, shiftIds]);
 

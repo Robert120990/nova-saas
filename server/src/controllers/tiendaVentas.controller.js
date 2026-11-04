@@ -34,6 +34,7 @@ exports.getVentasByDate = async (req, res) => {
         const branchId = req.query.branch_id || req.user.branch_id || null;
 
         let where = `sh.company_id = ? AND sh.estado = 'emitido' AND DATE(sh.created_at) BETWEEN ? AND ?
+                     AND COALESCE(sh.tipo_documento, '') != '07' AND COALESCE(sh.dte_type, '') != '07'
                      AND NOT EXISTS (SELECT 1 FROM dtes d WHERE d.venta_id = sh.id AND d.status = 'INVALIDADO')`;
         const params = [req.company_id, start_date, end_date];
 

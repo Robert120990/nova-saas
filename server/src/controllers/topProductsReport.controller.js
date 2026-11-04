@@ -79,6 +79,8 @@ const fetchTopProductsByCategoryData = async ({
     let whereClauses = [
         'sh.company_id = ?',
         "LOWER(sh.estado) = 'emitido'",
+        "COALESCE(sh.tipo_documento, '') != '07'",
+        "COALESCE(sh.dte_type, '') != '07'",
         'DATE(sh.fecha_emision) >= ?',
         'DATE(sh.fecha_emision) <= ?',
         'NOT EXISTS (SELECT 1 FROM dtes d WHERE d.venta_id = sh.id AND d.status = \'INVALIDADO\')'
