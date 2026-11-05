@@ -19,10 +19,12 @@ import {
     RefreshCw,
     CloudUpload,
     AlertTriangle,
-    FileText
+    FileText,
+    Layers
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Modal from '../components/ui/Modal';
+import { ShiftSalesByCategoryModal } from '../components/sales';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import Money, { MoneyInput } from '../components/ui/Money';
@@ -53,8 +55,11 @@ const CashClosing = () => {
     const [isClosingModalOpen, setIsClosingModalOpen] = useState(false);
     const [isRefreshingSummary, setIsRefreshingSummary] = useState(false);
     const [actualCash, setActualCash] = useState('');
+    const [arqueoOpeningBalance, setArqueoOpeningBalance] = useState('');
+    const [closingBalance, setClosingBalance] = useState('');
     const [shiftSummary, setShiftSummary] = useState(null);
     const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
+    const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
     const [expenses, setExpenses] = useState([{ description: '', amount: '' }]);
     const [incomes, setIncomes] = useState([{ description: '', amount: '', payment_method: '01' }]);
     const [remesas, setRemesas] = useState([{ description: '', amount: '' }]);
@@ -68,7 +73,7 @@ const CashClosing = () => {
     const [shiftSellersList, setShiftSellersList] = useState([]);
     const [isEditShiftModalOpen, setIsEditShiftModalOpen] = useState(false);
     const [editingShift, setEditingShift] = useState(null);
-    const [editForm, setEditForm] = useState({ seller_id: '', pos_id: '', opening_balance: '', shift_number: '' });
+    const [editForm, setEditForm] = useState({ seller_id: '', pos_id: '', opening_balance: '', closing_balance: '', shift_number: '' });
 
     // Ventas Tienda por fecha (Envío a RRS)
     const [isTiendaVentasModalOpen, setIsTiendaVentasModalOpen] = useState(false);
@@ -209,7 +214,7 @@ const CashClosing = () => {
     });
 
     const closeShiftMutation = useMutation({
-        mutationFn: async ({ id, actualCash, expenses, incomes, remesas, puntos, tarjetas }) => (await axios.post(`/api/shifts/${id}/close`, { actual_cash: actualCash, expenses, incomes, remesas, puntos, tarjetas })).data,
+        mutationFn: async ({ id, actualCash, openingBalance, closingBalance, expenses, incomes, remesas, puntos, tarjetas }) => (await axios.post(`/api/shifts/${id}/close`, { actual_cash: actualCash, opening_balance: openingBalance, closing_balance: closingBalance, expenses, incomes, remesas, puntos, tarjetas })).data,
         onSuccess: (data) => {
             queryClient.invalidateQueries(['shifts']);
             setShiftSummary(data.summary);
@@ -226,7 +231,7 @@ const CashClosing = () => {
     });
 
     const arqueoMutation = useMutation({
-        mutationFn: async ({ id, actualCash, expenses, incomes, remesas, puntos, tarjetas }) => (await axios.post(`/api/shifts/${id}/arqueo`, { actual_cash: actualCash, expenses, incomes, remesas, puntos, tarjetas })).data,
+        mutationFn: async ({ id, actualCash, openingBalance, closingBalance, expenses, incomes, remesas, puntos, tarjetas }) => (await axios.post(`/api/shifts/${id}/arqueo`, { actual_cash: actualCash, opening_balance: openingBalance, closing_balance: closingBalance, expenses, incomes, remesas, puntos, tarjetas })).data,
         onSuccess: () => {
             queryClient.invalidateQueries(['shifts']);
             setIsClosingModalOpen(false);
@@ -257,8 +262,10 @@ const CashClosing = () => {
         try {
             const { data } = await axios.get(`/api/shifts/${shiftId}/summary`);
             setShiftSummary(data);
+            setArqueoOpeningBalance(data.opening_balance !== undefined && data.opening_balance !== null ? parseFloat(data.opening_balance).toString() : '0');
             if (data.arqueado) {
                 setActualCash(data.actual ? data.actual.toString() : '');
+                setClosingBalance(data.closing_balance ? parseFloat(data.closing_balance).toString() : '');
                 setExpenses(data.expenses?.length
                     ? data.expenses.map(e => ({ description: e.description, amount: e.amount ? e.amount.toString() : '' }))
                     : [{ description: '', amount: '' }]);
@@ -279,6 +286,7 @@ const CashClosing = () => {
                     : [{ description: '', amount: '' }]);
             } else {
                 setActualCash('');
+                setClosingBalance('');
                 setExpenses([{ description: '', amount: '' }]);
                 setIncomes([{ description: '', amount: '', payment_method: '01' }]);
                 setRemesas([{ description: '', amount: '' }]);
@@ -634,6 +642,7 @@ const CashClosing = () => {
                                                                 seller_id: shift.seller_id || '', 
                                                                 pos_id: shift.pos_id || '', 
                                                                 opening_balance: shift.opening_balance?.toString() || '', 
+                                                                closing_balance: shift.closing_balance?.toString() || '', 
                                                                 shift_number: shift.shift_number?.toString() || '' 
                                                             }); 
                                                             setIsEditShiftModalOpen(true); 
@@ -830,28 +839,79 @@ const CashClosing = () => {
                             {/* Resumen de Valores Esperados */}
                             <div className="lg:col-span-5 bg-slate-50 p-6 rounded-[2rem] border border-slate-100 space-y-6 flex flex-col justify-between">
                                 <div>
-                                    <div className="flex items-center justify-between mb-6">
+                                    <div className="flex items-center justify-between gap-2 mb-4">
                                         <h4 className="text-[10px] font-black uppercase text-indigo-600 tracking-widest">Desglose Detallado de Ventas</h4>
-                                        <button
-                                            onClick={handleRefreshSummary}
-                                            disabled={isRefreshingSummary}
-                                            title="Actualizar totales de ventas"
-                                            className="p-2 bg-white border border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-300 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                                        >
-                                            <RefreshCw size={14} className={isRefreshingSummary ? 'animate-spin' : ''} />
-                                        </button>
+                                        <div className="flex items-center gap-1.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsCategoryModalOpen(true)}
+                                                title="Ver venta por categoría de producto"
+                                                className="px-2.5 py-1.5 bg-white border border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-300 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all"
+                                            >
+                                                <Layers size={13} className="text-indigo-500" />
+                                                Categorías
+                                            </button>
+                                            <button
+                                                onClick={handleRefreshSummary}
+                                                disabled={isRefreshingSummary}
+                                                title="Actualizar totales de ventas"
+                                                className="p-2 bg-white border border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-300 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                                            >
+                                                <RefreshCw size={14} className={isRefreshingSummary ? 'animate-spin' : ''} />
+                                            </button>
+                                        </div>
                                     </div>
                                     <div className="space-y-3">
-                                        <div className="flex justify-between items-center text-sm font-bold text-slate-400 italic">
-                                            <span>Saldo Inicial (Fondo)</span>
-                                            <span><Money value={shiftSummary.opening_balance || 0} /></span>
+                                        {/* Fondos de Caja (Inicial y Final en una sola fila compacta) */}
+                                        <div className="grid grid-cols-2 gap-2.5 pb-2 border-b border-slate-200/80">
+                                            <div>
+                                                <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block mb-1">
+                                                    Fondo Inicial
+                                                </label>
+                                                <div className="relative">
+                                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] font-black text-slate-400">+$</span>
+                                                    <MoneyInput
+                                                        value={arqueoOpeningBalance}
+                                                        onChange={(e) => setArqueoOpeningBalance(e.target.value)}
+                                                        className="w-full pl-7 pr-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-right text-sm font-black text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all tabular-nums"
+                                                        placeholder="0.00"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <div className="flex items-center justify-between gap-1 mb-1">
+                                                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider truncate">
+                                                        Fondo Final
+                                                    </label>
+                                                    {(parseFloat(arqueoOpeningBalance) || 0) > 0 && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setClosingBalance(arqueoOpeningBalance)}
+                                                            title="Usar el mismo monto del fondo inicial"
+                                                            className="text-[9px] font-black uppercase tracking-tight text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-1.5 py-0.5 rounded-md transition-colors shrink-0"
+                                                        >
+                                                            = Inicial
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                <div className="relative">
+                                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] font-black text-rose-400">-$</span>
+                                                    <MoneyInput
+                                                        value={closingBalance}
+                                                        onChange={(e) => setClosingBalance(e.target.value)}
+                                                        className="w-full pl-7 pr-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-right text-sm font-black text-rose-600 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all tabular-nums"
+                                                        placeholder="0.00"
+                                                    />
+                                                </div>
+                                            </div>
                                         </div>
                                         
-                                        {/* Detalle Dinámico de Métodos */}
-                                        {shiftSummary.methods?.map(method => (
+                                        {/* Detalle Dinámico de Métodos (No efectivo) */}
+                                        {shiftSummary.methods?.filter(method => method.code !== '01').map(method => (
                                             <div key={method.code} className="flex justify-between items-center text-sm font-bold text-slate-400 italic">
                                                 <span>{method.name}</span>
-                                                <span className={method.code === '01' ? 'text-emerald-500' : 'text-indigo-400'}>
+                                                <span className="text-indigo-400">
                                                     +<Money value={method.total || 0} />
                                                 </span>
                                             </div>
@@ -893,9 +953,19 @@ const CashClosing = () => {
                                         {tarjetas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) > 0 && (
                                             <div className="flex justify-between items-center text-sm font-bold text-blue-600 italic pt-2 border-t border-slate-200">
                                                 <span>Tarjetas Ingresadas</span>
-                                                <span><Money value={tarjetas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)} /></span>
+                                                <span>-<Money value={tarjetas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)} /></span>
                                             </div>
                                         )}
+
+                                        {/* Venta de Contado (Última línea) */}
+                                        {shiftSummary.methods?.filter(method => method.code === '01').map(method => (
+                                            <div key={method.code} className="flex justify-between items-center text-sm font-bold text-slate-500 italic pt-2 border-t border-slate-200/80">
+                                                <span>Venta de Contado</span>
+                                                <span className="text-emerald-500">
+                                                    +<Money value={method.total || 0} />
+                                                </span>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
 
@@ -903,17 +973,18 @@ const CashClosing = () => {
                                 <div className="flex justify-between items-center bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
                                     <div className="flex flex-col">
                                         <span className="text-xs font-black uppercase text-slate-900 tracking-widest">Efectivo Físico Esperado</span>
-                                        <span className="text-[10px] text-slate-400 font-bold italic">(Saldo + Cash Sales + Cash In - Expenses - Remesas - Puntos - Tarjetas)</span>
+                                        <span className="text-[10px] text-slate-400 font-bold italic">(Fondo Inicial + Ventas Efectivo + Ingresos - Gastos - Remesas - Puntos - Tarjetas - Fondo Final)</span>
                                     </div>
                                     <span className="text-3xl font-black text-emerald-600">
                                         <Money value={(
-                                            (parseFloat(shiftSummary.opening_balance) || 0) + 
+                                            (parseFloat(arqueoOpeningBalance) || 0) + 
                                             (parseFloat(shiftSummary.cash) || 0) + 
                                             incomes.filter(i => i.payment_method === '01').reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
                                             expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
                                             remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) -
                                             puntos.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) -
-                                            tarjetas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)
+                                            tarjetas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) -
+                                            (parseFloat(closingBalance) || 0)
                                         )} />
                                     </span>
                                 </div>
@@ -1139,25 +1210,27 @@ const CashClosing = () => {
                                     {actualCash && (
                                         <div className={`mt-4 p-4 rounded-2xl flex justify-between items-center ${
                                             (parseFloat(actualCash) - (
-                                                (parseFloat(shiftSummary.opening_balance) || 0) + 
+                                                (parseFloat(arqueoOpeningBalance) || 0) + 
                                                 (parseFloat(shiftSummary.cash) || 0) + 
                                                 incomes.filter(i => i.payment_method === '01').reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
                                                 expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
                                                 remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) -
                                                 puntos.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) -
-                                                tarjetas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)
+                                                tarjetas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) -
+                                                (parseFloat(closingBalance) || 0)
                                             )) >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
                                         }`}>
                                             <span className="text-[10px] font-black uppercase tracking-widest">Diferencia</span>
                                             <span className="text-xl font-black tabular-nums">
                                                 <Money value={(parseFloat(actualCash) - (
-                                                    (parseFloat(shiftSummary.opening_balance) || 0) + 
+                                                    (parseFloat(arqueoOpeningBalance) || 0) + 
                                                     (parseFloat(shiftSummary.cash) || 0) + 
                                                     incomes.filter(i => i.payment_method === '01').reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
                                                     expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
                                                     remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) -
                                                     puntos.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) -
-                                                    tarjetas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)
+                                                    tarjetas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) -
+                                                    (parseFloat(closingBalance) || 0)
                                                 ))} />
                                             </span>
                                         </div>
@@ -1168,7 +1241,9 @@ const CashClosing = () => {
                                 onClick={() => {
                                         arqueoMutation.mutate({ 
                                             id: shiftSummary?.id || selectedShiftId || activeShifts[0]?.id, 
-                                            actualCash, 
+                                            actualCash,
+                                            openingBalance: parseFloat(arqueoOpeningBalance) || 0,
+                                            closingBalance: parseFloat(closingBalance) || 0,
                                             expenses: expenses.filter(e => parseFloat(e.amount) > 0),
                                             incomes: incomes.filter(i => parseFloat(i.amount) > 0),
                                             remesas: remesas.filter(r => parseFloat(r.amount) > 0),
@@ -1210,6 +1285,18 @@ const CashClosing = () => {
                         </div>
 
                         <div id="arqueo-print-area" className="bg-slate-50 rounded-[2.5rem] p-8 border border-slate-100 space-y-6">
+                            {/* Bloque de Fondos (Inicial y Final) */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-white p-3.5 rounded-2xl border border-slate-100 shadow-sm text-left">
+                                    <span className="text-[8px] font-black uppercase text-slate-400 tracking-widest block mb-1">Fondo Inicial</span>
+                                    <span className="text-base font-black text-slate-700"><Money value={shiftSummary.opening_balance || 0} /></span>
+                                </div>
+                                <div className="bg-white p-3.5 rounded-2xl border border-slate-100 shadow-sm text-left">
+                                    <span className="text-[8px] font-black uppercase text-slate-400 tracking-widest block mb-1">Fondo Final (En Caja)</span>
+                                    <span className="text-base font-black text-slate-700"><Money value={shiftSummary.closing_balance || 0} /></span>
+                                </div>
+                            </div>
+
                             {/* Bloque de Totales de Arqueo */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm text-left">
@@ -1234,7 +1321,17 @@ const CashClosing = () => {
 
                             {/* Desglose de Ventas por Método */}
                             <div className="space-y-3">
-                                <h5 className="text-[10px] font-black uppercase text-slate-400 tracking-widest text-left px-1">Ventas por Método</h5>
+                                <div className="flex items-center justify-between px-1">
+                                    <h5 className="text-[10px] font-black uppercase text-slate-400 tracking-widest text-left">Ventas por Método</h5>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsCategoryModalOpen(true)}
+                                        className="text-[10px] font-black uppercase tracking-wider text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors"
+                                    >
+                                        <Layers size={12} />
+                                        Ver por Categoría
+                                    </button>
+                                </div>
                                 <div className="space-y-2">
                                     {shiftSummary.methods?.map(m => (
                                         <div key={m.code} className="flex justify-between items-center text-sm font-bold">
@@ -1391,6 +1488,7 @@ const CashClosing = () => {
                                     <div class="center" style="font-size:9px; margin-top:3px;">${new Date().toLocaleDateString('es-SV')} — ${new Date().toLocaleTimeString('es-SV')}</div>
                                     <div class="dashed"></div>
                                     <div class="row bold"><span>Fondo Inicial</span><span>$${parseFloat(s.opening_balance || 0).toFixed(2)}</span></div>
+                                    ${parseFloat(s.closing_balance || 0) > 0 ? `<div class="row bold"><span>Fondo Final (En Caja)</span><span>-$${parseFloat(s.closing_balance || 0).toFixed(2)}</span></div>` : ''}
                                     <div class="dashed"></div>
                                     <div class="bold" style="margin-bottom:2px;">VENTAS POR MÉTODO</div>${methodsHtml}
                                     <div class="row bold" style="margin-top:4px;"><span>TOTAL VENTAS</span><span>$${totalSales.toFixed(2)}</span></div>
@@ -1526,11 +1624,19 @@ const CashClosing = () => {
                                         ))}
                                     </select>
                                 </div>
-                                <div>
-                                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-1">Fondo Inicial</label>
-                                    <MoneyInput value={editForm.opening_balance}
-                                        onChange={(e) => setEditForm({ ...editForm, opening_balance: e.target.value })}
-                                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-1">Fondo Inicial</label>
+                                        <MoneyInput value={editForm.opening_balance}
+                                            onChange={(e) => setEditForm({ ...editForm, opening_balance: e.target.value })}
+                                            className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-1">Fondo Final</label>
+                                        <MoneyInput value={editForm.closing_balance}
+                                            onChange={(e) => setEditForm({ ...editForm, closing_balance: e.target.value })}
+                                            className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1698,6 +1804,12 @@ const CashClosing = () => {
                     </div>
                 </div>
             </Modal>
+            {/* Modal: Venta por Categoría de Producto */}
+            <ShiftSalesByCategoryModal
+                isOpen={isCategoryModalOpen}
+                onClose={() => setIsCategoryModalOpen(false)}
+                shiftSummary={shiftSummary}
+            />
         </div>
     );
 };

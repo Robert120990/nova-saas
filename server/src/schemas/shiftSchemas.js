@@ -73,6 +73,8 @@ const shiftArqueoTarjetaSchema = z.object({
 
 const shiftArqueoSchema = z.object({
     actual_cash: z.coerce.number().min(0, 'El efectivo real no puede ser negativo').optional(),
+    opening_balance: z.coerce.number().min(0, 'El fondo inicial no puede ser negativo').optional(),
+    closing_balance: z.coerce.number().min(0, 'El fondo final no puede ser negativo').optional().default(0),
     expenses: z.array(shiftArqueoExpenseSchema).optional().default([]),
     incomes: z.array(shiftArqueoIncomeSchema).optional().default([]),
     remesas: z.array(shiftArqueoRemesaSchema).optional().default([]),
@@ -88,6 +90,7 @@ const shiftUpdateSchema = z.object({
     seller_id: z.coerce.number().int().positive().optional(),
     pos_id: z.coerce.number().int().positive().optional(),
     opening_balance: z.coerce.number().min(0).optional(),
+    closing_balance: z.coerce.number().min(0).optional(),
     shift_number: z.coerce.number().int().positive().optional()
 });
 

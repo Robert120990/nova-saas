@@ -327,12 +327,14 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
         const [salesByCategory] = await pool.query(`
             SELECT 
                 COALESCE(pc.name, 'Sin Categoría') as categoria,
-                SUM(si.cantidad * si.precio_unitario) as total
+                SUM(si.cantidad) as cantidad,
+                SUM(si.cantidad * si.precio_unitario - COALESCE(si.monto_descuento, 0)) as total
             FROM sales_items si
             JOIN sales_headers h ON si.sale_id = h.id
             LEFT JOIN products p ON si.product_id = p.id
             LEFT JOIN product_categories pc ON p.category_id = pc.id
             WHERE h.shift_id = ? AND h.estado = 'emitido'
+            AND COALESCE(h.tipo_documento, '01') != '07'
             AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = h.id AND status = 'INVALIDADO')
             GROUP BY pc.name
             ORDER BY total DESC
@@ -351,6 +353,10 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
             };
         });
 
+        const cashIncomes = incomes
+            .filter(i => !i.payment_method || i.payment_method === '01')
+            .reduce((acc, i) => acc + parseFloat(i.amount || 0), 0);
+
         const summary = {
             id: Number(shift.id),
             status: shift.status,
@@ -361,6 +367,7 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
             start_time: shift.start_time,
             end_time: shift.end_time || null,
             opening_balance: parseFloat(shift.opening_balance || 0),
+            closing_balance: parseFloat(shift.closing_balance || 0),
             total_sales: totalSales,
             cash: cashSales,
             methods: methods,
@@ -381,15 +388,17 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
             total_puntos: parseFloat(shift.total_puntos || puntos.reduce((acc, p) => acc + parseFloat(p.amount || 0), 0)),
             total_tarjetas: parseFloat(shift.total_tarjetas || tarjetas.reduce((acc, t) => acc + parseFloat(t.amount || 0), 0)),
             actual: parseFloat(shift.actual_cash || 0),
-            expected: parseFloat(shift.expected_cash || (parseFloat(shift.opening_balance || 0) + cashSales)),
+            expected: parseFloat(shift.expected_cash || (parseFloat(shift.opening_balance || 0) + cashSales - parseFloat(shift.closing_balance || 0))),
             difference: parseFloat(shift.difference || 0),
             salesByCategory: salesByCategory.map(c => ({
                 categoria: c.categoria,
+                cantidad: parseFloat(c.cantidad || 0),
                 total: parseFloat(c.total || 0)
             }))
         };
 
-        summary.expected_cash = summary.opening_balance + summary.cash + summary.total_incomes - summary.total_expenses - summary.total_remesas - summary.total_puntos - summary.total_tarjetas;
+        summary.expected_cash = summary.opening_balance + summary.cash + cashIncomes - summary.total_expenses - summary.total_remesas - summary.total_puntos - summary.total_tarjetas - summary.closing_balance;
+        summary.expected = summary.expected_cash;
 
         console.log(`[DEBUG] Final Summary:`, JSON.stringify(summary));
         res.json(summary);
@@ -402,7 +411,7 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
 // Guarda (o re-guarda) los datos del arqueo de un turno sin cambiar su estado.
 // Se ejecuta en transacción: elimina gastos/ingresos/remesas previos y los re-inserta,
 // recalculando el efectivo esperado, el contado y la diferencia.
-const saveArqueoData = async (conn, shift, { actual_cash, expenses = [], incomes = [], remesas = [], puntos = [], tarjetas = [] }) => {
+const saveArqueoData = async (conn, shift, { actual_cash, opening_balance, closing_balance, expenses = [], incomes = [], remesas = [], puntos = [], tarjetas = [] }) => {
     const { id } = shift;
 
     // 1. Limpiar datos previos del arqueo (permite re-arqueo sin duplicados)
@@ -522,13 +531,22 @@ const saveArqueoData = async (conn, shift, { actual_cash, expenses = [], incomes
     const transferSales = parseFloat(totals.transfer || 0);
     const otherSales = parseFloat(totals.other || 0);
 
-    // EFECTIVO ESPERADO = (FONDO + VENTAS CASH + INGRESOS CASH) - GASTOS - REMESAS - PUNTOS - TARJETAS
-    const expectedCash = parseFloat(shift.opening_balance) + cashSales + cashIncomes - totalExpenses - totalRemesas - totalPuntos - totalTarjetas;
+    const openingBalance = opening_balance !== undefined && opening_balance !== null && opening_balance !== ''
+        ? (parseFloat(opening_balance) || 0)
+        : parseFloat(shift.opening_balance || 0);
+    const closingBalance = closing_balance !== undefined && closing_balance !== null && closing_balance !== ''
+        ? (parseFloat(closing_balance) || 0)
+        : parseFloat(shift.closing_balance || 0);
+
+    // EFECTIVO ESPERADO = (FONDO INICIAL + VENTAS CASH + INGRESOS CASH) - GASTOS - REMESAS - PUNTOS - TARJETAS - FONDO FINAL
+    const expectedCash = openingBalance + cashSales + cashIncomes - totalExpenses - totalRemesas - totalPuntos - totalTarjetas - closingBalance;
     const actualCash = parseFloat(actual_cash || 0);
     const difference = actualCash - expectedCash;
 
     await conn.query(`
         UPDATE pos_shifts SET 
+            opening_balance = ?,
+            closing_balance = ?,
             expected_cash = ?,
             actual_cash = ?,
             difference = ?,
@@ -545,6 +563,8 @@ const saveArqueoData = async (conn, shift, { actual_cash, expenses = [], incomes
             arqueado = 1
         WHERE id = ?
     `, [
+        openingBalance,
+        closingBalance,
         expectedCash,
         actualCash,
         difference,
@@ -561,12 +581,12 @@ const saveArqueoData = async (conn, shift, { actual_cash, expenses = [], incomes
         id
     ]);
 
-    return { expectedCash, actualCash, difference, cardSales, transferSales, otherSales, totalExpenses, totalIncomes, totalRemesas, totalPuntos, totalTarjetas };
+    return { openingBalance, closingBalance, expectedCash, actualCash, difference, cardSales, transferSales, otherSales, totalExpenses, totalIncomes, totalRemesas, totalPuntos, totalTarjetas };
 };
 
 const saveArqueo = async (req, res) => {
     const { id } = req.params;
-    const { actual_cash, expenses = [], incomes = [], remesas = [], puntos = [], tarjetas = [] } = req.body;
+    const { actual_cash, opening_balance, closing_balance, expenses = [], incomes = [], remesas = [], puntos = [], tarjetas = [] } = req.body;
 
     try {
         const [shifts] = await pool.query('SELECT * FROM pos_shifts WHERE id = ? AND company_id = ?', [id, req.company_id]);
@@ -575,7 +595,7 @@ const saveArqueo = async (req, res) => {
         const conn = await pool.getConnection();
         try {
             await conn.beginTransaction();
-            const result = await saveArqueoData(conn, shifts[0], { actual_cash, expenses, incomes, remesas, puntos, tarjetas });
+            const result = await saveArqueoData(conn, shifts[0], { actual_cash, opening_balance, closing_balance, expenses, incomes, remesas, puntos, tarjetas });
             await conn.commit();
             res.json({ message: 'Arqueo guardado correctamente', summary: result });
         } catch (error) {
@@ -592,7 +612,7 @@ const saveArqueo = async (req, res) => {
 
 const closeShift = async (req, res) => {
     const { id } = req.params;
-    const { actual_cash, expenses = [], incomes = [], remesas = [], puntos = [], tarjetas = [] } = req.body;
+    const { actual_cash, opening_balance, closing_balance, expenses = [], incomes = [], remesas = [], puntos = [], tarjetas = [] } = req.body;
 
     try {
         // Obtener resumen actual
@@ -610,7 +630,7 @@ const closeShift = async (req, res) => {
             let summary = null;
             const hasArqueoData = actual_cash !== undefined && actual_cash !== null && actual_cash !== '';
             if (hasArqueoData) {
-                summary = await saveArqueoData(conn, shift, { actual_cash, expenses, incomes, remesas, puntos, tarjetas });
+                summary = await saveArqueoData(conn, shift, { actual_cash, opening_balance, closing_balance, expenses, incomes, remesas, puntos, tarjetas });
             } else {
                 // Si el cajero cerró sin desglose físico de arqueo, calcular y persistir ventas reales del turno desde sales_headers
                 const [salesTotals] = await conn.query(`
@@ -649,11 +669,18 @@ const closeShift = async (req, res) => {
                 const cardSales = parseFloat(totals.card || 0);
                 const transferSales = parseFloat(totals.transfer || 0);
                 const otherSales = parseFloat(totals.other || 0);
-                const opening = parseFloat(shift.opening_balance || 0);
-                const expectedCash = opening + cashSales;
+                const opening = opening_balance !== undefined && opening_balance !== null && opening_balance !== ''
+                    ? (parseFloat(opening_balance) || 0)
+                    : parseFloat(shift.opening_balance || 0);
+                const closing = closing_balance !== undefined && closing_balance !== null && closing_balance !== ''
+                    ? (parseFloat(closing_balance) || 0)
+                    : parseFloat(shift.closing_balance || 0);
+                const expectedCash = opening + cashSales - closing;
 
                 await conn.query(`
                     UPDATE pos_shifts SET 
+                        opening_balance = ?,
+                        closing_balance = ?,
                         total_sales = ?,
                         cash_sales = ?,
                         card_sales = ?,
@@ -664,7 +691,7 @@ const closeShift = async (req, res) => {
                         difference = CASE WHEN actual_cash = 0 OR actual_cash IS NULL THEN 0 ELSE actual_cash - ? END,
                         arqueado = 1
                     WHERE id = ?
-                `, [totalSales, cashSales, cardSales, transferSales, otherSales, expectedCash, expectedCash, expectedCash, id]);
+                `, [opening, closing, totalSales, cashSales, cardSales, transferSales, otherSales, expectedCash, expectedCash, expectedCash, id]);
             }
 
             // Finalizar el turno (el arqueo no es requisito)
@@ -679,6 +706,8 @@ const closeShift = async (req, res) => {
                 const [updated] = await pool.query('SELECT * FROM pos_shifts WHERE id = ?', [id]);
                 const s = updated[0];
                 summary = {
+                    openingBalance: parseFloat(s.opening_balance || 0),
+                    closingBalance: parseFloat(s.closing_balance || 0),
                     expectedCash: parseFloat(s.expected_cash || 0),
                     actualCash: parseFloat(s.actual_cash || 0),
                     difference: parseFloat(s.difference || 0),
@@ -692,6 +721,8 @@ const closeShift = async (req, res) => {
             res.json({
                 message: 'Turno finalizado correctamente',
                 summary: {
+                    opening_balance: summary.openingBalance,
+                    closing_balance: summary.closingBalance,
                     expected: summary.expectedCash,
                     actual: summary.actualCash,
                     difference: summary.difference,
@@ -720,98 +751,98 @@ const getShiftsHistory = async (req, res) => {
         const limitNum = Math.min(50, Math.max(1, parseInt(limit) || 15));
         const offset = (pageNum - 1) * limitNum;
 
-        let countSql = `
-            SELECT COUNT(*) as total
-            FROM pos_shifts s
-            JOIN sellers sel ON s.seller_id = sel.id
-            JOIN points_of_sale p ON s.pos_id = p.id
-            JOIN branches b ON s.branch_id = b.id
-            WHERE s.company_id = ?
-        `;
-        let dataSql = `
-            SELECT s.*, 
-                COALESCE(sales.total, s.total_sales, 0) as total_sales,
-                COALESCE(sales.cash_sales, s.cash_sales, 0) as cash_sales,
-                COALESCE(sales.card_sales, s.card_sales, 0) as card_sales,
-                COALESCE(sales.transfer_sales, s.transfer_sales, 0) as transfer_sales,
-                COALESCE(sales.other_sales, s.other_sales, 0) as other_sales,
-                sel.nombre as seller_name, p.nombre as pos_name, b.nombre as branch_name
-            FROM pos_shifts s
-            JOIN sellers sel ON s.seller_id = sel.id
-            JOIN points_of_sale p ON s.pos_id = p.id
-            JOIN branches b ON s.branch_id = b.id
-            LEFT JOIN (
-                SELECT 
-                    b.shift_id,
-                    SUM(CASE WHEN b.metodo_pago = '01' THEN GREATEST(0, COALESCE(b.total_pagar, 0) - b.non_cash) ELSE b.sum_monto END) as total,
-                    SUM(CASE WHEN b.metodo_pago = '01' THEN GREATEST(0, COALESCE(b.total_pagar, 0) - b.non_cash) ELSE 0 END) as cash_sales,
-                    SUM(CASE WHEN b.metodo_pago IN ('02', '03') THEN b.sum_monto ELSE 0 END) as card_sales,
-                    SUM(CASE WHEN b.metodo_pago = '05' THEN b.sum_monto ELSE 0 END) as transfer_sales,
-                    SUM(CASE WHEN b.metodo_pago NOT IN ('01', '02', '03', '05', '99') THEN b.sum_monto ELSE 0 END) as other_sales
-                FROM (
-                    SELECT 
-                        h.shift_id,
-                        h.total_pagar,
-                        h.non_cash,
-                        p.metodo_pago,
-                        SUM(p.monto) as sum_monto
-                    FROM (
-                        SELECT 
-                            h.id, 
-                            h.shift_id,
-                            h.total_pagar,
-                            COALESCE(SUM(CASE WHEN p.metodo_pago != '01' THEN p.monto ELSE 0 END), 0) as non_cash
-                        FROM sales_headers h
-                        JOIN sales_payments p ON p.sale_id = h.id
-                        WHERE h.estado = 'emitido'
-                        AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = h.id AND status = 'INVALIDADO')
-                        GROUP BY h.id
-                    ) h
-                    JOIN sales_payments p ON p.sale_id = h.id
-                    GROUP BY h.id, h.shift_id, h.total_pagar, h.non_cash, p.metodo_pago
-                ) b
-                GROUP BY b.shift_id
-            ) sales ON sales.shift_id = s.id
-            WHERE s.company_id = ?
-        `;
+        let whereSql = ` WHERE s.company_id = ?`;
         const params = [req.company_id];
 
         if (branch_id) {
-            countSql += ` AND s.branch_id = ?`;
-            dataSql += ` AND s.branch_id = ?`;
+            whereSql += ` AND s.branch_id = ?`;
             params.push(branch_id);
         }
         if (seller_id) {
-            countSql += ` AND s.seller_id = ?`;
-            dataSql += ` AND s.seller_id = ?`;
+            whereSql += ` AND s.seller_id = ?`;
             params.push(seller_id);
         }
         if (status) {
-            countSql += ` AND s.status = ?`;
-            dataSql += ` AND s.status = ?`;
+            whereSql += ` AND s.status = ?`;
             params.push(status);
         }
         if (search) {
-            countSql += ` AND (sel.nombre LIKE ? OR p.nombre LIKE ?)`;
-            dataSql += ` AND (sel.nombre LIKE ? OR p.nombre LIKE ?)`;
+            whereSql += ` AND (sel.nombre LIKE ? OR p.nombre LIKE ?)`;
             params.push(`%${search}%`, `%${search}%`);
         }
         if (start_date) {
-            countSql += ` AND s.start_time >= ?`;
-            dataSql += ` AND s.start_time >= ?`;
+            whereSql += ` AND s.start_time >= ?`;
             params.push(`${start_date} 00:00:00`);
         }
         if (end_date) {
-            countSql += ` AND s.start_time <= ?`;
-            dataSql += ` AND s.start_time <= ?`;
+            whereSql += ` AND s.start_time <= ?`;
             params.push(`${end_date} 23:59:59`);
         }
 
-        dataSql += ` ORDER BY s.start_time DESC LIMIT ? OFFSET ?`;
+        const baseJoins = `
+            FROM pos_shifts s
+            JOIN sellers sel ON s.seller_id = sel.id
+            JOIN points_of_sale p ON s.pos_id = p.id
+            JOIN branches b ON s.branch_id = b.id
+            ${whereSql}
+        `;
+
+        const countSql = `SELECT COUNT(*) as total ${baseJoins}`;
+        const dataSql = `
+            SELECT s.*, sel.nombre as seller_name, p.nombre as pos_name, b.nombre as branch_name
+            ${baseJoins}
+            ORDER BY s.start_time DESC LIMIT ? OFFSET ?
+        `;
         const dataParams = [...params, limitNum, offset];
 
-        const [[{ total }]] = await pool.query(countSql, params);
-        const [rows] = await pool.query(dataSql, dataParams);
+        const [[[{ total }]], [rows]] = await Promise.all([
+            pool.query(countSql, params),
+            pool.query(dataSql, dataParams)
+        ]);
+
+        // Calcular ventas únicamente para los turnos de la página actual (evita escaneo global de sales_headers)
+        const shiftIds = rows.map(r => r.id);
+        if (shiftIds.length > 0) {
+            const [salesByShift] = await pool.query(`
+                SELECT
+                    t.shift_id,
+                    SUM(t.cash_amt + t.non_cash_amt) as total,
+                    SUM(t.cash_amt) as cash_sales,
+                    SUM(t.card_amt) as card_sales,
+                    SUM(t.transfer_amt) as transfer_sales,
+                    SUM(t.other_amt) as other_sales
+                FROM (
+                    SELECT
+                        h.id,
+                        h.shift_id,
+                        CASE WHEN MAX(p.metodo_pago = '01') = 1
+                             THEN GREATEST(0, COALESCE(h.total_pagar, 0) - COALESCE(SUM(CASE WHEN p.metodo_pago != '01' THEN p.monto ELSE 0 END), 0))
+                             ELSE 0 END as cash_amt,
+                        COALESCE(SUM(CASE WHEN p.metodo_pago != '01' THEN p.monto ELSE 0 END), 0) as non_cash_amt,
+                        COALESCE(SUM(CASE WHEN p.metodo_pago IN ('02', '03') THEN p.monto ELSE 0 END), 0) as card_amt,
+                        COALESCE(SUM(CASE WHEN p.metodo_pago = '05' THEN p.monto ELSE 0 END), 0) as transfer_amt,
+                        COALESCE(SUM(CASE WHEN p.metodo_pago NOT IN ('01', '02', '03', '05', '99') THEN p.monto ELSE 0 END), 0) as other_amt
+                    FROM sales_headers h
+                    JOIN sales_payments p ON p.sale_id = h.id
+                    WHERE h.shift_id IN (?) AND h.estado = 'emitido'
+                      AND COALESCE(h.tipo_documento, '01') != '07'
+                      AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = h.id AND status = 'INVALIDADO')
+                    GROUP BY h.id, h.shift_id, h.total_pagar
+                ) t
+                GROUP BY t.shift_id
+            `, [shiftIds]);
+
+            const salesMap = new Map(salesByShift.map(item => [Number(item.shift_id), item]));
+            for (const row of rows) {
+                const s = salesMap.get(Number(row.id));
+                row.total_sales = s?.total != null ? s.total : (row.total_sales || 0);
+                row.cash_sales = s?.cash_sales != null ? s.cash_sales : (row.cash_sales || 0);
+                row.card_sales = s?.card_sales != null ? s.card_sales : (row.card_sales || 0);
+                row.transfer_sales = s?.transfer_sales != null ? s.transfer_sales : (row.transfer_sales || 0);
+                row.other_sales = s?.other_sales != null ? s.other_sales : (row.other_sales || 0);
+            }
+        }
+
         const totalPages = Math.ceil(total / limitNum);
 
         res.json({ data: rows, total, page: pageNum, totalPages });
@@ -847,6 +878,7 @@ const exportArqueosPDF = async (req, res) => {
                 s.status,
                 s.arqueado,
                 s.opening_balance,
+                s.closing_balance,
                 s.total_sales,
                 s.cash_sales,
                 s.card_sales,
@@ -904,6 +936,7 @@ const exportArqueosPDF = async (req, res) => {
                 vendedor: r.seller_name || '---',
                 estado: r.arqueado ? 'Arqueado' : r.status === 'open' ? 'Abierto' : 'Cerrado',
                 fondo: num(r.opening_balance),
+                fondo_final: num(r.closing_balance),
                 ventas: num(r.total_sales),
                 ingresos: num(r.total_incomes),
                 gastos: num(r.total_expenses),
@@ -1131,6 +1164,7 @@ const exportArqueosPDF = async (req, res) => {
             puntos_detalle: mappedPuntos,
             totales: {
                 fondo: mappedRows.reduce((s, r) => s + r.fondo, 0),
+                fondo_final: mappedRows.reduce((s, r) => s + r.fondo_final, 0),
                 ventas: mappedRows.reduce((s, r) => s + r.ventas, 0),
                 ingresos: mappedRows.reduce((s, r) => s + r.ingresos, 0),
                 gastos: mappedRows.reduce((s, r) => s + r.gastos, 0),
@@ -1154,7 +1188,8 @@ const exportArqueosPDF = async (req, res) => {
                         { header: 'POS', key: 'pos', width: 20 },
                         { header: 'Vendedor', key: 'vendedor', width: 22 },
                         { header: 'Estado', key: 'estado', width: 12 },
-                        { header: 'Fondo', key: 'fondo', width: 12 },
+                        { header: 'Fondo Inicial', key: 'fondo', width: 14 },
+                        { header: 'Fondo Final', key: 'fondo_final', width: 14 },
                         { header: 'Ventas', key: 'ventas', width: 12 },
                         { header: 'Ingresos', key: 'ingresos', width: 12 },
                         { header: 'Gastos', key: 'gastos', width: 12 },
@@ -1168,6 +1203,7 @@ const exportArqueosPDF = async (req, res) => {
                     data: mappedRows.map(r => ({
                         ...r,
                         fondo: r.fondo.toFixed(2),
+                        fondo_final: r.fondo_final.toFixed(2),
                         ventas: r.ventas.toFixed(2),
                         ingresos: r.ingresos.toFixed(2),
                         gastos: r.gastos.toFixed(2),
@@ -1294,9 +1330,10 @@ const exportArqueosPDF = async (req, res) => {
                     { concepto_izq: 'TOTAL VENTA', monto_izq: opTotales.ventas.toFixed(2), concepto_der: 'TOTAL TARJETAS', monto_der: opTotales.tarjetas.toFixed(2) },
                     { concepto_izq: 'TOTAL INGRESOS', monto_izq: opTotales.ingresos.toFixed(2), concepto_der: 'TOTAL GASTOS', monto_der: opTotales.gastos.toFixed(2) },
                     { concepto_izq: 'VENTAS + INGRESOS', monto_izq: (opTotales.ventas + opTotales.ingresos).toFixed(2), concepto_der: 'TOTAL RETIRADO (PUNTOS)', monto_der: opTotales.puntos.toFixed(2) },
-                    { concepto_izq: 'TOTAL CONTADO (FÍSICO)', monto_izq: opTotales.contado.toFixed(2), concepto_der: 'TOTAL REMESADO', monto_der: opTotales.remesas.toFixed(2) },
-                    { concepto_izq: 'FONDO INICIAL', monto_izq: opTotales.fondo.toFixed(2), concepto_der: 'SALDO FINAL (ESPERADO)', monto_der: opTotales.esperado.toFixed(2) },
-                    { concepto_izq: 'ESTADO DE CAJA', monto_izq: opTotales.diferencia === 0 ? 'CUADRADA' : (opTotales.diferencia > 0 ? 'SOBRANTE' : 'FALTANTE'), concepto_der: 'DIFERENCIA', monto_der: opTotales.diferencia.toFixed(2) },
+                    { concepto_izq: 'FONDO INICIAL', monto_izq: opTotales.fondo.toFixed(2), concepto_der: 'TOTAL REMESADO', monto_der: opTotales.remesas.toFixed(2) },
+                    { concepto_izq: 'TOTAL CONTADO (FÍSICO)', monto_izq: opTotales.contado.toFixed(2), concepto_der: 'FONDO FINAL (CAJA)', monto_der: (opTotales.fondo_final || 0).toFixed(2) },
+                    { concepto_izq: 'ESTADO DE CAJA', monto_izq: opTotales.diferencia === 0 ? 'CUADRADA' : (opTotales.diferencia > 0 ? 'SOBRANTE' : 'FALTANTE'), concepto_der: 'SALDO FINAL (ESPERADO)', monto_der: opTotales.esperado.toFixed(2) },
+                    { concepto_izq: '', monto_izq: '', concepto_der: 'DIFERENCIA', monto_der: opTotales.diferencia.toFixed(2) },
                 ]
             });
 
@@ -1449,7 +1486,7 @@ const deleteShift = async (req, res) => {
 const updateShift = async (req, res) => {
     try {
         const { id } = req.params;
-        const { seller_id, pos_id, opening_balance, shift_number } = req.body;
+        const { seller_id, pos_id, opening_balance, closing_balance, shift_number } = req.body;
 
         const [shifts] = await pool.query(
             'SELECT * FROM pos_shifts WHERE id = ? AND company_id = ?',
@@ -1459,7 +1496,9 @@ const updateShift = async (req, res) => {
             return res.status(404).json({ message: 'Turno no encontrado' });
         }
 
-        if (seller_id && Number(seller_id) !== Number(shifts[0].seller_id)) {
+        const currentShift = shifts[0];
+
+        if (seller_id && Number(seller_id) !== Number(currentShift.seller_id)) {
             try {
                 await assertNoSellerConflicts(req.company_id, [seller_id], Number(id));
             } catch (err) {
@@ -1467,10 +1506,27 @@ const updateShift = async (req, res) => {
             }
         }
 
+        const newOpening = opening_balance !== undefined && opening_balance !== ''
+            ? (parseFloat(opening_balance) || 0)
+            : parseFloat(currentShift.opening_balance || 0);
+        const newClosing = closing_balance !== undefined && closing_balance !== ''
+            ? (parseFloat(closing_balance) || 0)
+            : parseFloat(currentShift.closing_balance || 0);
+
+        let newExpected = parseFloat(currentShift.expected_cash || 0);
+        let newDiff = parseFloat(currentShift.difference || 0);
+
+        if (currentShift.arqueado) {
+            const deltaOpening = newOpening - parseFloat(currentShift.opening_balance || 0);
+            const deltaClosing = newClosing - parseFloat(currentShift.closing_balance || 0);
+            newExpected = newExpected + deltaOpening - deltaClosing;
+            newDiff = parseFloat(currentShift.actual_cash || 0) - newExpected;
+        }
+
         const [result] = await pool.query(
-            `UPDATE pos_shifts SET seller_id = ?, pos_id = ?, opening_balance = ?, shift_number = ?
+            `UPDATE pos_shifts SET seller_id = ?, pos_id = ?, opening_balance = ?, closing_balance = ?, expected_cash = ?, difference = ?, shift_number = ?
              WHERE id = ? AND company_id = ?`,
-            [seller_id, pos_id, opening_balance, shift_number, id, req.company_id]
+            [seller_id, pos_id, newOpening, newClosing, newExpected, newDiff, shift_number, id, req.company_id]
         );
 
         if (result.affectedRows === 0) {

@@ -246,7 +246,7 @@ REGLAS DE MULTI-TENENCIA:
 
 ### pos_shifts (Turnos POS — detallado)
 - id, company_id, branch_id, pos_id, seller_id
-- start_time DATETIME, end_time DATETIME, opening_balance DECIMAL
+- start_time DATETIME, end_time DATETIME, opening_balance DECIMAL, closing_balance DECIMAL
 - total_expenses DECIMAL, total_incomes DECIMAL
 - total_remesas DECIMAL, total_puntos DECIMAL, total_tarjetas DECIMAL
 - expected_cash, actual_cash, difference DECIMAL

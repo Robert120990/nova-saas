@@ -148,8 +148,9 @@ function renderOperationsSummary(doc, totales, startX, startY, contentWidth) {
         { label: 'TOTAL VENTA', val: totales.ventas, bold: false },
         { label: 'TOTAL INGRESOS', val: totales.ingresos, bold: false },
         { label: 'VENTAS + INGRESOS', val: (totales.ventas || 0) + (totales.ingresos || 0), bold: true },
+        { label: 'FONDO INICIAL', val: totales.fondo, bold: false },
         { label: 'TOTAL CONTADO', val: totales.contado, bold: true },
-        { label: 'FONDO INICIAL', val: totales.fondo, bold: false }
+        { label: 'FONDO FINAL (CAJA)', val: totales.fondo_final || 0, bold: false }
     ];
 
     const rightRows = [
@@ -157,11 +158,12 @@ function renderOperationsSummary(doc, totales, startX, startY, contentWidth) {
         { label: 'TOTAL GASTOS', val: totales.gastos, bold: false },
         { label: 'TOTAL RETIRADO (PUNTOS)', val: totales.puntos, bold: false },
         { label: 'TOTAL REMESADO', val: totales.remesas, bold: false },
+        { label: 'FONDO FINAL RETIRADO', val: totales.fondo_final || 0, bold: false },
         { label: 'SALDO FINAL (ESPERADO)', val: totales.esperado, bold: true }
     ];
 
     let rowY = tableStartY;
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < leftRows.length; i++) {
         if (i % 2 === 1) doc.rect(startX, rowY, contentWidth, rowHeight).fill('#f8fafc');
         doc.strokeColor('#e2e8f0').lineWidth(0.5).moveTo(startX, rowY).lineTo(startX + contentWidth, rowY).stroke();
 
