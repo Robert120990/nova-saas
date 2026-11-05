@@ -76,7 +76,8 @@ const getPeriodDateBounds = (pYear, pMonth) => {
     const lastDay = new Date(year, month, 0).getDate();
     const maxDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-    const minDateObj = new Date(year, month - 1 - 3, 1);
+    // 3 meses incluyendo el período seleccionado (ej. Octubre permite Agosto, Septiembre y Octubre)
+    const minDateObj = new Date(year, month - 1 - 2, 1);
     const minYear = minDateObj.getFullYear();
     const minMonth = minDateObj.getMonth() + 1;
     const minDate = `${minYear}-${String(minMonth).padStart(2, '0')}-01`;
