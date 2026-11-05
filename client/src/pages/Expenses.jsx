@@ -64,6 +64,60 @@ const MONTHS = [
 const currentYearVal = new Date().getFullYear();
 const YEARS = Array.from({ length: 9 }, (_, i) => currentYearVal - 4 + i);
 
+/**
+ * Calcula los límites de fecha permitidos para el período seleccionado:
+ * - maxDate: último día del período seleccionado (la fecha no puede ser mayor al período seleccionado)
+ * - minDate: primer día de hace 3 meses respecto al período seleccionado (antigüedad máxima de 3 meses)
+ */
+const getPeriodDateBounds = (pYear, pMonth) => {
+    const year = parseInt(pYear, 10) || new Date().getFullYear();
+    const month = parseInt(pMonth, 10) || (new Date().getMonth() + 1);
+
+    const lastDay = new Date(year, month, 0).getDate();
+    const maxDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    const minDateObj = new Date(year, month - 1 - 3, 1);
+    const minYear = minDateObj.getFullYear();
+    const minMonth = minDateObj.getMonth() + 1;
+    const minDate = `${minYear}-${String(minMonth).padStart(2, '0')}-01`;
+
+    const periodLabel = `${String(month).padStart(2, '0')}/${year}`;
+    const minPeriodLabel = `${String(minMonth).padStart(2, '0')}/${minYear}`;
+
+    return { minDate, maxDate, periodLabel, minPeriodLabel, year, month, minYear, minMonth };
+};
+
+const validateExpenseDateAgainstPeriod = (fechaStr, pYear, pMonth) => {
+    const cleanDate = String(fechaStr || '').split('T')[0].trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) {
+        return {
+            valid: false,
+            code: 'INVALID_DATE',
+            message: 'Debe ingresar una fecha de emisión válida.'
+        };
+    }
+
+    const { minDate, maxDate, periodLabel, minPeriodLabel } = getPeriodDateBounds(pYear, pMonth);
+
+    if (cleanDate > maxDate) {
+        return {
+            valid: false,
+            code: 'AFTER_PERIOD',
+            message: `La fecha de emisión no puede ser mayor al período seleccionado (${periodLabel}).`
+        };
+    }
+
+    if (cleanDate < minDate) {
+        return {
+            valid: false,
+            code: 'TOO_OLD',
+            message: `La fecha de emisión supera los 3 meses de antigüedad permitidos para el período seleccionado (${minPeriodLabel} a ${periodLabel}).`
+        };
+    }
+
+    return { valid: true, code: null, message: null };
+};
+
 // Catálogo Oficial de los 9 Tipos de Documentos de Compras/Gastos (Ministerio de Hacienda)
 const DOCUMENT_TYPES = [
     {
@@ -434,6 +488,7 @@ const Expenses = () => {
     const isSubmittingRef = useRef(false);
     const conceptoInputRef = useRef(null);
     const tipoDocRef = useRef(null);
+    const fechaInputRef = useRef(null);
     const dteFileInputRef = useRef(null);
     const [isScanningDte, setIsScanningDte] = useState(false);
 
@@ -572,21 +627,18 @@ const Expenses = () => {
         return { isPrimary, isSecondary, isDisabled };
     };
 
+    const periodDateBounds = useMemo(() => {
+        return getPeriodDateBounds(periodYear, periodMonth);
+    }, [periodYear, periodMonth]);
+
+    const fechaValidation = useMemo(() => {
+        return validateExpenseDateAgainstPeriod(fecha, periodYear, periodMonth);
+    }, [fecha, periodYear, periodMonth]);
+
     // Handle date changes
     const handleFechaChange = (e) => {
         const val = e.target.value;
         setFecha(val);
-        if (val && !isPeriodDirty) {
-            const parts = val.split('-');
-            if (parts.length === 3) {
-                const y = parseInt(parts[0], 10);
-                const m = parseInt(parts[1], 10);
-                if (!isNaN(y) && !isNaN(m)) {
-                    setPeriodYear(y);
-                    setPeriodMonth(m);
-                }
-            }
-        }
     };
 
     // Tax Logic
@@ -737,8 +789,11 @@ const Expenses = () => {
             // 5. Fecha de Emisión y Período
             if (data.fecha_emision) {
                 setFecha(data.fecha_emision);
-                handleFechaChange({ target: { value: data.fecha_emision } });
                 filledFields.push('Fecha');
+                const dateCheck = validateExpenseDateAgainstPeriod(data.fecha_emision, periodYear, periodMonth);
+                if (!dateCheck.valid) {
+                    toast.warning(dateCheck.message, { duration: 7000 });
+                }
             }
 
             // 6. Proveedor
@@ -937,13 +992,15 @@ const Expenses = () => {
         setIsIvaDirty(false);
 
         const today = getTodayString();
-        setFecha(today);
         const [y, m] = today.split('-').map(Number);
         const targetY = filterYear || y;
         const targetM = filterMonth || m;
+        const bounds = getPeriodDateBounds(targetY, targetM);
+        const defaultFecha = today > bounds.maxDate ? bounds.maxDate : (today < bounds.minDate ? bounds.minDate : today);
+        setFecha(defaultFecha);
         setPeriodYear(targetY);
         setPeriodMonth(targetM);
-        setIsPeriodDirty(targetY !== y || targetM !== m);
+        setIsPeriodDirty(false);
         setIsEditing(false);
         setEditingId(null);
     };
@@ -1158,8 +1215,6 @@ const Expenses = () => {
             return toast.error('Debe ingresar al menos un monto en compras gravadas, exentas o no sujetas');
         }
 
-        isSubmittingRef.current = true;
-
         let docYear = new Date().getFullYear();
         let docMonth = new Date().getMonth() + 1;
         if (fecha) {
@@ -1169,13 +1224,17 @@ const Expenses = () => {
                 docMonth = parseInt(parts[1], 10) || docMonth;
             }
         }
-        let finalPeriodYear = periodYear || activePeriod?.year || docYear;
-        let finalPeriodMonth = periodMonth || activePeriod?.month || docMonth;
+        const finalPeriodYear = periodYear || activePeriod?.year || docYear;
+        const finalPeriodMonth = periodMonth || activePeriod?.month || docMonth;
 
-        if (!isPeriodDirty && (finalPeriodYear < docYear || (finalPeriodYear === docYear && finalPeriodMonth < docMonth))) {
-            finalPeriodYear = docYear;
-            finalPeriodMonth = docMonth;
+        const dateCheck = validateExpenseDateAgainstPeriod(fecha, finalPeriodYear, finalPeriodMonth);
+        if (!dateCheck.valid) {
+            toast.error(dateCheck.message);
+            fechaInputRef.current?.focus();
+            return;
         }
+
+        isSubmittingRef.current = true;
 
         const isSujetoExcluido = tipoDocId === '14';
         const docNumCalculated = (numeroDoc || '').trim().toUpperCase() || (isSujetoExcluido && emitirDte ? 'DTE-14-PENDIENTE' : 'S/N');
@@ -1934,12 +1993,20 @@ const Expenses = () => {
                                         </div>
 
                                         <div className="sm:col-span-3">
-                                            <label className={labelCls}>Fecha de Emisión *</label>
+                                            <div className="flex items-center justify-between mb-1">
+                                                <label className={labelCls}>Fecha de Emisión *</label>
+                                                <span className="text-[9px] font-bold text-slate-400">
+                                                    {periodDateBounds.minPeriodLabel} - {periodDateBounds.periodLabel}
+                                                </span>
+                                            </div>
                                             <input 
+                                                ref={fechaInputRef}
                                                 type="date" 
                                                 value={fecha} 
+                                                min={periodDateBounds.minDate}
+                                                max={periodDateBounds.maxDate}
                                                 onChange={handleFechaChange} 
-                                                className={inputCls} 
+                                                className={`${inputCls} ${!fechaValidation.valid ? '!border-rose-400 !bg-rose-50/40 !text-rose-900 focus:!ring-rose-500/20' : ''}`} 
                                                 required
                                             />
                                         </div>
@@ -1959,6 +2026,13 @@ const Expenses = () => {
                                             </select>
                                         </div>
                                     </div>
+
+                                    {!fechaValidation.valid && (
+                                        <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-rose-700 text-[11px] font-bold animate-in fade-in">
+                                            <AlertCircle size={15} className="text-rose-600 shrink-0" />
+                                            <span>{fechaValidation.message}</span>
+                                        </div>
+                                    )}
 
                                     {/* Banner de Emisión Automática para DTE-14 Sujeto Excluido */}
                                     {tipoDocId === '14' && !isEditing && (

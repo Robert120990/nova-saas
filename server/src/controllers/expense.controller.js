@@ -10,6 +10,63 @@ const sujetoExcluidoDteService = require('../services/sujetoExcluidoDte.service'
 const activeExpenseSubmissions = new Map();
 
 /**
+ * Valida que la fecha de emisión no sea mayor al período seleccionado
+ * y que no supere los 3 meses de antigüedad respecto al período seleccionado.
+ */
+const validateExpenseDateAgainstPeriod = (fecha, periodYear, periodMonth) => {
+    if (!fecha) {
+        return { valid: false, message: 'Debe proporcionar la fecha de emisión del documento.' };
+    }
+
+    let cleanDate = '';
+    if (typeof fecha === 'string' && /^\d{4}-\d{2}-\d{2}/.test(fecha.trim())) {
+        cleanDate = fecha.trim().split('T')[0];
+    } else {
+        const d = new Date(fecha);
+        if (isNaN(d.getTime())) {
+            return { valid: false, message: 'La fecha de emisión proporcionada no es válida.' };
+        }
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        cleanDate = `${y}-${m}-${day}`;
+    }
+
+    const pYear = parseInt(periodYear, 10);
+    const pMonth = parseInt(periodMonth, 10);
+    if (!pYear || !pMonth || pMonth < 1 || pMonth > 12) {
+        return { valid: true };
+    }
+
+    const lastDay = new Date(pYear, pMonth, 0).getDate();
+    const maxDate = `${pYear}-${String(pMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    const minDateObj = new Date(pYear, pMonth - 1 - 3, 1);
+    const minYear = minDateObj.getFullYear();
+    const minMonth = minDateObj.getMonth() + 1;
+    const minDate = `${minYear}-${String(minMonth).padStart(2, '0')}-01`;
+
+    const periodLabel = `${String(pMonth).padStart(2, '0')}/${pYear}`;
+    const minPeriodLabel = `${String(minMonth).padStart(2, '0')}/${minYear}`;
+
+    if (cleanDate > maxDate) {
+        return {
+            valid: false,
+            message: `La fecha de emisión (${cleanDate}) no puede ser mayor al período seleccionado (${periodLabel}).`
+        };
+    }
+
+    if (cleanDate < minDate) {
+        return {
+            valid: false,
+            message: `La fecha de emisión (${cleanDate}) supera los 3 meses de antigüedad permitidos para el período seleccionado (${minPeriodLabel} a ${periodLabel}).`
+        };
+    }
+
+    return { valid: true };
+};
+
+/**
  * Obtener lista de gastos con búsqueda y paginación
  */
 const getExpenses = async (req, res) => {
@@ -256,6 +313,12 @@ const createExpense = async (req, res) => {
         let finalPeriodYear = parseInt(period_year, 10) || docYear;
         let finalPeriodMonth = parseInt(period_month, 10) || docMonth;
 
+        const dateValidation = validateExpenseDateAgainstPeriod(fecha, finalPeriodYear, finalPeriodMonth);
+        if (!dateValidation.valid) {
+            await connection.rollback();
+            return res.status(400).json({ message: dateValidation.message });
+        }
+
         // Si no existe un periodo configurado para este usuario, crearlo al guardar el registro
         const [existingPeriod] = await connection.query(
             'SELECT id FROM purchase_user_periods WHERE user_id = ? AND company_id = ?',
@@ -412,6 +475,12 @@ const updateExpense = async (req, res) => {
         }
         let finalPeriodYear = parseInt(period_year, 10) || docYear;
         let finalPeriodMonth = parseInt(period_month, 10) || docMonth;
+
+        const dateValidation = validateExpenseDateAgainstPeriod(fecha, finalPeriodYear, finalPeriodMonth);
+        if (!dateValidation.valid) {
+            await connection.rollback();
+            return res.status(400).json({ message: dateValidation.message });
+        }
 
         // Si no existe un periodo configurado para este usuario, crearlo al guardar el registro
         if (usuarioId && companyId) {
