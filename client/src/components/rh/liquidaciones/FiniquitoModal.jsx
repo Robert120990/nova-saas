@@ -1,19 +1,19 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Building2, User, Check, ShieldCheck, Sparkles } from 'lucide-react';
+import { ShieldCheck, Sparkles } from 'lucide-react';
 import { unwrapList } from '../../../utils/apiUtils';
 
 const FiniquitoModal = ({ open, onClose, onSubmit, model, companyId }) => {
     const { fieldCls, labelCls } = model || {};
     const [motivo, setMotivo] = useState('RENUNCIA VOLUNTARIA');
-    const [tipoPersona, setTipoPersona] = useState('juridica'); // 'juridica' | 'natural'
     const [detectedCompanyName, setDetectedCompanyName] = useState('');
+    const [detectedModalidad, setDetectedModalidad] = useState('');
 
     useEffect(() => {
         if (!open) return;
         setMotivo(model?.finiquitoMotivo || 'RENUNCIA VOLUNTARIA');
         
-        // Auto-detectar según la empresa actual
+        // Leer empresa y modalidad directamente desde la tabla companies
         if (companyId) {
             axios.get('/api/companies')
                 .then(res => {
@@ -21,9 +21,10 @@ const FiniquitoModal = ({ open, onClose, onSubmit, model, companyId }) => {
                     const comp = (Array.isArray(list) ? list : []).find(c => String(c.id) === String(companyId));
                     if (comp) {
                         setDetectedCompanyName(comp.razon_social || '');
-                        const isNat = String(comp.tipo_persona) === '1' ||
-                            !/S\.?A\.?|C\.?V\.?|SOCIEDAD|LTDA|LIMITADA|R\.L\./i.test(comp.razon_social || '');
-                        setTipoPersona(isNat ? 'natural' : 'juridica');
+                        const isNat = comp.tipo_persona
+                            ? String(comp.tipo_persona) === '1'
+                            : !/S\.?A\.?|C\.?V\.?|SOCIEDAD|LTDA|LIMITADA|R\.L\./i.test(comp.razon_social || '');
+                        setDetectedModalidad(isNat ? 'Persona Natural' : 'Persona Jurídica');
                     }
                 })
                 .catch(() => {});
@@ -37,7 +38,6 @@ const FiniquitoModal = ({ open, onClose, onSubmit, model, companyId }) => {
         if (onSubmit) {
             onSubmit({
                 motivo: motivo.trim() || 'RENUNCIA VOLUNTARIA',
-                tipoPersona,
                 format: 'pdf'
             });
         }
@@ -45,6 +45,7 @@ const FiniquitoModal = ({ open, onClose, onSubmit, model, companyId }) => {
 
     const quickMotivos = [
         'RENUNCIA VOLUNTARIA',
+        'TERMINACIÓN DE CONTRATO',
         'RENUNCIA INMEDIATA',
         'DESPIDO INJUSTIFICADO',
         'MUTUO ACUERDO / RETIRO VOLUNTARIO'
@@ -64,73 +65,24 @@ const FiniquitoModal = ({ open, onClose, onSubmit, model, companyId }) => {
                         </div>
                         <div>
                             <h3 className="text-base font-bold text-white tracking-tight">Emisión de Finiquito Laboral</h3>
-                            <p className="text-xs text-indigo-200/80 font-medium">Adaptación legal según modalidad patronal</p>
+                            <p className="text-xs text-indigo-200/80 font-medium">Documento legal adaptado automáticamente según la empresa</p>
                         </div>
                     </div>
                     {detectedCompanyName && (
-                        <div className="mt-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 text-white/90 text-[11px] font-medium backdrop-blur-md">
+                        <div className="mt-3 inline-flex flex-wrap items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 text-white/90 text-[11px] font-medium backdrop-blur-md">
                             <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                            <span>Empresa actual: <strong className="text-white">{detectedCompanyName}</strong></span>
+                            <span>Empresa: <strong className="text-white">{detectedCompanyName}</strong></span>
+                            {detectedModalidad && (
+                                <span className="ml-1 px-1.5 py-0.5 rounded bg-indigo-500/30 text-indigo-200 text-[10px] font-bold uppercase">
+                                    {detectedModalidad}
+                                </span>
+                            )}
                         </div>
                     )}
                 </div>
 
                 <form onSubmit={handleFormSubmit} className="p-7 space-y-6">
-                    {/* 1. Modalidad Patronal */}
-                    <div>
-                        <label className={labelCls || "block text-[11px] font-bold text-slate-500 uppercase mb-2"}>
-                            Modalidad del Empleador
-                        </label>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <button
-                                type="button"
-                                onClick={() => setTipoPersona('juridica')}
-                                className={`p-4 rounded-2xl border-2 text-left transition-all relative flex flex-col justify-between ${
-                                    tipoPersona === 'juridica'
-                                        ? 'border-indigo-600 bg-indigo-50/40 shadow-sm ring-1 ring-indigo-600/30'
-                                        : 'border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50/50'
-                                }`}
-                            >
-                                <div className="flex items-center justify-between mb-2">
-                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${tipoPersona === 'juridica' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                                        <Building2 className="w-4 h-4" />
-                                    </div>
-                                    {tipoPersona === 'juridica' && <Check className="w-4 h-4 text-indigo-600" />}
-                                </div>
-                                <div>
-                                    <h4 className="text-xs font-bold text-slate-900 uppercase">Persona Jurídica</h4>
-                                    <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                                        Sociedad o corporación (S.A. de C.V.). Cláusula penal y representación legal.
-                                    </p>
-                                </div>
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => setTipoPersona('natural')}
-                                className={`p-4 rounded-2xl border-2 text-left transition-all relative flex flex-col justify-between ${
-                                    tipoPersona === 'natural'
-                                        ? 'border-indigo-600 bg-indigo-50/40 shadow-sm ring-1 ring-indigo-600/30'
-                                        : 'border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50/50'
-                                }`}
-                            >
-                                <div className="flex items-center justify-between mb-2">
-                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${tipoPersona === 'natural' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                                        <User className="w-4 h-4" />
-                                    </div>
-                                    {tipoPersona === 'natural' && <Check className="w-4 h-4 text-indigo-600" />}
-                                </div>
-                                <div>
-                                    <h4 className="text-xs font-bold text-slate-900 uppercase">Persona Natural</h4>
-                                    <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                                        Patrono individual. Secreto profesional y cláusula penal de $30,000 USD.
-                                    </p>
-                                </div>
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* 2. Motivo de Liquidación */}
+                    {/* Motivo de Liquidación */}
                     <div>
                         <div className="flex items-center justify-between mb-1.5">
                             <label className={labelCls || "block text-[11px] font-bold text-slate-500 uppercase"}>

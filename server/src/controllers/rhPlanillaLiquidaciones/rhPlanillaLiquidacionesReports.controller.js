@@ -124,7 +124,7 @@ const exportPDF = async (req, res) => {
 const exportFiniquito = async (req, res) => {
     try {
         const { id } = req.params;
-        const { motivo, tipo_persona } = req.query;
+        const { motivo } = req.query;
 
         const [rows] = await pool.query(`
             SELECT pl.*, 
@@ -193,14 +193,10 @@ const exportFiniquito = async (req, res) => {
             selloUrl = rhCfg[0].sello_url || '';
         }
 
-        // Determinar modalidad: Persona Natural o Persona Jurídica
-        let isPersonaNatural = false;
-        if (tipo_persona) {
-            isPersonaNatural = (tipo_persona === 'natural' || String(tipo_persona) === '1');
-        } else {
-            isPersonaNatural = String(p.company_tipo_persona) === '1' ||
-                !/S\.?A\.?|C\.?V\.?|SOCIEDAD|LTDA|LIMITADA|R\.L\./i.test(p.company_name);
-        }
+        // Determinar modalidad directamente desde la tabla companies (CAT-029: '1' = Persona Natural, '2' = Persona Jurídica)
+        const isPersonaNatural = p.company_tipo_persona
+            ? String(p.company_tipo_persona) === '1'
+            : !/S\.?A\.?|C\.?V\.?|SOCIEDAD|LTDA|LIMITADA|R\.L\./i.test(p.company_name);
 
         const finiquitoData = {
             is_persona_natural: isPersonaNatural,

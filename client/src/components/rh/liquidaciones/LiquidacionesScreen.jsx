@@ -432,21 +432,19 @@ const LiquidacionesScreen = ({ companyId }) => {
 
     const handleDownloadFiniquito = (id) => {
         setFiniquitoId(id);
-        setFiniquitoMotivo('RENUNCIA INMEDIATA');
+        setFiniquitoMotivo('RENUNCIA VOLUNTARIA');
         setIsFiniquitoModalOpen(true);
     };
 
     const handleConfirmFiniquito = async (opts = {}) => {
         const finalMotivo = (opts.motivo || finiquitoMotivo || 'RENUNCIA VOLUNTARIA').trim();
-        const finalTipo = opts.tipoPersona || 'juridica';
 
         if (!finalMotivo) return toast.error('Ingrese el motivo');
         try {
             const res = await axios.get(`/api/rh/planilla-liquidaciones/${finiquitoId}/finiquito`, {
                 params: {
                     motivo: finalMotivo,
-                    format: 'pdf',
-                    tipo_persona: finalTipo
+                    format: 'pdf'
                 },
                 responseType: 'blob',
                 headers
@@ -604,7 +602,7 @@ const LiquidacionesScreen = ({ companyId }) => {
                                 <button onClick={() => handleEdit(item)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15} /></button>
                                 <button onClick={() => handleDownloadPDF(item.id)} className="p-1 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" title="Descargar PDF"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></button>
                                 <button onClick={() => handleDownloadFiniquito(item.id)} className="p-1 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Descargar Finiquito"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M10 12l2 2 4-4"/></svg></button>
-                                {item.pago_cuotas && (
+                                {Boolean(item.pago_cuotas) && (
                                     <button onClick={() => handleDownloadAcuerdoPago(item.id)} className="p-1 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Acuerdo de Pago"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></button>
                                 )}
                                 <button onClick={() => handleDelete(item.id)} className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15} /></button>
