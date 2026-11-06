@@ -3260,6 +3260,7 @@ const SalesTerminal = () => {
                                                 }
                                             }
                                         }} 
+                                        enterKeyHint={quickProd ? "next" : "done"}
                                         placeholder={quickProd ? "DESCRIPCIÓN BLOQUEADA" : "ESCRIBIR NOTA..."} 
                                         disabled={!!quickProd}
                                         className={`w-full px-3 py-1.5 rounded-lg text-[10px] font-black h-[30px] flex items-center transition-all outline-none ${quickProd ? 'bg-slate-100 text-slate-500 border border-slate-200 unselectable' : 'bg-white border border-indigo-200 text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400'}`}
@@ -3320,7 +3321,7 @@ const SalesTerminal = () => {
                                 </div>
                                 <button 
                                     onClick={handleAddQuick} 
-                                    disabled={!quickProd} 
+                                    disabled={!quickProd && !quickDesc.trim()} 
                                     className="h-10 md:h-[30px] w-full bg-slate-900 text-white rounded-lg flex items-center justify-center hover:bg-black disabled:opacity-20 active:scale-95 transition-all shadow-sm"
                                 >
                                     <Plus size={16} />
