@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Building2, User, FileText, FileSpreadsheet, Check, ShieldCheck, Sparkles } from 'lucide-react';
+import { Building2, User, Check, ShieldCheck, Sparkles } from 'lucide-react';
+import { unwrapList } from '../../../utils/apiUtils';
 
 const FiniquitoModal = ({ open, onClose, onSubmit, model, companyId }) => {
     const { fieldCls, labelCls } = model || {};
     const [motivo, setMotivo] = useState('RENUNCIA VOLUNTARIA');
     const [tipoPersona, setTipoPersona] = useState('juridica'); // 'juridica' | 'natural'
-    const [format, setFormat] = useState('pdf'); // 'pdf' | 'docx'
     const [detectedCompanyName, setDetectedCompanyName] = useState('');
 
     useEffect(() => {
@@ -15,9 +15,10 @@ const FiniquitoModal = ({ open, onClose, onSubmit, model, companyId }) => {
         
         // Auto-detectar según la empresa actual
         if (companyId) {
-            axios.get(`/api/companies/${companyId}`)
+            axios.get('/api/companies')
                 .then(res => {
-                    const comp = res.data;
+                    const list = unwrapList(res);
+                    const comp = (Array.isArray(list) ? list : []).find(c => String(c.id) === String(companyId));
                     if (comp) {
                         setDetectedCompanyName(comp.razon_social || '');
                         const isNat = String(comp.tipo_persona) === '1' ||
@@ -37,7 +38,7 @@ const FiniquitoModal = ({ open, onClose, onSubmit, model, companyId }) => {
             onSubmit({
                 motivo: motivo.trim() || 'RENUNCIA VOLUNTARIA',
                 tipoPersona,
-                format
+                format: 'pdf'
             });
         }
     };
@@ -63,7 +64,7 @@ const FiniquitoModal = ({ open, onClose, onSubmit, model, companyId }) => {
                         </div>
                         <div>
                             <h3 className="text-base font-bold text-white tracking-tight">Emisión de Finiquito Laboral</h3>
-                            <p className="text-xs text-indigo-200/80 font-medium">Adaptación legal según modalidad patronal y formato</p>
+                            <p className="text-xs text-indigo-200/80 font-medium">Adaptación legal según modalidad patronal</p>
                         </div>
                     </div>
                     {detectedCompanyName && (
@@ -129,41 +130,7 @@ const FiniquitoModal = ({ open, onClose, onSubmit, model, companyId }) => {
                         </div>
                     </div>
 
-                    {/* 2. Formato de Exportación */}
-                    <div>
-                        <label className={labelCls || "block text-[11px] font-bold text-slate-500 uppercase mb-2"}>
-                            Formato del Documento
-                        </label>
-                        <div className="grid grid-cols-2 gap-3">
-                            <button
-                                type="button"
-                                onClick={() => setFormat('pdf')}
-                                className={`py-3 px-4 rounded-xl border flex items-center gap-3 transition-all ${
-                                    format === 'pdf'
-                                        ? 'border-rose-500 bg-rose-50/50 text-rose-900 font-bold ring-1 ring-rose-500/20'
-                                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                                }`}
-                            >
-                                <FileText className={`w-4 h-4 ${format === 'pdf' ? 'text-rose-600' : 'text-slate-400'}`} />
-                                <span className="text-xs">Documento PDF</span>
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => setFormat('docx')}
-                                className={`py-3 px-4 rounded-xl border flex items-center gap-3 transition-all ${
-                                    format === 'docx'
-                                        ? 'border-blue-600 bg-blue-50/50 text-blue-900 font-bold ring-1 ring-blue-600/20'
-                                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                                }`}
-                            >
-                                <FileSpreadsheet className={`w-4 h-4 ${format === 'docx' ? 'text-blue-600' : 'text-slate-400'}`} />
-                                <span className="text-xs">Word (.docx) Editable</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* 3. Motivo de Liquidación */}
+                    {/* 2. Motivo de Liquidación */}
                     <div>
                         <div className="flex items-center justify-between mb-1.5">
                             <label className={labelCls || "block text-[11px] font-bold text-slate-500 uppercase"}>
@@ -213,7 +180,7 @@ const FiniquitoModal = ({ open, onClose, onSubmit, model, companyId }) => {
                             className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-bold text-xs transition-all shadow-lg shadow-emerald-600/20 active:scale-95 flex items-center gap-2"
                         >
                             <span>Descargar Finiquito</span>
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/20 uppercase tracking-wider">{format}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/20 uppercase tracking-wider">PDF</span>
                         </button>
                     </div>
                 </form>

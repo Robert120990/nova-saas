@@ -438,7 +438,6 @@ const LiquidacionesScreen = ({ companyId }) => {
 
     const handleConfirmFiniquito = async (opts = {}) => {
         const finalMotivo = (opts.motivo || finiquitoMotivo || 'RENUNCIA VOLUNTARIA').trim();
-        const finalFormat = opts.format || 'pdf';
         const finalTipo = opts.tipoPersona || 'juridica';
 
         if (!finalMotivo) return toast.error('Ingrese el motivo');
@@ -446,24 +445,20 @@ const LiquidacionesScreen = ({ companyId }) => {
             const res = await axios.get(`/api/rh/planilla-liquidaciones/${finiquitoId}/finiquito`, {
                 params: {
                     motivo: finalMotivo,
-                    format: finalFormat,
+                    format: 'pdf',
                     tipo_persona: finalTipo
                 },
                 responseType: 'blob',
                 headers
             });
-            const ext = (finalFormat === 'docx' || finalFormat === 'word') ? 'docx' : 'pdf';
-            const mimeType = ext === 'docx'
-                ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-                : 'application/pdf';
-            const url = window.URL.createObjectURL(new Blob([res.data], { type: mimeType }));
+            const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `Finiquito_${finiquitoId}.${ext}`);
+            link.setAttribute('download', `Finiquito_${finiquitoId}.pdf`);
             document.body.appendChild(link);
             link.click();
             link.remove();
-            toast.success(`Finiquito descargado (${ext.toUpperCase()})`);
+            toast.success('Finiquito descargado (PDF)');
             setIsFiniquitoModalOpen(false);
         } catch { toast.error('Error al descargar finiquito'); }
     };

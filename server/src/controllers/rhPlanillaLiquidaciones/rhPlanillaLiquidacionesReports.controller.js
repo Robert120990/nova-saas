@@ -1,6 +1,5 @@
 const pool = require('../../config/db');
 const { generateLiquidacionPDF, generateFiniquitoPDF, generateAcuerdoPagoPDF } = require('../../services/pdf.service');
-const { generateFiniquitoDocx } = require('../../services/finiquitoDocx.service');
 const { numberToWords } = require('../../utils/numberToWords');
 const TABLE = 'rh_planilla_liquidaciones';
 
@@ -125,7 +124,7 @@ const exportPDF = async (req, res) => {
 const exportFiniquito = async (req, res) => {
     try {
         const { id } = req.params;
-        const { motivo, format, tipo_persona } = req.query;
+        const { motivo, tipo_persona } = req.query;
 
         const [rows] = await pool.query(`
             SELECT pl.*, 
@@ -169,11 +168,24 @@ const exportFiniquito = async (req, res) => {
         const p = rows[0];
 
         let patronoNombre = p.company_name;
+        let patronoDui = p.company_nit ? p.company_nit.substring(0, 10) : '';
+        let patronoOcupacion = 'mayor de edad, estudiante';
         let notarioNombre = '', notarioDomicilio = '', notarioDept = '';
         let firmaUrl = '', selloUrl = '';
-        const [rhCfg] = await pool.query(`SELECT responsable_nombre, firma_url, sello_url, notario_nombre, notario_domicilio, notario_departamento FROM rh_config WHERE company_id = ?`, [req.company_id]);
+        const [rhCfg] = await pool.query(
+            `SELECT patrono_nombre, patrono_dui, patrono_profesion, firma_url, sello_url, notario_nombre, notario_domicilio, notario_departamento FROM rh_config WHERE company_id = ?`,
+            [req.company_id]
+        );
         if (rhCfg.length > 0) {
-            if (rhCfg[0].responsable_nombre) patronoNombre = rhCfg[0].responsable_nombre;
+            if (rhCfg[0].patrono_nombre && rhCfg[0].patrono_nombre.trim()) {
+                patronoNombre = rhCfg[0].patrono_nombre.trim();
+            }
+            if (rhCfg[0].patrono_dui && rhCfg[0].patrono_dui.trim()) {
+                patronoDui = rhCfg[0].patrono_dui.trim();
+            }
+            if (rhCfg[0].patrono_profesion && rhCfg[0].patrono_profesion.trim()) {
+                patronoOcupacion = `mayor de edad, ${rhCfg[0].patrono_profesion.trim().toLowerCase()}`;
+            }
             notarioNombre = rhCfg[0].notario_nombre || '';
             notarioDomicilio = rhCfg[0].notario_domicilio || '';
             notarioDept = rhCfg[0].notario_departamento || '';
@@ -209,10 +221,10 @@ const exportFiniquito = async (req, res) => {
             num_dui: p.num_dui,
             num_nit: p.num_nit,
             patrono_nombre: patronoNombre,
-            patrono_ocupacion: 'mayor de edad, estudiante',
+            patrono_ocupacion: patronoOcupacion,
             patrono_domicilio: p.municipio_nombre || p.distrito_nombre || 'San Salvador',
             patrono_departamento: p.depto_nombre || p.company_departamento || 'San Salvador',
-            patrono_dui: p.company_nit ? p.company_nit.substring(0, 10) : '',
+            patrono_dui: patronoDui,
             notario_nombre: notarioNombre || 'KARIN ARMANDO BATRES ANGEL',
             notario_domicilio: notarioDomicilio || 'San Martín',
             notario_departamento: notarioDept || 'San Salvador',
@@ -221,13 +233,6 @@ const exportFiniquito = async (req, res) => {
             motivo: motivo || 'RENUNCIA VOLUNTARIA',
             fecha_documento: p.ultimos_dias_laborados || p.created_at || new Date()
         };
-
-        if (format === 'docx' || format === 'word') {
-            const docxBuffer = await generateFiniquitoDocx(finiquitoData);
-            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-            res.setHeader('Content-Disposition', `attachment; filename=Finiquito_${id}.docx`);
-            return res.send(docxBuffer);
-        }
 
         const pdfBuffer = await generateFiniquitoPDF(finiquitoData);
         res.setHeader('Content-Type', 'application/pdf');
@@ -265,9 +270,9 @@ const exportAcuerdoPago = async (req, res) => {
         let empleadorNombre = p.company_name;
         let notarioNombre = '', notarioDomicilio = '', notarioDept = '';
         let firmaUrl = '', selloUrl = '';
-        const [rhCfg] = await pool.query(`SELECT responsable_nombre, firma_url, sello_url, notario_nombre, notario_domicilio, notario_departamento FROM rh_config WHERE company_id = ?`, [req.company_id]);
+        const [rhCfg] = await pool.query(`SELECT patrono_nombre, firma_url, sello_url, notario_nombre, notario_domicilio, notario_departamento FROM rh_config WHERE company_id = ?`, [req.company_id]);
         if (rhCfg.length > 0) {
-            if (rhCfg[0].responsable_nombre) empleadorNombre = rhCfg[0].responsable_nombre;
+            if (rhCfg[0].patrono_nombre && rhCfg[0].patrono_nombre.trim()) empleadorNombre = rhCfg[0].patrono_nombre.trim();
             notarioNombre = rhCfg[0].notario_nombre || '';
             notarioDomicilio = rhCfg[0].notario_domicilio || '';
             notarioDept = rhCfg[0].notario_departamento || '';

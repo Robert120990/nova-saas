@@ -49,22 +49,27 @@ const fetchPatronoConfig = async (companyId) => {
     const [cfgRows] = await pool.query(
         `SELECT patrono_nombre, patrono_edad, patrono_sexo, patrono_estado_civil,
                 patrono_profesion, patrono_direccion, patrono_nacionalidad,
-                patrono_dui, patrono_dui_extendido, patrono_nit, responsable_nombre
+                patrono_dui, patrono_dui_extendido, patrono_nit
          FROM rh_config WHERE company_id = ? LIMIT 1`,
         [companyId]
     );
+    const [compRows] = await pool.query(
+        `SELECT razon_social, nit, direccion FROM companies WHERE id = ? LIMIT 1`,
+        [companyId]
+    );
     const cfg = cfgRows[0] || {};
+    const comp = compRows[0] || {};
     return {
-        patrono_nombre: cfg.patrono_nombre || cfg.responsable_nombre || DEFAULT_PATRONO.patrono_nombre,
+        patrono_nombre: (cfg.patrono_nombre && cfg.patrono_nombre.trim()) || comp.razon_social || DEFAULT_PATRONO.patrono_nombre,
         patrono_edad: cfg.patrono_edad || DEFAULT_PATRONO.patrono_edad,
         patrono_sexo: cfg.patrono_sexo || DEFAULT_PATRONO.patrono_sexo,
         patrono_estado_civil: cfg.patrono_estado_civil || DEFAULT_PATRONO.patrono_estado_civil,
         patrono_profesion: cfg.patrono_profesion || DEFAULT_PATRONO.patrono_profesion,
-        patrono_direccion: cfg.patrono_direccion || DEFAULT_PATRONO.patrono_direccion,
+        patrono_direccion: (cfg.patrono_direccion && cfg.patrono_direccion.trim()) || comp.direccion || DEFAULT_PATRONO.patrono_direccion,
         patrono_nacionalidad: cfg.patrono_nacionalidad || DEFAULT_PATRONO.patrono_nacionalidad,
         patrono_dui: cfg.patrono_dui || DEFAULT_PATRONO.patrono_dui,
         patrono_dui_extendido: cfg.patrono_dui_extendido || DEFAULT_PATRONO.patrono_dui_extendido,
-        patrono_nit: cfg.patrono_nit || DEFAULT_PATRONO.patrono_nit
+        patrono_nit: (cfg.patrono_nit && cfg.patrono_nit.trim()) || comp.nit || DEFAULT_PATRONO.patrono_nit
     };
 };
 
