@@ -3,10 +3,26 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { Save, Upload, Trash2, Image as ImageIcon, Calculator } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '../../../../context/AuthContext';
+import RhPatronoConfigSection from '../RhPatronoConfigSection';
 
 const API_BASE = 'http://localhost:4000';
 
+const INITIAL_PATRONO = {
+    patrono_nombre: '',
+    patrono_edad: '',
+    patrono_sexo: '',
+    patrono_estado_civil: '',
+    patrono_profesion: '',
+    patrono_direccion: '',
+    patrono_nacionalidad: 'SALVADOREÑA',
+    patrono_dui: '',
+    patrono_dui_extendido: '',
+    patrono_nit: ''
+};
+
 const RhGeneralConfigTab = () => {
+    const { user } = useAuth();
     const queryClient = useQueryClient();
     const [responsable, setResponsable] = useState('');
     const [firmaPreview, setFirmaPreview] = useState(null);
@@ -18,21 +34,35 @@ const RhGeneralConfigTab = () => {
     const [notarioDomicilio, setNotarioDomicilio] = useState('');
     const [notarioDepartamento, setNotarioDepartamento] = useState('');
     const [calculoRentaModo, setCalculoRentaModo] = useState('segunda_quincena');
+    const [patrono, setPatrono] = useState(INITIAL_PATRONO);
 
     const { data: config, isPending } = useQuery({
-        queryKey: ['rh-config'],
-        queryFn: async () => (await axios.get('/api/rh/config')).data
+        queryKey: ['rh-config', user?.company_id],
+        queryFn: async () => (await axios.get('/api/rh/config')).data,
+        enabled: Boolean(user?.company_id)
     });
 
     useEffect(() => {
         if (config) {
             setResponsable(config.responsable_nombre || '');
-            if (config.firma_url) setFirmaPreview(`${API_BASE}${config.firma_url}`);
-            if (config.sello_url) setSelloPreview(`${API_BASE}${config.sello_url}`);
+            setFirmaPreview(config.firma_url ? `${API_BASE}${config.firma_url}` : null);
+            setSelloPreview(config.sello_url ? `${API_BASE}${config.sello_url}` : null);
             setNotarioNombre(config.notario_nombre || '');
             setNotarioDomicilio(config.notario_domicilio || '');
             setNotarioDepartamento(config.notario_departamento || '');
             setCalculoRentaModo(config.calculo_renta_modo || 'segunda_quincena');
+            setPatrono({
+                patrono_nombre: config.patrono_nombre || '',
+                patrono_edad: config.patrono_edad ?? '',
+                patrono_sexo: config.patrono_sexo || '',
+                patrono_estado_civil: config.patrono_estado_civil || '',
+                patrono_profesion: config.patrono_profesion || '',
+                patrono_direccion: config.patrono_direccion || '',
+                patrono_nacionalidad: config.patrono_nacionalidad || 'SALVADOREÑA',
+                patrono_dui: config.patrono_dui || '',
+                patrono_dui_extendido: config.patrono_dui_extendido || '',
+                patrono_nit: config.patrono_nit || ''
+            });
         }
     }, [config]);
 
@@ -40,6 +70,7 @@ const RhGeneralConfigTab = () => {
         mutationFn: (formData) => axios.put('/api/rh/config', formData),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['rh-config'] });
+            queryClient.invalidateQueries({ queryKey: ['rh-contratos-patrono-defaults'] });
             setFirmaFile(null);
             setSelloFile(null);
             toast.success('Configuración RH guardada exitosamente');
@@ -94,6 +125,9 @@ const RhGeneralConfigTab = () => {
         formData.append('notario_domicilio', notarioDomicilio);
         formData.append('notario_departamento', notarioDepartamento);
         formData.append('calculo_renta_modo', calculoRentaModo);
+        Object.entries(patrono).forEach(([key, val]) => {
+            formData.append(key, val ?? '');
+        });
         if (firmaFile) formData.append('firma', firmaFile);
         if (selloFile) formData.append('sello', selloFile);
         mutation.mutate(formData);
@@ -232,6 +266,8 @@ const RhGeneralConfigTab = () => {
                         </div>
                     </div>
                 </div>
+
+                <RhPatronoConfigSection patrono={patrono} onChange={setPatrono} />
 
                 <div className="pt-2 border-t border-slate-50">
                     <label className={lbl}>Datos del Notario</label>

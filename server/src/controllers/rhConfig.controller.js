@@ -16,12 +16,28 @@ const getConfig = async (req, res) => {
                 notario_nombre: '',
                 notario_domicilio: '',
                 notario_departamento: '',
-                calculo_renta_modo: 'segunda_quincena'
+                calculo_renta_modo: 'segunda_quincena',
+                patrono_nombre: '',
+                patrono_edad: null,
+                patrono_sexo: '',
+                patrono_estado_civil: '',
+                patrono_profesion: '',
+                patrono_direccion: '',
+                patrono_nacionalidad: 'SALVADOREÑA',
+                patrono_dui: '',
+                patrono_dui_extendido: '',
+                patrono_nit: ''
             });
         }
+        const cfg = rows[0];
+        const hasPatrono = Boolean(cfg.patrono_nombre && cfg.patrono_nombre.trim());
         res.json({
-            ...rows[0],
-            calculo_renta_modo: rows[0].calculo_renta_modo || 'segunda_quincena'
+            ...cfg,
+            patrono_edad: hasPatrono ? cfg.patrono_edad : null,
+            patrono_sexo: hasPatrono ? (cfg.patrono_sexo || '') : '',
+            patrono_estado_civil: hasPatrono ? (cfg.patrono_estado_civil || '') : '',
+            patrono_profesion: hasPatrono ? (cfg.patrono_profesion || '') : '',
+            calculo_renta_modo: cfg.calculo_renta_modo || 'segunda_quincena'
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -58,8 +74,8 @@ const updateConfig = async (req, res) => {
         }
         if (patrono_nombre !== undefined) data.patrono_nombre = patrono_nombre || '';
         if (patrono_edad !== undefined) data.patrono_edad = patrono_edad !== '' && patrono_edad !== null ? parseInt(patrono_edad, 10) : null;
-        if (patrono_sexo !== undefined) data.patrono_sexo = patrono_sexo || 'MASCULINO';
-        if (patrono_estado_civil !== undefined) data.patrono_estado_civil = patrono_estado_civil || 'CASADO';
+        if (patrono_sexo !== undefined) data.patrono_sexo = patrono_sexo || '';
+        if (patrono_estado_civil !== undefined) data.patrono_estado_civil = patrono_estado_civil || '';
         if (patrono_profesion !== undefined) data.patrono_profesion = patrono_profesion || '';
         if (patrono_direccion !== undefined) data.patrono_direccion = patrono_direccion || '';
         if (patrono_nacionalidad !== undefined) data.patrono_nacionalidad = patrono_nacionalidad || 'SALVADOREÑA';

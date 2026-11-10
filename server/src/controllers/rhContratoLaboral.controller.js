@@ -5,16 +5,16 @@ const TABLE = 'rh_contratos_laborales';
 const LABEL = 'Contrato laboral';
 
 const DEFAULT_PATRONO = {
-    patrono_nombre: 'RAUL RAFAEL SOSA CASTELLANOS',
-    patrono_edad: 58,
-    patrono_sexo: 'MASCULINO',
-    patrono_estado_civil: 'CASADO',
-    patrono_profesion: 'ESTUDIANTE',
-    patrono_direccion: 'LOMAS DE SAN FRANCISCO 3a ETAPA AV. 3. # 9 B',
+    patrono_nombre: '',
+    patrono_edad: null,
+    patrono_sexo: '',
+    patrono_estado_civil: '',
+    patrono_profesion: '',
+    patrono_direccion: '',
     patrono_nacionalidad: 'SALVADOREÑA',
-    patrono_dui: '00497414-6',
-    patrono_dui_extendido: 'SAN SALVADOR',
-    patrono_nit: '0614-140268-004-3'
+    patrono_dui: '',
+    patrono_dui_extendido: '',
+    patrono_nit: ''
 };
 
 const generateCorrelativo = async (companyId, anio) => {
@@ -23,13 +23,9 @@ const generateCorrelativo = async (companyId, anio) => {
         `SELECT codigo FROM ${TABLE} WHERE company_id = ? AND codigo LIKE ? ORDER BY id DESC LIMIT 1`,
         [companyId, `${prefix}%`]
     );
-
     if (rows.length === 0) return `${prefix}0001`;
-
-    const last = rows[0].codigo || '';
-    const numPart = parseInt(last.replace(prefix, ''), 10);
-    const nextNum = isNaN(numPart) ? 1 : numPart + 1;
-    return `${prefix}${String(nextNum).padStart(4, '0')}`;
+    const numPart = parseInt((rows[0].codigo || '').replace(prefix, ''), 10);
+    return `${prefix}${String(isNaN(numPart) ? 1 : numPart + 1).padStart(4, '0')}`;
 };
 
 const parseDependientes = (raw) => {
@@ -38,37 +34,39 @@ const parseDependientes = (raw) => {
         try {
             const parsed = JSON.parse(raw);
             return Array.isArray(parsed) ? parsed : [];
-        } catch {
-            return [];
-        }
+        } catch { return []; }
     }
     return [];
 };
 
 const fetchPatronoConfig = async (companyId) => {
-    const [cfgRows] = await pool.query(
-        `SELECT patrono_nombre, patrono_edad, patrono_sexo, patrono_estado_civil,
-                patrono_profesion, patrono_direccion, patrono_nacionalidad,
-                patrono_dui, patrono_dui_extendido, patrono_nit
-         FROM rh_config WHERE company_id = ? LIMIT 1`,
-        [companyId]
-    );
-    const [compRows] = await pool.query(
-        `SELECT razon_social, nit, direccion FROM companies WHERE id = ? LIMIT 1`,
-        [companyId]
-    );
+    const [[cfgRows], [compRows]] = await Promise.all([
+        pool.query(
+            `SELECT patrono_nombre, patrono_edad, patrono_sexo, patrono_estado_civil,
+                    patrono_profesion, patrono_direccion, patrono_nacionalidad,
+                    patrono_dui, patrono_dui_extendido, patrono_nit
+             FROM rh_config WHERE company_id = ? LIMIT 1`,
+            [companyId]
+        ),
+        pool.query(
+            `SELECT razon_social, nit, direccion, tipo_persona FROM companies WHERE id = ? LIMIT 1`,
+            [companyId]
+        )
+    ]);
     const cfg = cfgRows[0] || {};
     const comp = compRows[0] || {};
+    const hasConfiguredPatrono = Boolean(cfg.patrono_nombre && cfg.patrono_nombre.trim());
+
     return {
-        patrono_nombre: (cfg.patrono_nombre && cfg.patrono_nombre.trim()) || comp.razon_social || DEFAULT_PATRONO.patrono_nombre,
-        patrono_edad: cfg.patrono_edad || DEFAULT_PATRONO.patrono_edad,
-        patrono_sexo: cfg.patrono_sexo || DEFAULT_PATRONO.patrono_sexo,
-        patrono_estado_civil: cfg.patrono_estado_civil || DEFAULT_PATRONO.patrono_estado_civil,
-        patrono_profesion: cfg.patrono_profesion || DEFAULT_PATRONO.patrono_profesion,
+        patrono_nombre: hasConfiguredPatrono ? cfg.patrono_nombre.trim() : (comp.razon_social || DEFAULT_PATRONO.patrono_nombre),
+        patrono_edad: hasConfiguredPatrono ? (cfg.patrono_edad || null) : DEFAULT_PATRONO.patrono_edad,
+        patrono_sexo: hasConfiguredPatrono ? (cfg.patrono_sexo || '') : DEFAULT_PATRONO.patrono_sexo,
+        patrono_estado_civil: hasConfiguredPatrono ? (cfg.patrono_estado_civil || '') : DEFAULT_PATRONO.patrono_estado_civil,
+        patrono_profesion: hasConfiguredPatrono ? (cfg.patrono_profesion || '') : DEFAULT_PATRONO.patrono_profesion,
         patrono_direccion: (cfg.patrono_direccion && cfg.patrono_direccion.trim()) || comp.direccion || DEFAULT_PATRONO.patrono_direccion,
         patrono_nacionalidad: cfg.patrono_nacionalidad || DEFAULT_PATRONO.patrono_nacionalidad,
-        patrono_dui: cfg.patrono_dui || DEFAULT_PATRONO.patrono_dui,
-        patrono_dui_extendido: cfg.patrono_dui_extendido || DEFAULT_PATRONO.patrono_dui_extendido,
+        patrono_dui: (cfg.patrono_dui && cfg.patrono_dui.trim()) || DEFAULT_PATRONO.patrono_dui,
+        patrono_dui_extendido: hasConfiguredPatrono ? (cfg.patrono_dui_extendido || '') : DEFAULT_PATRONO.patrono_dui_extendido,
         patrono_nit: (cfg.patrono_nit && cfg.patrono_nit.trim()) || comp.nit || DEFAULT_PATRONO.patrono_nit
     };
 };
@@ -84,61 +82,25 @@ const getPatronoDefaults = async (req, res) => {
 
 const getContratos = async (req, res) => {
     try {
-        const {
-            search,
-            empleado_id,
-            fecha_desde,
-            fecha_hasta,
-            estado,
-            page = 1,
-            limit = 15
-        } = req.query;
-
+        const { search, empleado_id, fecha_desde, fecha_hasta, estado, page = 1, limit = 15 } = req.query;
         const pageNum = Math.max(1, parseInt(page, 10) || 1);
         const limitNum = Math.max(1, parseInt(limit, 10) || 15);
         const offset = (pageNum - 1) * limitNum;
 
         let query = `
-            SELECT cl.*,
-                   e.codigo as empleado_codigo,
-                   e.nombres as empleado_nombres,
-                   e.apellidos as empleado_apellidos
+            SELECT cl.*, e.codigo as empleado_codigo, e.nombres as empleado_nombres, e.apellidos as empleado_apellidos
             FROM ${TABLE} cl
             LEFT JOIN rh_empleados e ON cl.empleado_id = e.id
             WHERE cl.company_id = ?
         `;
         const params = [req.company_id];
 
-        if (empleado_id) {
-            query += ` AND cl.empleado_id = ?`;
-            params.push(parseInt(empleado_id, 10));
-        }
-
-        if (estado) {
-            query += ` AND cl.estado = ?`;
-            params.push(estado);
-        }
-
-        if (fecha_desde) {
-            query += ` AND cl.fecha_creacion >= ?`;
-            params.push(fecha_desde);
-        }
-
-        if (fecha_hasta) {
-            query += ` AND cl.fecha_creacion <= ?`;
-            params.push(fecha_hasta);
-        }
-
+        if (empleado_id) { query += ` AND cl.empleado_id = ?`; params.push(parseInt(empleado_id, 10)); }
+        if (estado) { query += ` AND cl.estado = ?`; params.push(estado); }
+        if (fecha_desde) { query += ` AND cl.fecha_creacion >= ?`; params.push(fecha_desde); }
+        if (fecha_hasta) { query += ` AND cl.fecha_creacion <= ?`; params.push(fecha_hasta); }
         if (search) {
-            query += ` AND (
-                cl.codigo LIKE ? OR
-                cl.trabajador_nombre LIKE ? OR
-                cl.num_dui LIKE ? OR
-                cl.num_nit LIKE ? OR
-                cl.cargo_laboral LIKE ? OR
-                cl.lugar_trabajo LIKE ? OR
-                e.codigo LIKE ?
-            )`;
+            query += ` AND (cl.codigo LIKE ? OR cl.trabajador_nombre LIKE ? OR cl.num_dui LIKE ? OR cl.num_nit LIKE ? OR cl.cargo_laboral LIKE ? OR cl.lugar_trabajo LIKE ? OR e.codigo LIKE ?)`;
             const s = `%${search}%`;
             params.push(s, s, s, s, s, s, s);
         }
@@ -150,17 +112,9 @@ const getContratos = async (req, res) => {
         params.push(limitNum, offset);
 
         const [rows] = await pool.query(query, params);
-        const formatted = rows.map(r => ({
-            ...r,
-            dependientes: parseDependientes(r.dependientes)
-        }));
+        const formatted = rows.map(r => ({ ...r, dependientes: parseDependientes(r.dependientes) }));
 
-        res.json({
-            data: formatted,
-            total,
-            page: pageNum,
-            totalPages: Math.ceil(total / limitNum)
-        });
+        res.json({ data: formatted, total, page: pageNum, totalPages: Math.ceil(total / limitNum) });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -238,10 +192,10 @@ const buildContratoPayload = (body, patronoCfg) => {
         patrono_nombre: (body.patrono_nombre || patronoCfg.patrono_nombre || '').trim().toUpperCase(),
         patrono_edad: body.patrono_edad !== undefined && body.patrono_edad !== null && body.patrono_edad !== ''
             ? parseInt(body.patrono_edad, 10)
-            : patronoCfg.patrono_edad,
-        patrono_sexo: (body.patrono_sexo || patronoCfg.patrono_sexo || 'MASCULINO').trim().toUpperCase(),
-        patrono_estado_civil: (body.patrono_estado_civil || patronoCfg.patrono_estado_civil || 'CASADO').trim().toUpperCase(),
-        patrono_profesion: (body.patrono_profesion || patronoCfg.patrono_profesion || 'ESTUDIANTE').trim().toUpperCase(),
+            : (patronoCfg.patrono_edad || null),
+        patrono_sexo: (body.patrono_sexo || patronoCfg.patrono_sexo || '').trim().toUpperCase(),
+        patrono_estado_civil: (body.patrono_estado_civil || patronoCfg.patrono_estado_civil || '').trim().toUpperCase(),
+        patrono_profesion: (body.patrono_profesion || patronoCfg.patrono_profesion || '').trim().toUpperCase(),
         patrono_direccion: (body.patrono_direccion || patronoCfg.patrono_direccion || '').trim(),
         patrono_nacionalidad: (body.patrono_nacionalidad || patronoCfg.patrono_nacionalidad || 'SALVADOREÑA').trim().toUpperCase(),
         patrono_dui: (body.patrono_dui || patronoCfg.patrono_dui || '').trim(),

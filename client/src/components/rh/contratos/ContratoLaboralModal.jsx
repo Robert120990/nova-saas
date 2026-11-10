@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { Search, Users, Save, Printer, Loader2, UserCheck, Sparkles } from 'lucide-react';
+import { useAuth } from '../../../context/AuthContext';
 import Modal from '../../ui/Modal';
 import EmployeeSearchModal from '../EmployeeSearchModal';
 import ContratoTrabajadorSection from './ContratoTrabajadorSection';
@@ -22,17 +23,18 @@ const ContratoLaboralModal = ({
     onSuccessAndPrint,
     zIndex = 'z-50'
 }) => {
+    const { user } = useAuth();
     const queryClient = useQueryClient();
     const [isEmpModalOpen, setIsEmpModalOpen] = useState(false);
     const [codigoInput, setCodigoInput] = useState('');
     const [selectedEmpInfo, setSelectedEmpInfo] = useState(null);
     const [printAfterSave, setPrintAfterSave] = useState(false);
 
-    const { data: patronoDefaults = {} } = useQuery({
-        queryKey: ['rh-contratos-patrono-defaults'],
+    const { data: patronoDefaults } = useQuery({
+        queryKey: ['rh-contratos-patrono-defaults', user?.company_id],
         queryFn: async () => (await axios.get('/api/rh/contratos-laborales/patrono-defaults')).data,
-        enabled: isOpen,
-        staleTime: 60000
+        enabled: isOpen && Boolean(user?.company_id),
+        staleTime: 0
     });
 
     const [form, setForm] = useState(() => buildInitialContratoForm(null, {}));
@@ -40,7 +42,7 @@ const ContratoLaboralModal = ({
     useEffect(() => {
         if (!isOpen) return;
         if (selectedContrato) {
-            setForm(buildInitialContratoForm(selectedContrato, patronoDefaults));
+            setForm(buildInitialContratoForm(selectedContrato, patronoDefaults || {}));
             setCodigoInput(selectedContrato.empleado_codigo || '');
             setSelectedEmpInfo(
                 selectedContrato.empleado_id
@@ -53,7 +55,7 @@ const ContratoLaboralModal = ({
                     : null
             );
         } else {
-            let base = buildInitialContratoForm(null, patronoDefaults);
+            let base = buildInitialContratoForm(null, patronoDefaults || {});
             if (initialEmployee) {
                 base = mapEmployeeToContratoFields(initialEmployee, base);
                 setCodigoInput(initialEmployee.codigo || '');
@@ -64,7 +66,24 @@ const ContratoLaboralModal = ({
             }
             setForm(base);
         }
-    }, [isOpen, selectedContrato, initialEmployee, patronoDefaults]);
+    }, [isOpen, selectedContrato, initialEmployee]);
+
+    useEffect(() => {
+        if (!isOpen || selectedContrato || !patronoDefaults) return;
+        setForm((prev) => ({
+            ...prev,
+            patrono_nombre: patronoDefaults.patrono_nombre ?? '',
+            patrono_edad: patronoDefaults.patrono_edad ?? '',
+            patrono_sexo: patronoDefaults.patrono_sexo ?? '',
+            patrono_estado_civil: patronoDefaults.patrono_estado_civil ?? '',
+            patrono_profesion: patronoDefaults.patrono_profesion ?? '',
+            patrono_direccion: patronoDefaults.patrono_direccion ?? '',
+            patrono_nacionalidad: patronoDefaults.patrono_nacionalidad || 'SALVADOREÑA',
+            patrono_dui: patronoDefaults.patrono_dui ?? '',
+            patrono_dui_extendido: patronoDefaults.patrono_dui_extendido ?? '',
+            patrono_nit: patronoDefaults.patrono_nit ?? ''
+        }));
+    }, [isOpen, selectedContrato, patronoDefaults]);
 
     // Global F3 shortcut to open Employee Search Modal
     useEffect(() => {

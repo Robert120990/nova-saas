@@ -101,16 +101,16 @@ function generateContratoLaboralPDF(data) {
             const empNit = (data.num_nit || '').trim();
             const empIsss = (data.num_isss || '').trim();
 
-            const patNombre = (data.patrono_nombre || 'RAUL RAFAEL SOSA CASTELLANOS').trim().toUpperCase();
-            const patEdad = data.patrono_edad || 58;
-            const patSexo = (data.patrono_sexo || 'MASCULINO').trim().toUpperCase();
-            const patEstadoCivil = (data.patrono_estado_civil || 'CASADO').trim().toUpperCase();
-            const patProfesion = (data.patrono_profesion || 'ESTUDIANTE').trim().toUpperCase();
-            const patDireccion = (data.patrono_direccion || 'LOMAS DE SAN FRANCISCO 3a ETAPA AV. 3. # 9 B').trim().toUpperCase();
+            const patNombre = (data.patrono_nombre || '').trim().toUpperCase();
+            const patEdad = data.patrono_edad || '';
+            const patSexo = (data.patrono_sexo || '').trim().toUpperCase();
+            const patEstadoCivil = (data.patrono_estado_civil || '').trim().toUpperCase();
+            const patProfesion = (data.patrono_profesion || '').trim().toUpperCase();
+            const patDireccion = (data.patrono_direccion || '').trim().toUpperCase();
             const patNacionalidad = (data.patrono_nacionalidad || 'SALVADOREÑA').trim().toUpperCase();
-            const patDui = (data.patrono_dui || '00497414-6').trim();
-            const patExtendido = (data.patrono_dui_extendido || 'SAN SALVADOR').trim().toUpperCase();
-            const patNit = (data.patrono_nit || '0614-140268-004-3').trim();
+            const patDui = (data.patrono_dui || '').trim();
+            const patExtendido = (data.patrono_dui_extendido || '').trim().toUpperCase();
+            const patNit = (data.patrono_nit || '').trim();
 
             const lugarTrabajo = (data.lugar_trabajo || 'OFICINA PRINCIPAL').trim().toUpperCase();
             const cargoLaboral = (data.cargo_laboral || 'EMPLEADO').trim().toUpperCase();

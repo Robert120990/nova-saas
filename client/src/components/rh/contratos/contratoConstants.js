@@ -67,16 +67,16 @@ export const DEPARTAMENTOS_SV_MAP = {
 };
 
 export const DEFAULT_PATRONO_DATA = {
-    patrono_nombre: 'RAUL RAFAEL SOSA CASTELLANOS',
-    patrono_edad: 58,
-    patrono_sexo: 'MASCULINO',
-    patrono_estado_civil: 'CASADO',
-    patrono_profesion: 'ESTUDIANTE',
-    patrono_direccion: 'LOMAS DE SAN FRANCISCO 3a ETAPA AV. 3. # 9 B',
+    patrono_nombre: '',
+    patrono_edad: '',
+    patrono_sexo: '',
+    patrono_estado_civil: '',
+    patrono_profesion: '',
+    patrono_direccion: '',
     patrono_nacionalidad: 'SALVADOREÑA',
-    patrono_dui: '00497414-6',
-    patrono_dui_extendido: 'SAN SALVADOR',
-    patrono_nit: '0614-140268-004-3'
+    patrono_dui: '',
+    patrono_dui_extendido: '',
+    patrono_nit: ''
 };
 
 export const DEFAULT_HERRAMIENTAS = 'las herramientas y utensilios necesarios para el buen desempeño de sus funciones.';
