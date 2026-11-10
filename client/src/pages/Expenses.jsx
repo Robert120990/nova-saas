@@ -1235,9 +1235,16 @@ const Expenses = () => {
             return;
         }
 
+        const isSujetoExcluido = tipoDocId === '14';
+        const cleanConcepto = (observaciones || '').trim().toUpperCase();
+        if (isSujetoExcluido && emitirDte && !isEditing && !cleanConcepto) {
+            toast.error('Ingrese el concepto o descripción para emitir la Factura de Sujeto Excluido (DTE-14)');
+            focusConcepto();
+            return;
+        }
+
         isSubmittingRef.current = true;
 
-        const isSujetoExcluido = tipoDocId === '14';
         const docNumCalculated = (numeroDoc || '').trim().toUpperCase() || (isSujetoExcluido && emitirDte ? 'DTE-14-PENDIENTE' : 'S/N');
 
         const payload = {
@@ -1252,7 +1259,7 @@ const Expenses = () => {
             tipo_documento_id: tipoDocId,
             condicion_operacion_id: condicionId,
             emitir_dte: isSujetoExcluido && emitirDte && !isEditing,
-            observaciones: (observaciones || '').trim().toUpperCase() || 'GASTO REGISTRADO',
+            observaciones: cleanConcepto || null,
             tipo_operacion: tipoOperacion,
             tipo_clasificacion: tipoClasificacion,
             tipo_sector: tipoSector,
@@ -1273,12 +1280,12 @@ const Expenses = () => {
             monto_total: totals.total,
             period_year: finalPeriodYear,
             period_month: finalPeriodMonth,
-            items: [{
-                description: (observaciones || '').trim().toUpperCase() || 'GASTO REGISTRADO',
+            items: cleanConcepto ? [{
+                description: cleanConcepto,
                 expense_type_id: null,
                 tax_type: grav > 0 ? 'gravada' : (exe > 0 ? 'exenta' : 'nosujeta'),
                 total: totals.total || totals.monto_sujeto || 0
-            }]
+            }] : []
         };
 
         try {

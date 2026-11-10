@@ -82,6 +82,15 @@ class SujetoExcluidoDteService {
         const reteRenta = parseFloat(expense.retencion || 0);
         const totalPagar = parseFloat(expense.monto_total || (totalCompra - reteRenta));
 
+        const cleanObs = (expense.observaciones || '').trim();
+        const validItems = (items || []).filter(it => (it.description || it.descripcion || '').trim().length > 0);
+        if (validItems.length === 0 && !cleanObs) {
+            return {
+                success: false,
+                error: 'Debe ingresar un concepto o descripción en el gasto antes de transmitir el DTE-14 a Hacienda'
+            };
+        }
+
         const dtePayload = {
             header: {
                 dte_type: '14',
@@ -94,13 +103,13 @@ class SujetoExcluidoDteService {
                 retencion: reteRenta,
                 subtotal: totalCompra,
                 total_pagar: totalPagar,
-                observaciones: expense.observaciones || 'Factura de Sujeto Excluido'
+                observaciones: cleanObs || null
             },
             receptor,
-            items: (items.length > 0 ? items : [{ description: expense.observaciones || 'Gasto registrado', total: totalCompra }]).map((it, idx) => ({
+            items: (validItems.length > 0 ? validItems : [{ description: cleanObs, total: totalCompra }]).map((it, idx) => ({
                 numItem: idx + 1,
                 tipo_item: parseInt(it.tipo_item, 10) || 2, // 2: Servicio por defecto en gastos
-                descripcion: it.description || it.descripcion || 'Servicio profesional/técnico',
+                descripcion: (it.description || it.descripcion || cleanObs).trim(),
                 cantidad: parseFloat(it.cantidad || 1),
                 precio_unitario: parseFloat(it.precio_unitario || it.total || totalCompra),
                 compra: parseFloat(it.total || totalCompra),

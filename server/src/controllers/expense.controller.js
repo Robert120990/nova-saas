@@ -350,6 +350,7 @@ const createExpense = async (req, res) => {
 
         const cleanNumeroDoc = (numero_documento || '').trim().toUpperCase() || 'S/N';
         const cleanCodigoGen = (req.body.codigo_generacion || req.body.codigoGeneracion || '').trim().toUpperCase() || null;
+        const cleanObservaciones = typeof observaciones === 'string' ? (observaciones.trim() || null) : null;
         const anticipoCuenta = parseFloat(req.body.anticipo_cuenta) || 0;
         const montoSujeto = parseFloat(req.body.monto_sujeto) || 0;
         const [headerResult] = await connection.query(`
@@ -365,7 +366,7 @@ const createExpense = async (req, res) => {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
             companyId, branch_id, usuarioId, provider_id, fecha || new Date(), cleanNumeroDoc, cleanCodigoGen,
-            tipo_documento_id, condicion_operacion_id, observaciones,
+            tipo_documento_id, condicion_operacion_id, cleanObservaciones,
             total_nosujeta || 0, total_exenta || 0, total_gravada || 0,
             iva || 0, retencion || 0, percepcion || 0, fovial || 0, cotrans || 0, anticipoCuenta, montoSujeto, monto_total || 0,
             finalPeriodYear, finalPeriodMonth,
@@ -376,13 +377,23 @@ const createExpense = async (req, res) => {
 
         const expenseId = headerResult.insertId;
 
-        // 2. Insertar Items (opcional con fallback si no se especifican conceptos individuales)
-        const itemsToInsert = (items && Array.isArray(items) && items.length > 0) ? items : [{
-            description: observaciones || 'Gasto registrado',
-            expense_type_id: null,
-            tax_type: 'gravada',
-            total: monto_total || 0
-        }];
+        // 2. Insertar Items solo si se especifican conceptos válidos (sin agregar concepto por defecto)
+        const validItems = Array.isArray(items)
+            ? items
+                .map(it => ({
+                    ...it,
+                    description: typeof it?.description === 'string' ? it.description.trim() : ''
+                }))
+                .filter(it => it.description.length > 0)
+            : [];
+        const itemsToInsert = validItems.length > 0
+            ? validItems
+            : (cleanObservaciones ? [{
+                description: cleanObservaciones,
+                expense_type_id: null,
+                tax_type: 'gravada',
+                total: monto_total || 0
+            }] : []);
 
         for (const item of itemsToInsert) {
             const { description, expense_type_id, tax_type, total } = item;
@@ -516,6 +527,7 @@ const updateExpense = async (req, res) => {
 
         const cleanNumeroDoc = (numero_documento || '').trim().toUpperCase() || 'S/N';
         const cleanCodigoGen = (req.body.codigo_generacion || req.body.codigoGeneracion || '').trim().toUpperCase() || null;
+        const cleanObservaciones = typeof observaciones === 'string' ? (observaciones.trim() || null) : null;
         const anticipoCuenta = parseFloat(req.body.anticipo_cuenta) || 0;
         const montoSujeto = parseFloat(req.body.monto_sujeto) || 0;
         await connection.query(`
@@ -531,7 +543,7 @@ const updateExpense = async (req, res) => {
             WHERE id = ? AND company_id = ?
         `, [
             branch_id, provider_id, fecha, cleanNumeroDoc, cleanCodigoGen,
-            tipo_documento_id, condicion_operacion_id, observaciones,
+            tipo_documento_id, condicion_operacion_id, cleanObservaciones,
             total_nosujeta || 0, total_exenta || 0, total_gravada || 0,
             iva || 0, retencion || 0, percepcion || 0, fovial || 0, cotrans || 0, anticipoCuenta, montoSujeto, monto_total || 0,
             finalPeriodYear, finalPeriodMonth,
@@ -541,14 +553,24 @@ const updateExpense = async (req, res) => {
             id, companyId
         ]);
 
-        // 3. Reemplazar Items (opcional con fallback)
+        // 3. Reemplazar Items solo si se especifican conceptos válidos (sin agregar concepto por defecto)
         await connection.query('DELETE FROM expense_items WHERE expense_id = ?', [id]);
-        const itemsToUpdate = (items && Array.isArray(items) && items.length > 0) ? items : [{
-            description: observaciones || 'Gasto registrado',
-            expense_type_id: null,
-            tax_type: 'gravada',
-            total: monto_total || 0
-        }];
+        const validItems = Array.isArray(items)
+            ? items
+                .map(it => ({
+                    ...it,
+                    description: typeof it?.description === 'string' ? it.description.trim() : ''
+                }))
+                .filter(it => it.description.length > 0)
+            : [];
+        const itemsToUpdate = validItems.length > 0
+            ? validItems
+            : (cleanObservaciones ? [{
+                description: cleanObservaciones,
+                expense_type_id: null,
+                tax_type: 'gravada',
+                total: monto_total || 0
+            }] : []);
 
         for (const item of itemsToUpdate) {
             const { description, expense_type_id, tax_type, total } = item;
