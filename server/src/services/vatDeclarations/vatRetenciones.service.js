@@ -367,7 +367,7 @@ async function getRetencionesRecibidasData({ companyId, branchId, year, month, s
         'eh.period_year = ?',
         'eh.period_month = ?',
         'eh.tipo_documento_id = "06"',
-        '(eh.retencion > 0 OR eh.monto_sujeto > 0)',
+        '(eh.retencion > 0 OR ((eh.monto_sujeto > 0 OR eh.total_gravada > 0) AND COALESCE(eh.percepcion, 0) = 0))',
         '(eh.status IS NULL OR eh.status != "ANULADO")'
     ];
     let eParams = [companyId, year, month];
@@ -392,7 +392,7 @@ async function getRetencionesRecibidasData({ companyId, branchId, year, month, s
             COALESCE(eh.codigo_generacion, '---') AS codigo_generacion,
             '06' AS tipo_documento,
             'Comprobante de Retención' AS tipo_doc_nombre,
-            COALESCE(eh.monto_sujeto, eh.total_gravada, 0) AS monto_sujeto,
+            COALESCE(NULLIF(eh.monto_sujeto, 0), NULLIF(eh.total_gravada, 0), ROUND(eh.retencion / 0.01, 2), 0) AS monto_sujeto,
             COALESCE(eh.iva, 0) AS total_iva,
             eh.retencion AS monto_retencion,
             COALESCE(eh.monto_total, eh.retencion) AS total_pagar,

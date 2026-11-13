@@ -164,16 +164,17 @@ async function getComprasData({ companyId, branchId, year, month, search, limit,
         }
 
         const sign = esNC ? -1 : 1;
-        const gLoc = Math.abs(n(r.total_gravada));
-        const gImp = Math.abs(n(r.gravadas_importaciones));
-        const gInt = Math.abs(n(r.gravadas_internaciones));
+        const esCompRetencion = isExpense && tId === '06';
+        const gLoc = esCompRetencion ? 0 : Math.abs(n(r.total_gravada));
+        const gImp = esCompRetencion ? 0 : Math.abs(n(r.gravadas_importaciones));
+        const gInt = esCompRetencion ? 0 : Math.abs(n(r.gravadas_internaciones));
         const g = gLoc + gImp + gInt;
-        const e = Math.abs(n(r.total_exenta));
-        const i = Math.abs(n(r.iva)) + Math.abs(n(r.iva_importaciones));
-        const f = Math.abs(n(r.fovial));
-        const c = Math.abs(n(r.cotrans));
-        const ns = Math.abs(n(r.total_nosujeta)) + f + c;
-        const ac = Math.abs(n(r.anticipo_cuenta));
+        const e = esCompRetencion ? 0 : Math.abs(n(r.total_exenta));
+        const i = esCompRetencion ? 0 : (Math.abs(n(r.iva)) + Math.abs(n(r.iva_importaciones)));
+        const f = esCompRetencion ? 0 : Math.abs(n(r.fovial));
+        const c = esCompRetencion ? 0 : Math.abs(n(r.cotrans));
+        const ns = esCompRetencion ? 0 : (Math.abs(n(r.total_nosujeta)) + f + c);
+        const ac = esCompRetencion ? 0 : Math.abs(n(r.anticipo_cuenta));
         const ret = Math.abs(n(r.retencion));
         const per = Math.abs(n(r.percepcion));
         const to = g + e + i + ns;

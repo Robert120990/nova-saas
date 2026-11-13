@@ -245,7 +245,7 @@ const DOC_TYPE_FIELD_CONFIG = {
         primary: ['manualRetencion', 'manualPercepcion'],
         secondary: ['manualMontoSujeto'],
         disabled: ['totalGravada', 'totalExenta', 'totalNosujeta', 'manualIVA', 'gravadasImportaciones', 'gravadasInternaciones', 'ivaImportaciones', 'manualFovial', 'manualCotrans', 'manualAnticipoCuenta'],
-        tip: 'Comprobante de Retención / Percepción: Registra el monto en Retención 1% o Percepción 1% según corresponda.'
+        tip: 'Comprobante de Retención / Percepción: Registra el monto en Retención 1% o Percepción 1% y su Monto Sujeto. No suma a Compras Gravadas.'
     },
     '07': {
         primary: ['totalGravada', 'manualMontoSujeto', 'manualAnticipoCuenta'],
@@ -644,12 +644,13 @@ const Expenses = () => {
 
     // Tax Logic
     useEffect(() => {
-        const gravada = parseFloat(totalGravada) || 0;
-        const exenta = parseFloat(totalExenta) || 0;
-        const nosujeta = parseFloat(totalNosujeta) || 0;
-        const gImp = parseFloat(gravadasImportaciones) || 0;
-        const gInt = parseFloat(gravadasInternaciones) || 0;
-        const ivaImp = parseFloat(ivaImportaciones) || 0;
+        const isCompRet = tipoDocId === '06';
+        const gravada = isCompRet ? 0 : (parseFloat(totalGravada) || 0);
+        const exenta = isCompRet ? 0 : (parseFloat(totalExenta) || 0);
+        const nosujeta = isCompRet ? 0 : (parseFloat(totalNosujeta) || 0);
+        const gImp = isCompRet ? 0 : (parseFloat(gravadasImportaciones) || 0);
+        const gInt = isCompRet ? 0 : (parseFloat(gravadasInternaciones) || 0);
+        const ivaImp = isCompRet ? 0 : (parseFloat(ivaImportaciones) || 0);
 
         const ivaRate = parseFloat(taxSettings?.iva_rate || 13) / 100;
         // Factura tradicional (01), Factura de Exportación (03) o Sujeto Excluido (14) no generan crédito fiscal deducible separado
@@ -821,21 +822,31 @@ const Expenses = () => {
                 const perc = parseFloat(data.totales.percepcion) || 0;
                 const total = parseFloat(data.totales.monto_total) || 0;
 
-                if (gravada > 0) {
-                    setTotalGravada(gravada);
-                    filledFields.push(`Gravada ($${gravada.toFixed(2)})`);
-                } else if (total > 0 && mappedTipoDoc === '01') {
-                    setTotalGravada(total);
-                    filledFields.push(`Total ($${total.toFixed(2)})`);
-                }
+                if (mappedTipoDoc === '06') {
+                    setTotalGravada(0);
+                    setTotalExenta(0);
+                    setTotalNosujeta(0);
+                    if (gravada > 0 && !(data.totales?.monto_sujeto || data.monto_sujeto)) {
+                        setManualMontoSujeto(gravada);
+                        filledFields.push(`Monto Sujeto ($${gravada.toFixed(2)})`);
+                    }
+                } else {
+                    if (gravada > 0) {
+                        setTotalGravada(gravada);
+                        filledFields.push(`Gravada ($${gravada.toFixed(2)})`);
+                    } else if (total > 0 && mappedTipoDoc === '01') {
+                        setTotalGravada(total);
+                        filledFields.push(`Total ($${total.toFixed(2)})`);
+                    }
 
-                if (exenta > 0) {
-                    setTotalExenta(exenta);
-                    filledFields.push('Exenta');
-                }
-                if (nosujeta > 0) {
-                    setTotalNosujeta(nosujeta);
-                    filledFields.push('No Sujeta');
+                    if (exenta > 0) {
+                        setTotalExenta(exenta);
+                        filledFields.push('Exenta');
+                    }
+                    if (nosujeta > 0) {
+                        setTotalNosujeta(nosujeta);
+                        filledFields.push('No Sujeta');
+                    }
                 }
 
                 if (iva > 0) {
@@ -1153,24 +1164,33 @@ const Expenses = () => {
             setIsPeriodDirty(true);
 
             setObservaciones((detail.observaciones || '').toUpperCase());
-            setTotalGravada(parseFloat(detail.total_gravada || 0));
-            setTotalExenta(parseFloat(detail.total_exenta || 0));
-            setTotalNosujeta(parseFloat(detail.total_nosujeta || 0));
-            setGravadasImportaciones(parseFloat(detail.gravadas_importaciones || 0));
-            setGravadasInternaciones(parseFloat(detail.gravadas_internaciones || 0));
-            setIvaImportaciones(parseFloat(detail.iva_importaciones || 0));
-            setManualIVA(parseFloat(detail.iva || 0));
+            const isCompRet = detail.tipo_documento_id === '06';
+            const rawGravada = parseFloat(detail.total_gravada || 0);
+            setTotalGravada(isCompRet ? 0 : rawGravada);
+            setTotalExenta(isCompRet ? 0 : parseFloat(detail.total_exenta || 0));
+            setTotalNosujeta(isCompRet ? 0 : parseFloat(detail.total_nosujeta || 0));
+            setGravadasImportaciones(isCompRet ? 0 : parseFloat(detail.gravadas_importaciones || 0));
+            setGravadasInternaciones(isCompRet ? 0 : parseFloat(detail.gravadas_internaciones || 0));
+            setIvaImportaciones(isCompRet ? 0 : parseFloat(detail.iva_importaciones || 0));
+            setManualIVA(isCompRet ? 0 : parseFloat(detail.iva || 0));
             setManualRetencion(parseFloat(detail.retencion || 0));
             setManualPercepcion(parseFloat(detail.percepcion || 0));
-            setManualFovial(parseFloat(detail.fovial || 0));
-            setManualCotrans(parseFloat(detail.cotrans || 0));
-            setManualAnticipoCuenta(parseFloat(detail.anticipo_cuenta || 0));
+            setManualFovial(isCompRet ? 0 : parseFloat(detail.fovial || 0));
+            setManualCotrans(isCompRet ? 0 : parseFloat(detail.cotrans || 0));
+            setManualAnticipoCuenta(isCompRet ? 0 : parseFloat(detail.anticipo_cuenta || 0));
             const rawMontoSujeto = parseFloat(detail.monto_sujeto || 0);
-            if (rawMontoSujeto > 0) {
-                setManualMontoSujeto(rawMontoSujeto);
-            } else if (detail.tipo_documento_id === '06') {
+            if (isCompRet) {
                 const retOrPerc = parseFloat(detail.retencion || 0) || parseFloat(detail.percepcion || 0);
-                setManualMontoSujeto(retOrPerc > 0 ? Math.round(retOrPerc / 0.01 * 100) / 100 : 0);
+                const inferredSujeto = retOrPerc > 0 ? Math.round((retOrPerc / 0.01) * 100) / 100 : 0;
+                if (rawGravada > 0) {
+                    setManualMontoSujeto(rawGravada);
+                } else if (rawMontoSujeto > 0) {
+                    setManualMontoSujeto(rawMontoSujeto);
+                } else {
+                    setManualMontoSujeto(inferredSujeto);
+                }
+            } else if (rawMontoSujeto > 0) {
+                setManualMontoSujeto(rawMontoSujeto);
             } else {
                 setManualMontoSujeto(0);
             }
@@ -1212,6 +1232,10 @@ const Expenses = () => {
         const totalBases = grav + exe + nos + gImp + gInt;
 
         const isLiquidacion = tipoDocId === '07';
+        const isCompRetencion = tipoDocId === '06';
+        if (isCompRetencion && totals.retencion === 0 && totals.percepcion === 0) {
+            return toast.error('Para un Comprobante de Retención / Percepción (06) debe ingresar el monto en Retención 1% o Percepción 1%');
+        }
         if (totalBases === 0 && totals.total === 0 && !esNotaCredito && (!isLiquidacion || (totals.monto_sujeto === 0 && totals.anticipo_cuenta === 0))) {
             return toast.error('Debe ingresar al menos un monto en compras gravadas, exentas o no sujetas');
         }
@@ -1977,6 +2001,23 @@ const Expenses = () => {
                                                         setManualMontoSujeto(num);
                                                         setManualIVA(0);
                                                         setIsIvaDirty(true);
+                                                    } else if (val === '06') {
+                                                        setEmitirDte(false);
+                                                        const prevGrav = parseFloat(totalGravada) || 0;
+                                                        if (prevGrav > 0 && (!manualMontoSujeto || parseFloat(manualMontoSujeto) === 0)) {
+                                                            setManualMontoSujeto(prevGrav);
+                                                        }
+                                                        setTotalGravada(0);
+                                                        setTotalExenta(0);
+                                                        setTotalNosujeta(0);
+                                                        setGravadasImportaciones(0);
+                                                        setGravadasInternaciones(0);
+                                                        setIvaImportaciones(0);
+                                                        setManualIVA(0);
+                                                        setManualFovial(0);
+                                                        setManualCotrans(0);
+                                                        setManualAnticipoCuenta(0);
+                                                        setIsIvaDirty(true);
                                                     } else {
                                                         setEmitirDte(false);
                                                         const dt = DOCUMENT_TYPES.find(d => d.code === val);
@@ -2352,9 +2393,11 @@ const Expenses = () => {
                                         <div className="bg-slate-50/70 p-2 rounded-xl border border-slate-200/80 focus-within:border-indigo-600 focus-within:bg-indigo-50/20 focus-within:ring-2 focus-within:ring-indigo-600/40 transition-all">
                                             <div className="flex items-center justify-between mb-1">
                                                 <label className="text-[9px] font-bold text-slate-600 uppercase tracking-tight truncate">Gravadas Locales *</label>
-                                                {getFieldMeta('totalGravada').isPrimary && (
+                                                {getFieldMeta('totalGravada').isPrimary ? (
                                                     <span className="text-[7px] font-black uppercase text-indigo-600 bg-indigo-50 px-1 py-0.2 rounded">Principal</span>
-                                                )}
+                                                ) : getFieldMeta('totalGravada').isDisabled ? (
+                                                    <span className="text-[7px] text-slate-400 font-bold uppercase">N/A</span>
+                                                ) : null}
                                             </div>
                                             <div className="relative">
                                                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-mono font-bold text-[10px]">$</span>
@@ -2362,11 +2405,12 @@ const Expenses = () => {
                                                     type="number"
                                                     step="0.01"
                                                     min="0"
+                                                    disabled={getFieldMeta('totalGravada').isDisabled}
                                                     value={totalGravada}
                                                     onChange={handleGravadaChange}
                                                     onFocus={handleFocusSelect}
                                                     placeholder="0.00"
-                                                    className="w-full pl-5 pr-2 py-1 bg-white border border-slate-200 rounded-lg outline-none text-xs font-mono font-bold text-right text-slate-900 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors h-[28px]"
+                                                    className={`w-full pl-5 pr-2 py-1 bg-white border border-slate-200 rounded-lg outline-none text-xs font-mono font-bold text-right text-slate-900 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors h-[28px] ${getFieldMeta('totalGravada').isDisabled ? 'opacity-50 cursor-not-allowed bg-slate-100' : ''}`}
                                                 />
                                             </div>
                                         </div>
@@ -2380,11 +2424,12 @@ const Expenses = () => {
                                                     type="number"
                                                     step="0.01"
                                                     min="0"
+                                                    disabled={getFieldMeta('totalExenta').isDisabled}
                                                     value={totalExenta}
                                                     onChange={(e) => setTotalExenta(e.target.value)}
                                                     onFocus={handleFocusSelect}
                                                     placeholder="0.00"
-                                                    className="w-full pl-5 pr-2 py-1 bg-white border border-slate-200 rounded-lg outline-none text-xs font-mono text-right text-slate-800 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors h-[28px]"
+                                                    className={`w-full pl-5 pr-2 py-1 bg-white border border-slate-200 rounded-lg outline-none text-xs font-mono text-right text-slate-800 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors h-[28px] ${getFieldMeta('totalExenta').isDisabled ? 'opacity-50 cursor-not-allowed bg-slate-100' : ''}`}
                                                 />
                                             </div>
                                         </div>
@@ -2398,11 +2443,12 @@ const Expenses = () => {
                                                     type="number"
                                                     step="0.01"
                                                     min="0"
+                                                    disabled={getFieldMeta('totalNosujeta').isDisabled}
                                                     value={totalNosujeta}
                                                     onChange={(e) => setTotalNosujeta(e.target.value)}
                                                     onFocus={handleFocusSelect}
                                                     placeholder="0.00"
-                                                    className="w-full pl-5 pr-2 py-1 bg-white border border-slate-200 rounded-lg outline-none text-xs font-mono text-right text-slate-800 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors h-[28px]"
+                                                    className={`w-full pl-5 pr-2 py-1 bg-white border border-slate-200 rounded-lg outline-none text-xs font-mono text-right text-slate-800 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors h-[28px] ${getFieldMeta('totalNosujeta').isDisabled ? 'opacity-50 cursor-not-allowed bg-slate-100' : ''}`}
                                                 />
                                             </div>
                                         </div>
@@ -2570,11 +2616,12 @@ const Expenses = () => {
                                                     type="number"
                                                     step="0.01"
                                                     min="0"
+                                                    disabled={getFieldMeta('manualFovial').isDisabled}
                                                     value={manualFovial}
                                                     onChange={(e) => setManualFovial(e.target.value)}
                                                     onFocus={handleFocusSelect}
                                                     placeholder="0.00"
-                                                    className="w-full pl-5 pr-2 py-1 bg-white border border-slate-200 rounded-lg outline-none text-xs font-mono text-right text-slate-800 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors h-[28px]"
+                                                    className={`w-full pl-5 pr-2 py-1 bg-white border border-slate-200 rounded-lg outline-none text-xs font-mono text-right text-slate-800 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors h-[28px] ${getFieldMeta('manualFovial').isDisabled ? 'opacity-50 cursor-not-allowed bg-slate-100' : ''}`}
                                                 />
                                             </div>
                                         </div>
@@ -2587,11 +2634,12 @@ const Expenses = () => {
                                                     type="number"
                                                     step="0.01"
                                                     min="0"
+                                                    disabled={getFieldMeta('manualCotrans').isDisabled}
                                                     value={manualCotrans}
                                                     onChange={(e) => setManualCotrans(e.target.value)}
                                                     onFocus={handleFocusSelect}
                                                     placeholder="0.00"
-                                                    className="w-full pl-5 pr-2 py-1 bg-white border border-slate-200 rounded-lg outline-none text-xs font-mono text-right text-slate-800 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors h-[28px]"
+                                                    className={`w-full pl-5 pr-2 py-1 bg-white border border-slate-200 rounded-lg outline-none text-xs font-mono text-right text-slate-800 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors h-[28px] ${getFieldMeta('manualCotrans').isDisabled ? 'opacity-50 cursor-not-allowed bg-slate-100' : ''}`}
                                                 />
                                             </div>
                                         </div>
@@ -2605,6 +2653,8 @@ const Expenses = () => {
                                                 <label className="text-[9px] font-bold text-slate-600 uppercase tracking-tight truncate">Anticipo Cta.</label>
                                                 {tipoDocId === '07' ? (
                                                     <span className="text-[7px] font-black uppercase text-blue-700 bg-blue-100 px-1 py-0.2 rounded">Liquidación</span>
+                                                ) : getFieldMeta('manualAnticipoCuenta').isDisabled ? (
+                                                    <span className="text-[7px] text-slate-400 font-bold uppercase">N/A</span>
                                                 ) : (
                                                     <span className="text-[7px] text-blue-600 font-bold uppercase">Info</span>
                                                 )}
@@ -2615,17 +2665,18 @@ const Expenses = () => {
                                                     type="number"
                                                     step="0.01"
                                                     min="0"
+                                                    disabled={getFieldMeta('manualAnticipoCuenta').isDisabled}
                                                     value={manualAnticipoCuenta}
                                                     onChange={(e) => setManualAnticipoCuenta(e.target.value)}
                                                     onFocus={handleFocusSelect}
                                                     placeholder="0.00"
-                                                    className="w-full pl-5 pr-2 py-1 bg-white border border-slate-200 rounded-lg outline-none text-xs font-mono text-right text-blue-700 font-semibold focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors h-[28px]"
+                                                    className={`w-full pl-5 pr-2 py-1 bg-white border border-slate-200 rounded-lg outline-none text-xs font-mono text-right text-blue-700 font-semibold focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors h-[28px] ${getFieldMeta('manualAnticipoCuenta').isDisabled ? 'opacity-50 cursor-not-allowed bg-slate-100' : ''}`}
                                                 />
                                             </div>
                                         </div>
 
                                         <div className={`bg-slate-50/70 p-2 rounded-xl border transition-all ${
-                                            tipoDocId === '07' 
+                                            (tipoDocId === '07' || tipoDocId === '06')
                                                 ? 'border-indigo-400 ring-1 ring-indigo-500/20 bg-indigo-50/40' 
                                                 : 'border-slate-200/80'
                                         } focus-within:border-indigo-600 focus-within:bg-indigo-50/20 focus-within:ring-2 focus-within:ring-indigo-600/40`}>
@@ -2633,6 +2684,8 @@ const Expenses = () => {
                                                 <label className="text-[9px] font-bold text-slate-600 uppercase tracking-tight truncate">Monto Sujeto</label>
                                                 {tipoDocId === '07' ? (
                                                     <span className="text-[7px] font-black uppercase text-indigo-700 bg-indigo-100 px-1 py-0.2 rounded">Liquidación</span>
+                                                ) : tipoDocId === '06' ? (
+                                                    <span className="text-[7px] font-black uppercase text-indigo-700 bg-indigo-100 px-1 py-0.2 rounded">Base 1%</span>
                                                 ) : (
                                                     <span className="text-[7px] text-indigo-600 font-bold uppercase">Info</span>
                                                 )}

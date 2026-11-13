@@ -142,16 +142,16 @@ const getExpenses = async (req, res) => {
         let summaryQuery = `
             SELECT 
                 COALESCE(SUM(eh.monto_total), 0) AS total_monto,
-                COALESCE(SUM(eh.total_gravada), 0) AS total_gravada,
-                COALESCE(SUM(eh.iva), 0) AS total_iva,
+                COALESCE(SUM(CASE WHEN eh.tipo_documento_id = '06' THEN 0 ELSE eh.total_gravada END), 0) AS total_gravada,
+                COALESCE(SUM(CASE WHEN eh.tipo_documento_id = '06' THEN 0 ELSE eh.iva END), 0) AS total_iva,
                 COALESCE(SUM(eh.retencion), 0) AS total_retencion,
                 COALESCE(SUM(eh.percepcion), 0) AS total_percepcion,
-                COALESCE(SUM(eh.fovial), 0) AS total_fovial,
-                COALESCE(SUM(eh.cotrans), 0) AS total_cotrans,
-                COALESCE(SUM(eh.anticipo_cuenta), 0) AS total_anticipo_cuenta,
+                COALESCE(SUM(CASE WHEN eh.tipo_documento_id = '06' THEN 0 ELSE eh.fovial END), 0) AS total_fovial,
+                COALESCE(SUM(CASE WHEN eh.tipo_documento_id = '06' THEN 0 ELSE eh.cotrans END), 0) AS total_cotrans,
+                COALESCE(SUM(CASE WHEN eh.tipo_documento_id = '06' THEN 0 ELSE eh.anticipo_cuenta END), 0) AS total_anticipo_cuenta,
                 COALESCE(SUM(eh.monto_sujeto), 0) AS total_monto_sujeto,
-                COALESCE(SUM(eh.total_exenta), 0) AS total_exenta,
-                COALESCE(SUM(eh.total_nosujeta), 0) AS total_nosujeta
+                COALESCE(SUM(CASE WHEN eh.tipo_documento_id = '06' THEN 0 ELSE eh.total_exenta END), 0) AS total_exenta,
+                COALESCE(SUM(CASE WHEN eh.tipo_documento_id = '06' THEN 0 ELSE eh.total_nosujeta END), 0) AS total_nosujeta
             FROM expense_headers eh
             LEFT JOIN providers p ON eh.provider_id = p.id
             WHERE eh.company_id = ? AND eh.status = 'ACTIVO'
@@ -351,8 +351,31 @@ const createExpense = async (req, res) => {
         const cleanNumeroDoc = (numero_documento || '').trim().toUpperCase() || 'S/N';
         const cleanCodigoGen = (req.body.codigo_generacion || req.body.codigoGeneracion || '').trim().toUpperCase() || null;
         const cleanObservaciones = typeof observaciones === 'string' ? (observaciones.trim() || null) : null;
-        const anticipoCuenta = parseFloat(req.body.anticipo_cuenta) || 0;
-        const montoSujeto = parseFloat(req.body.monto_sujeto) || 0;
+        const isCompRet = String(tipo_documento_id || '').trim() === '06';
+        const rawRetencion = parseFloat(retencion) || 0;
+        const rawPercepcion = parseFloat(percepcion) || 0;
+        const rawGravada = parseFloat(total_gravada) || 0;
+        const rawMontoSujeto = parseFloat(req.body.monto_sujeto) || 0;
+        const anticipoCuenta = isCompRet ? 0 : (parseFloat(req.body.anticipo_cuenta) || 0);
+        const montoSujeto = isCompRet
+            ? (rawMontoSujeto > 0
+                ? rawMontoSujeto
+                : (rawGravada > 0
+                    ? rawGravada
+                    : ((rawRetencion || rawPercepcion) > 0 ? Math.round(((rawRetencion || rawPercepcion) / 0.01) * 100) / 100 : 0)))
+            : rawMontoSujeto;
+        const finalNosujeta = isCompRet ? 0 : (parseFloat(total_nosujeta) || 0);
+        const finalExenta = isCompRet ? 0 : (parseFloat(total_exenta) || 0);
+        const finalGravada = isCompRet ? 0 : rawGravada;
+        const finalIva = isCompRet ? 0 : (parseFloat(iva) || 0);
+        const finalFovial = isCompRet ? 0 : (parseFloat(fovial) || 0);
+        const finalCotrans = isCompRet ? 0 : (parseFloat(cotrans) || 0);
+        const finalGravImp = isCompRet ? 0 : (parseFloat(gravadas_importaciones) || 0);
+        const finalGravInt = isCompRet ? 0 : (parseFloat(gravadas_internaciones) || 0);
+        const finalIvaImp = isCompRet ? 0 : (parseFloat(iva_importaciones) || 0);
+        const finalMontoTotal = isCompRet
+            ? (rawRetencion > 0 ? rawRetencion : rawPercepcion)
+            : (parseFloat(monto_total) || 0);
         const [headerResult] = await connection.query(`
             INSERT INTO expense_headers 
             (company_id, branch_id, usuario_id, provider_id, fecha, numero_documento, codigo_generacion,
@@ -367,12 +390,12 @@ const createExpense = async (req, res) => {
         `, [
             companyId, branch_id, usuarioId, provider_id, fecha || new Date(), cleanNumeroDoc, cleanCodigoGen,
             tipo_documento_id, condicion_operacion_id, cleanObservaciones,
-            total_nosujeta || 0, total_exenta || 0, total_gravada || 0,
-            iva || 0, retencion || 0, percepcion || 0, fovial || 0, cotrans || 0, anticipoCuenta, montoSujeto, monto_total || 0,
+            finalNosujeta, finalExenta, finalGravada,
+            finalIva, rawRetencion, rawPercepcion, finalFovial, finalCotrans, anticipoCuenta, montoSujeto, finalMontoTotal,
             finalPeriodYear, finalPeriodMonth,
             documento_afectado || null, fecha_afectada || null, num_control || null, sello_recepcion || null,
             tipo_operacion || '1', tipo_clasificacion || '1', tipo_sector || '2', tipo_costo || '5',
-            gravadas_importaciones || 0, gravadas_internaciones || 0, iva_importaciones || 0
+            finalGravImp, finalGravInt, finalIvaImp
         ]);
 
         const expenseId = headerResult.insertId;
@@ -528,8 +551,31 @@ const updateExpense = async (req, res) => {
         const cleanNumeroDoc = (numero_documento || '').trim().toUpperCase() || 'S/N';
         const cleanCodigoGen = (req.body.codigo_generacion || req.body.codigoGeneracion || '').trim().toUpperCase() || null;
         const cleanObservaciones = typeof observaciones === 'string' ? (observaciones.trim() || null) : null;
-        const anticipoCuenta = parseFloat(req.body.anticipo_cuenta) || 0;
-        const montoSujeto = parseFloat(req.body.monto_sujeto) || 0;
+        const isCompRet = String(tipo_documento_id || '').trim() === '06';
+        const rawRetencion = parseFloat(retencion) || 0;
+        const rawPercepcion = parseFloat(percepcion) || 0;
+        const rawGravada = parseFloat(total_gravada) || 0;
+        const rawMontoSujeto = parseFloat(req.body.monto_sujeto) || 0;
+        const anticipoCuenta = isCompRet ? 0 : (parseFloat(req.body.anticipo_cuenta) || 0);
+        const montoSujeto = isCompRet
+            ? (rawMontoSujeto > 0
+                ? rawMontoSujeto
+                : (rawGravada > 0
+                    ? rawGravada
+                    : ((rawRetencion || rawPercepcion) > 0 ? Math.round(((rawRetencion || rawPercepcion) / 0.01) * 100) / 100 : 0)))
+            : rawMontoSujeto;
+        const finalNosujeta = isCompRet ? 0 : (parseFloat(total_nosujeta) || 0);
+        const finalExenta = isCompRet ? 0 : (parseFloat(total_exenta) || 0);
+        const finalGravada = isCompRet ? 0 : rawGravada;
+        const finalIva = isCompRet ? 0 : (parseFloat(iva) || 0);
+        const finalFovial = isCompRet ? 0 : (parseFloat(fovial) || 0);
+        const finalCotrans = isCompRet ? 0 : (parseFloat(cotrans) || 0);
+        const finalGravImp = isCompRet ? 0 : (parseFloat(gravadas_importaciones) || 0);
+        const finalGravInt = isCompRet ? 0 : (parseFloat(gravadas_internaciones) || 0);
+        const finalIvaImp = isCompRet ? 0 : (parseFloat(iva_importaciones) || 0);
+        const finalMontoTotal = isCompRet
+            ? (rawRetencion > 0 ? rawRetencion : rawPercepcion)
+            : (parseFloat(monto_total) || 0);
         await connection.query(`
             UPDATE expense_headers SET 
                 branch_id = ?, provider_id = ?, fecha = ?, numero_documento = ?, codigo_generacion = ?,
@@ -544,12 +590,12 @@ const updateExpense = async (req, res) => {
         `, [
             branch_id, provider_id, fecha, cleanNumeroDoc, cleanCodigoGen,
             tipo_documento_id, condicion_operacion_id, cleanObservaciones,
-            total_nosujeta || 0, total_exenta || 0, total_gravada || 0,
-            iva || 0, retencion || 0, percepcion || 0, fovial || 0, cotrans || 0, anticipoCuenta, montoSujeto, monto_total || 0,
+            finalNosujeta, finalExenta, finalGravada,
+            finalIva, rawRetencion, rawPercepcion, finalFovial, finalCotrans, anticipoCuenta, montoSujeto, finalMontoTotal,
             finalPeriodYear, finalPeriodMonth,
             documento_afectado || null, fecha_afectada || null, num_control || null, sello_recepcion || null,
             tipo_operacion || '1', tipo_clasificacion || '1', tipo_sector || '2', tipo_costo || '5',
-            gravadas_importaciones || 0, gravadas_internaciones || 0, iva_importaciones || 0,
+            finalGravImp, finalGravInt, finalIvaImp,
             id, companyId
         ]);
 

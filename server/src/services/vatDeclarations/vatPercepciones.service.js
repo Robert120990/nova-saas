@@ -98,7 +98,10 @@ async function getPercepcionesData({ companyId, branchId, year, month, search, l
                 WHEN '14' THEN 'Factura Sujeto Excluido'
                 ELSE COALESCE(cat.description, 'Gasto')
             END AS tipo_doc_nombre,
-            eh.total_gravada AS monto_sujeto,
+            CASE
+                WHEN eh.tipo_documento_id = '06' THEN COALESCE(NULLIF(eh.monto_sujeto, 0), NULLIF(eh.total_gravada, 0), ROUND(eh.percepcion / 0.01, 2), 0)
+                ELSE COALESCE(NULLIF(eh.total_gravada, 0), NULLIF(eh.monto_sujeto, 0), 0)
+            END AS monto_sujeto,
             eh.iva,
             eh.percepcion AS monto_percepcion,
             eh.monto_total,

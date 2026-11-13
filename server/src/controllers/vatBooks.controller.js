@@ -439,6 +439,7 @@ const getVatBookPurchasesPDF = async (req, res) => {
             let esImport = false;
             let esIntern = false;
             let esExcluido = false;
+            let esCompRetencion = false;
             let tipoNombre = '';
 
             const tId = String(r.tipo_documento_id || '').trim();
@@ -450,7 +451,7 @@ const getVatBookPurchasesPDF = async (req, res) => {
                     case '03': tipoNombre = 'Fact. Export.'; break;
                     case '04': tipoNombre = 'Importación'; esImport = true; break;
                     case '05': tipoNombre = 'Internación'; esIntern = true; break;
-                    case '06': tipoNombre = 'Retención'; break;
+                    case '06': tipoNombre = 'Retención'; esCompRetencion = true; break;
                     case '07': tipoNombre = 'Liquidación'; break;
                     case '08': tipoNombre = 'Nota Débito'; break;
                     case '09': tipoNombre = 'Nota Crédito'; esNC = true; break;
@@ -469,8 +470,8 @@ const getVatBookPurchasesPDF = async (req, res) => {
                 else tipoNombre = 'Créd. Fiscal';
             }
 
-            if (n(r.gravadas_importaciones) > 0 || n(r.iva_importaciones) > 0) esImport = true;
-            if (n(r.gravadas_internaciones) > 0) esIntern = true;
+            if (!esCompRetencion && (n(r.gravadas_importaciones) > 0 || n(r.iva_importaciones) > 0)) esImport = true;
+            if (!esCompRetencion && n(r.gravadas_internaciones) > 0) esIntern = true;
 
             const rawDoc = (r.numero_documento || '').trim();
             const rawCtrl = (r.num_control || '').trim();
@@ -491,23 +492,23 @@ const getVatBookPurchasesPDF = async (req, res) => {
                 docNumber = 'S/N';
             }
 
-            return { esNC, esImport, esIntern, esExcluido, tipoNombre, docNumber };
+            return { esNC, esImport, esIntern, esExcluido, esCompRetencion, tipoNombre, docNumber };
         };
 
         if (req.query.format === 'excel') {
             const excelData = rows.map(r => {
-                const { esNC, tipoNombre, docNumber } = getPurchaseDocInfo(r);
+                const { esNC, esCompRetencion, tipoNombre, docNumber } = getPurchaseDocInfo(r);
                 const sign = esNC ? -1 : 1;
-                const gLoc = Math.abs(n(r.total_gravada));
-                const gImp = Math.abs(n(r.gravadas_importaciones));
-                const gInt = Math.abs(n(r.gravadas_internaciones));
+                const gLoc = esCompRetencion ? 0 : Math.abs(n(r.total_gravada));
+                const gImp = esCompRetencion ? 0 : Math.abs(n(r.gravadas_importaciones));
+                const gInt = esCompRetencion ? 0 : Math.abs(n(r.gravadas_internaciones));
                 const g = gLoc + gImp + gInt;
-                const e = Math.abs(n(r.total_exenta));
-                const i = Math.abs(n(r.iva)) + Math.abs(n(r.iva_importaciones));
-                const f = Math.abs(n(r.fovial));
-                const c = Math.abs(n(r.cotrans));
-                const ns = Math.abs(n(r.total_nosujeta)) + f + c;
-                const ac = Math.abs(n(r.anticipo_cuenta));
+                const e = esCompRetencion ? 0 : Math.abs(n(r.total_exenta));
+                const i = esCompRetencion ? 0 : (Math.abs(n(r.iva)) + Math.abs(n(r.iva_importaciones)));
+                const f = esCompRetencion ? 0 : Math.abs(n(r.fovial));
+                const c = esCompRetencion ? 0 : Math.abs(n(r.cotrans));
+                const ns = esCompRetencion ? 0 : (Math.abs(n(r.total_nosujeta)) + f + c);
+                const ac = esCompRetencion ? 0 : Math.abs(n(r.anticipo_cuenta));
                 const re = Math.abs(n(r.retencion)) + Math.abs(n(r.percepcion));
                 const to = g + e + i + ns;
 
@@ -630,22 +631,22 @@ const getVatBookPurchasesPDF = async (req, res) => {
                 drawTableHeader();
             }
 
-            const { esNC, esImport, esIntern, esExcluido, tipoNombre, docNumber } = getPurchaseDocInfo(r);
+            const { esNC, esImport, esIntern, esExcluido, esCompRetencion, tipoNombre, docNumber } = getPurchaseDocInfo(r);
             const sign = esNC ? -1 : 1;
-            const gLoc = Math.abs(n(r.total_gravada));
-            const gImp = Math.abs(n(r.gravadas_importaciones));
-            const gInt = Math.abs(n(r.gravadas_internaciones));
+            const gLoc = esCompRetencion ? 0 : Math.abs(n(r.total_gravada));
+            const gImp = esCompRetencion ? 0 : Math.abs(n(r.gravadas_importaciones));
+            const gInt = esCompRetencion ? 0 : Math.abs(n(r.gravadas_internaciones));
             const g = gLoc + gImp + gInt;
 
-            const e = Math.abs(n(r.total_exenta));
-            const iLoc = Math.abs(n(r.iva));
-            const iImp = Math.abs(n(r.iva_importaciones));
+            const e = esCompRetencion ? 0 : Math.abs(n(r.total_exenta));
+            const iLoc = esCompRetencion ? 0 : Math.abs(n(r.iva));
+            const iImp = esCompRetencion ? 0 : Math.abs(n(r.iva_importaciones));
             const i = iLoc + iImp;
 
-            const f = Math.abs(n(r.fovial));
-            const c = Math.abs(n(r.cotrans));
-            const ns = Math.abs(n(r.total_nosujeta)) + f + c;
-            const ac = Math.abs(n(r.anticipo_cuenta));
+            const f = esCompRetencion ? 0 : Math.abs(n(r.fovial));
+            const c = esCompRetencion ? 0 : Math.abs(n(r.cotrans));
+            const ns = esCompRetencion ? 0 : (Math.abs(n(r.total_nosujeta)) + f + c);
+            const ac = esCompRetencion ? 0 : Math.abs(n(r.anticipo_cuenta));
             const retVal = Math.abs(n(r.retencion));
             const perVal = Math.abs(n(r.percepcion));
             const re = retVal + perVal;
@@ -1890,10 +1891,10 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
         SELECT 
             eh.tipo_documento_id,
             COUNT(*) as count,
-            COALESCE(SUM(eh.total_gravada + COALESCE(eh.gravadas_importaciones, 0) + COALESCE(eh.gravadas_internaciones, 0)), 0) as total_gravada,
-            COALESCE(SUM(eh.total_exenta), 0) as total_exenta,
-            COALESCE(SUM(eh.total_nosujeta + COALESCE(eh.fovial, 0) + COALESCE(eh.cotrans, 0)), 0) as total_nosujeta,
-            COALESCE(SUM(eh.iva + COALESCE(eh.iva_importaciones, 0)), 0) as total_iva,
+            COALESCE(SUM(CASE WHEN eh.tipo_documento_id = '06' THEN 0 ELSE eh.total_gravada + COALESCE(eh.gravadas_importaciones, 0) + COALESCE(eh.gravadas_internaciones, 0) END), 0) as total_gravada,
+            COALESCE(SUM(CASE WHEN eh.tipo_documento_id = '06' THEN 0 ELSE eh.total_exenta END), 0) as total_exenta,
+            COALESCE(SUM(CASE WHEN eh.tipo_documento_id = '06' THEN 0 ELSE eh.total_nosujeta + COALESCE(eh.fovial, 0) + COALESCE(eh.cotrans, 0) END), 0) as total_nosujeta,
+            COALESCE(SUM(CASE WHEN eh.tipo_documento_id = '06' THEN 0 ELSE eh.iva + COALESCE(eh.iva_importaciones, 0) END), 0) as total_iva,
             COALESCE(SUM(eh.retencion), 0) as total_retencion,
             COALESCE(SUM(eh.percepcion), 0) as total_percepcion,
             COALESCE(SUM(ABS(eh.monto_total)), 0) as total_monto
@@ -2093,9 +2094,9 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
 
     const [liquidacionesRows] = await pool.query(`
         SELECT 
-            COALESCE(SUM(eh.anticipo_cuenta), 0) AS total_anticipo_cuenta_liquidaciones,
-            COALESCE(SUM(eh.monto_sujeto), 0) AS total_monto_sujeto_liquidaciones,
-            COUNT(CASE WHEN eh.anticipo_cuenta > 0 OR eh.monto_sujeto > 0 OR eh.tipo_documento_id = '07' THEN 1 END) AS liquidaciones_count
+            COALESCE(SUM(CASE WHEN eh.tipo_documento_id = '06' THEN 0 ELSE eh.anticipo_cuenta END), 0) AS total_anticipo_cuenta_liquidaciones,
+            COALESCE(SUM(CASE WHEN eh.tipo_documento_id = '07' OR eh.anticipo_cuenta > 0 THEN eh.monto_sujeto ELSE 0 END), 0) AS total_monto_sujeto_liquidaciones,
+            COUNT(CASE WHEN eh.anticipo_cuenta > 0 OR eh.tipo_documento_id = '07' THEN 1 END) AS liquidaciones_count
         FROM expense_headers eh
         WHERE ${expenseLiqWhere.join(' AND ')}
     `, expenseLiqParams);
