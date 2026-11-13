@@ -110,7 +110,8 @@ const loginPos = async (req, res) => {
             LEFT JOIN points_of_sale p ON s.pos_id = p.id
             LEFT JOIN branches b ON s.branch_id = b.id
             WHERE s.company_id = ? AND s.status = 'activo'
-        `, [req.company_id]);
+            ORDER BY CASE WHEN s.branch_id = ? THEN 0 ELSE 1 END, s.id ASC
+        `, [req.company_id, req.branch_id || 0]);
 
         for (const seller of sellers) {
             const match = await bcrypt.compare(password, seller.password);
