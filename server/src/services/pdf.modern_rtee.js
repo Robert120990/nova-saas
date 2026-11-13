@@ -665,6 +665,9 @@ const generateRTEEModern = (data) => {
                     let displayUnitPrice = parseFloat(item.precioUnitario) || 0;
                     let displayTotalItem = parseFloat(item.totalItem ?? item.compra ?? 0);
                     const displayDescuento = parseFloat(item.montoDescuento || 0);
+                    if (displayTotalItem === 0 && displayUnitPrice > 0 && (parseFloat(item.cantidad) || 0) > 0 && dte.tipoDte !== '04') {
+                        displayTotalItem = Math.max(0, Math.round((((parseFloat(item.cantidad) || 0) * displayUnitPrice) - displayDescuento) * 100) / 100);
+                    }
                     const isDescItem = displayUnitPrice === 0 && displayTotalItem === 0;
 
                     const descWidth = isDescItem ? 485 : 285;

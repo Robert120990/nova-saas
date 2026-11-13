@@ -39,8 +39,8 @@ function calculateItem(item, tipoDte = '01', ivaRate = 13) {
 
     let netPrice, netDiscount, ventaGravada, iva;
 
-    const isExento = Boolean(item.exento || item.tipoItem === 2);
-    const isNoSujeto = Boolean(item.no_sujeto || item.tipoItem === 3);
+    const isExento = tipoDte === '11' ? false : Boolean(item.exento || item.tipoItem === 2);
+    const isNoSujeto = tipoDte === '11' ? false : Boolean(item.no_sujeto || item.tipoItem === 3);
 
     if (isExento || isNoSujeto) {
         // En ítems o ventas exentas / no sujetas, el precio recibido ya es el valor neto exento

@@ -329,8 +329,10 @@ const createSale = async (req, res) => {
             fecha_emision: new Date(),
             hora_emision: new Date().toTimeString().split(' ')[0],
             estado: 'emitido',
-            total_gravado: header.total_gravado || 0,
-            total_exento: header.total_exento || 0,
+            total_gravado: header.dte_type === '11' && !(parseFloat(header.total_gravado) > 0) && parseFloat(header.total_exento) > 0
+                ? parseFloat(header.total_exento)
+                : (header.total_gravado || 0),
+            total_exento: header.dte_type === '11' ? 0 : (header.total_exento || 0),
             total_nosujetas: header.total_nosujetas || header.total_nosujeto || 0,
             fovial: header.fovial || header.total_fovial || 0,
             cotrans: header.cotrans || header.total_cotrans || 0,
@@ -516,7 +518,9 @@ const createSale = async (req, res) => {
                 sale_id: saleId,
                 linkedDocuments: linkedDocuments,
                 items: (req.body.items || []).map(it => {
-                    const itemExento = it.exento !== undefined ? Boolean(it.exento) : Boolean(isCustomerExento);
+                    const itemExento = header.dte_type === '11'
+                        ? false
+                        : (it.exento !== undefined ? Boolean(it.exento) : Boolean(isCustomerExento));
                     return {
                         ...it,
                         exento: itemExento,

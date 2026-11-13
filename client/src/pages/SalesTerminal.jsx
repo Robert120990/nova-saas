@@ -1962,7 +1962,7 @@ const SalesTerminal = () => {
                 const appliesFovial = selectedCustomerData ? (selectedCustomerData.aplica_fovial !== 0 && selectedCustomerData.aplica_fovial !== false) : true;
                 const appliesCotrans = selectedCustomerData ? (selectedCustomerData.aplica_cotrans !== 0 && selectedCustomerData.aplica_cotrans !== false) : true;
                 const ivaRate = parseFloat(taxSettings?.iva_rate || 13) / 100;
-                const isItemExento = Boolean(item.exento || isCustomerExento);
+                const isItemExento = tipoDte === '11' ? false : Boolean(item.exento || isCustomerExento);
 
                 const itemFovial = (item.tipo_combustible > 0 && appliesFovial) ? Math.round(item.cantidad * parseFloat(taxSettings?.fovial_rate || 0.20) * 100) / 100 : 0;
                 const itemCotrans = (item.tipo_combustible > 0 && appliesCotrans) ? Math.round(item.cantidad * parseFloat(taxSettings?.cotrans_rate || 0.10) * 100) / 100 : 0;
@@ -2059,7 +2059,7 @@ const SalesTerminal = () => {
             totalItemDiscounts += disc;
             const subtotal = (price * qty) - disc;
 
-            const isItemExento = Boolean(item.exento || isCustomerExento);
+            const isItemExento = tipoDte === '11' ? false : Boolean(item.exento || isCustomerExento);
 
             if (item.no_sujeto) {
                 noSujeto += subtotal;

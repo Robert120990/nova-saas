@@ -93,9 +93,9 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
         }
     }
 
-    // Guardia: Hacienda exige distrito en receptor.direccion (codigoMsg 096)
+    // Guardia: Hacienda exige distrito en receptor.direccion (codigoMsg 096), salvo en FEX (11) y FSE (14)
     const effectiveDistrito = (customerBranch?.distrito && String(customerBranch.distrito).trim()) || customer?.distrito;
-    if (customer && !effectiveDistrito) {
+    if (customer && !effectiveDistrito && dteRecord.tipo_dte !== '11' && dteRecord.tipo_dte !== '14') {
         throw new Error(`El cliente "${customer.nombre}" no tiene distrito configurado. Complete el distrito en el registro del cliente o sucursal antes de reintentar.`);
     }
 
@@ -202,7 +202,7 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
         });
     } else {
     mappedItems = items.map((item, idx) => {
-        const isExento = item.venta_exenta > 0 && item.venta_gravada === 0;
+        const isExento = dteRecord.tipo_dte === '11' ? false : (item.venta_exenta > 0 && item.venta_gravada === 0);
         let tributos = [];
         try {
             const parsed = typeof item.tributos === 'string' ? JSON.parse(item.tributos) : item.tributos;

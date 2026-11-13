@@ -123,15 +123,17 @@ class DteService {
                             const fallbackRef = (payload.header?.dte_type === '05' && payload.linkedDocuments && payload.linkedDocuments.length === 1)
                                 ? payload.linkedDocuments[0].doc_number
                                 : null;
-                            const isItemExento = Boolean(
-                                item.exento !== undefined
-                                    ? item.exento
-                                    : (item.tipoItem === 2 ||
-                                       item.tipo_item === 2 ||
-                                       payload.customer?.exento_iva === 1 ||
-                                       payload.customer?.exento_iva === true ||
-                                       payload.customer?.condicion_fiscal === 'exento IVA')
-                            );
+                            const isItemExento = payload.header.dte_type === '11'
+                                ? false
+                                : Boolean(
+                                    item.exento !== undefined
+                                        ? item.exento
+                                        : (item.tipoItem === 2 ||
+                                           item.tipo_item === 2 ||
+                                           payload.customer?.exento_iva === 1 ||
+                                           payload.customer?.exento_iva === true ||
+                                           payload.customer?.condicion_fiscal === 'exento IVA')
+                                );
                             const cleanTributos = (item.tributos && Array.isArray(item.tributos))
                                 ? item.tributos.filter(t => (typeof t === 'object' ? t.codigo : String(t)) !== '20')
                                 : [];
