@@ -101,8 +101,20 @@ function generateContratoLaboralPDF(data) {
             const empNit = (data.num_nit || '').trim();
             const empIsss = (data.num_isss || '').trim();
 
-            const patNombre = (data.patrono_nombre || '').trim().toUpperCase();
-            const patEdad = data.patrono_edad || '';
+            const companyRazonSocial = (data.company_razon_social || '')
+                .trim()
+                .replace(/\bS\s*,\s*A\s*,/gi, 'S.A.')
+                .replace(/\bC\s*,\s*V\s*[,.]?/gi, 'C.V.')
+                .toUpperCase();
+            const isPersonaJuridica = String(data.company_tipo_persona || '') === '2' ||
+                /S\.?A\.?|C\.?V\.?|SOCIEDAD|LTDA|LIMITADA|R\.L\./i.test(companyRazonSocial || data.patrono_nombre || '');
+
+            const patNombre = ((data.patrono_nombre || companyRazonSocial || '')
+                .trim()
+                .replace(/\bS\s*,\s*A\s*,/gi, 'S.A.')
+                .replace(/\bC\s*,\s*V\s*[,.]?/gi, 'C.V.')
+                .toUpperCase());
+            const patEdad = data.patrono_edad && Number(data.patrono_edad) > 0 ? data.patrono_edad : '';
             const patSexo = (data.patrono_sexo || '').trim().toUpperCase();
             const patEstadoCivil = (data.patrono_estado_civil || '').trim().toUpperCase();
             const patProfesion = (data.patrono_profesion || '').trim().toUpperCase();
@@ -111,6 +123,7 @@ function generateContratoLaboralPDF(data) {
             const patDui = (data.patrono_dui || '').trim();
             const patExtendido = (data.patrono_dui_extendido || '').trim().toUpperCase();
             const patNit = (data.patrono_nit || '').trim();
+            const entidadEmpleadora = (isPersonaJuridica && companyRazonSocial) ? companyRazonSocial : patNombre;
 
             const lugarTrabajo = (data.lugar_trabajo || 'OFICINA PRINCIPAL').trim().toUpperCase();
             const cargoLaboral = (data.cargo_laboral || 'EMPLEADO').trim().toUpperCase();
@@ -248,8 +261,14 @@ function generateContratoLaboralPDF(data) {
             y = lineY + 18;
 
             // Intro Paragraph
+            const introActuandoText = !isPersonaJuridica
+                ? 'De las generales arriba indicadas y actuando en el carácter que aparece expresado. Actuando en mi carácter personal; convenimos en celebrar el presente '
+                : (companyRazonSocial && patNombre && patNombre !== companyRazonSocial)
+                    ? `De las generales arriba indicadas y actuando en el carácter que aparece expresado, en representación de ${companyRazonSocial}; convenimos en celebrar el presente `
+                    : 'De las generales arriba indicadas y actuando en el carácter que aparece expresado; convenimos en celebrar el presente ';
+
             doc.font('Times-Roman').fontSize(9.2)
-               .text('De las generales arriba indicadas y actuando en el carácter que aparece expresado. Actuando en mi carácter personal; convenimos en celebrar el presente ', M, y, {
+               .text(introActuandoText, M, y, {
                    width: W,
                    align: 'justify',
                    lineGap: 1.5,
@@ -502,12 +521,12 @@ function generateContratoLaboralPDF(data) {
                    M, y,
                    { width: W, align: 'justify', lineGap: 1.35, continued: true }
                )
-               .font('Times-Bold').text(`${patNombre}. `, { underline: true, continued: true })
+               .font('Times-Bold').text(`${entidadEmpleadora}. `, { underline: true, continued: true })
                .font('Times-Roman').text(
                    'Dicha información es considerada desde ya como SECRETO PERSONAL entre las partes para los efectos legales correspondientes. El TRABAJOR/A declara conocer que son secretos empresariales, entre otros, los relacionados a: estructura legal, organizacional y fisica, informacion de personal, patentes, propiedad intelectual, procedimientos administrativos, contratos, informacion contable, tributaria y/o contractual; programas o softwares informaticos y tecnologia especializada; información desde y hacia empresas filiales, matrices, proveedores, clientes, etc.; informacionn tecnica y comercial, costos y precios, datos de los proveedores o clientes; datos relacionados a insumos, procesos de compra y sistemas de venta en relacion a los productos y servicios y/o actividades de ',
                    { underline: false, continued: true }
                )
-               .font('Times-Bold').text(`${patNombre}.`, { underline: true });
+               .font('Times-Bold').text(`${entidadEmpleadora}.`, { underline: true });
 
             y = doc.y + 1.5;
             doc.font('Times-Roman').fontSize(8.8)

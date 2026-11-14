@@ -1,6 +1,7 @@
 const pool = require('../../config/db');
 const { generateLiquidacionPDF, generateFiniquitoPDF, generateAcuerdoPagoPDF } = require('../../services/pdf.service');
 const { numberToWords } = require('../../utils/numberToWords');
+const { sanitizeRhConfigRow, normalizeLegalName } = require('../../services/rhPatrono.service');
 const TABLE = 'rh_planilla_liquidaciones';
 
 const exportPDF = async (req, res) => {
@@ -167,24 +168,25 @@ const exportFiniquito = async (req, res) => {
         if (rows.length === 0) return res.status(404).json({ message: 'Liquidacion no encontrada' });
         const p = rows[0];
 
-        let patronoNombre = p.company_name;
-        let patronoDui = p.company_nit ? p.company_nit.substring(0, 10) : '';
-        let patronoOcupacion = 'mayor de edad, estudiante';
+        let patronoNombre = normalizeLegalName(p.company_name);
+        let patronoDui = '';
+        let patronoOcupacion = 'mayor de edad';
         let notarioNombre = '', notarioDomicilio = '', notarioDept = '';
         let firmaUrl = '', selloUrl = '';
         const [rhCfg] = await pool.query(
-            `SELECT patrono_nombre, patrono_dui, patrono_profesion, firma_url, sello_url, notario_nombre, notario_domicilio, notario_departamento FROM rh_config WHERE company_id = ?`,
+            `SELECT patrono_nombre, patrono_dui, patrono_profesion, patrono_nit, firma_url, sello_url, notario_nombre, notario_domicilio, notario_departamento FROM rh_config WHERE company_id = ?`,
             [req.company_id]
         );
         if (rhCfg.length > 0) {
-            if (rhCfg[0].patrono_nombre && rhCfg[0].patrono_nombre.trim()) {
-                patronoNombre = rhCfg[0].patrono_nombre.trim();
+            const cleanCfg = sanitizeRhConfigRow(rhCfg[0], p.company_nit);
+            if (cleanCfg.patrono_nombre) {
+                patronoNombre = cleanCfg.patrono_nombre;
             }
-            if (rhCfg[0].patrono_dui && rhCfg[0].patrono_dui.trim()) {
-                patronoDui = rhCfg[0].patrono_dui.trim();
+            if (cleanCfg.patrono_dui) {
+                patronoDui = cleanCfg.patrono_dui;
             }
-            if (rhCfg[0].patrono_profesion && rhCfg[0].patrono_profesion.trim()) {
-                patronoOcupacion = `mayor de edad, ${rhCfg[0].patrono_profesion.trim().toLowerCase()}`;
+            if (cleanCfg.patrono_profesion) {
+                patronoOcupacion = `mayor de edad, ${cleanCfg.patrono_profesion.toLowerCase()}`;
             }
             notarioNombre = rhCfg[0].notario_nombre || '';
             notarioDomicilio = rhCfg[0].notario_domicilio || '';
@@ -263,12 +265,13 @@ const exportAcuerdoPago = async (req, res) => {
         const p = rows[0];
         if (!p.pago_cuotas) return res.status(400).json({ message: 'Esta liquidacion no tiene pago en cuotas' });
 
-        let empleadorNombre = p.company_name;
+        let empleadorNombre = normalizeLegalName(p.company_name);
         let notarioNombre = '', notarioDomicilio = '', notarioDept = '';
         let firmaUrl = '', selloUrl = '';
-        const [rhCfg] = await pool.query(`SELECT patrono_nombre, firma_url, sello_url, notario_nombre, notario_domicilio, notario_departamento FROM rh_config WHERE company_id = ?`, [req.company_id]);
+        const [rhCfg] = await pool.query(`SELECT patrono_nombre, patrono_dui, patrono_profesion, patrono_nit, firma_url, sello_url, notario_nombre, notario_domicilio, notario_departamento FROM rh_config WHERE company_id = ?`, [req.company_id]);
         if (rhCfg.length > 0) {
-            if (rhCfg[0].patrono_nombre && rhCfg[0].patrono_nombre.trim()) empleadorNombre = rhCfg[0].patrono_nombre.trim();
+            const cleanCfg = sanitizeRhConfigRow(rhCfg[0], p.company_nit);
+            if (cleanCfg.patrono_nombre) empleadorNombre = cleanCfg.patrono_nombre;
             notarioNombre = rhCfg[0].notario_nombre || '';
             notarioDomicilio = rhCfg[0].notario_domicilio || '';
             notarioDept = rhCfg[0].notario_departamento || '';
