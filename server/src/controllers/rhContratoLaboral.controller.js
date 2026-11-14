@@ -1,5 +1,11 @@
 const pool = require('../config/db');
-const { generateContratoLaboralPDF, calculateAge } = require('../services/rhContratoLaboralPdf.service');
+const {
+    generateContratoLaboralPDF,
+    calculateAge,
+    resolveWorkerNit,
+    normalizeFormaPago,
+    normalizeOtrasEstipulaciones
+} = require('../services/rhContratoLaboralPdf.service');
 const {
     normalizeLegalName,
     fetchPatronoConfig,
@@ -118,19 +124,23 @@ const getContrato = async (req, res) => {
 
 const buildContratoPayload = (body, patronoCfg) => {
     const edadCalc = calculateAge(body.fecha_nacimiento, body.edad);
-    const deps = parseDependientes(body.dependientes).map(d => ({
-        nombre: (d.nombre || '').trim().toUpperCase(),
-        apellido: (d.apellido || '').trim().toUpperCase(),
-        fecha_nacimiento: d.fecha_nacimiento || '',
-        edad: calculateAge(d.fecha_nacimiento, d.edad) || null,
-        direccion: (d.direccion || '').trim().toUpperCase()
-    }));
+    const deps = parseDependientes(body.dependientes)
+        .map(d => ({
+            nombre: (d.nombre || '').trim().toUpperCase(),
+            apellido: (d.apellido || '').trim().toUpperCase(),
+            fecha_nacimiento: d.fecha_nacimiento || '',
+            edad: calculateAge(d.fecha_nacimiento, d.edad) || null,
+            direccion: (d.direccion || '').trim().toUpperCase()
+        }))
+        .filter(d => d.nombre || d.apellido);
 
     const incomingPatronoName = normalizeLegalName(body.patrono_nombre || '');
     const resolvedPatronoName = (incomingPatronoName || patronoCfg.patrono_nombre || '').trim().toUpperCase();
     const parsedPatronoEdad = body.patrono_edad !== undefined && body.patrono_edad !== null && body.patrono_edad !== '' && Number(body.patrono_edad) > 0
         ? parseInt(body.patrono_edad, 10)
         : (patronoCfg.patrono_edad || null);
+    const cleanWorkerDui = (body.num_dui || '').trim();
+    const cleanWorkerNit = resolveWorkerNit(body.num_nit, cleanWorkerDui);
 
     return {
         empleado_id: body.empleado_id && Number(body.empleado_id) > 0 ? parseInt(body.empleado_id, 10) : null,
@@ -142,9 +152,9 @@ const buildContratoPayload = (body, patronoCfg) => {
         profesion_oficio: (body.profesion_oficio || 'ESTUDIANTE').trim().toUpperCase(),
         direccion: (body.direccion || '').trim().toUpperCase(),
         nacionalidad: (body.nacionalidad || 'SALVADOREÑO').trim().toUpperCase(),
-        num_dui: (body.num_dui || '').trim(),
+        num_dui: cleanWorkerDui,
         dui_extendido_en: (body.dui_extendido_en || '').trim().toUpperCase(),
-        num_nit: (body.num_nit || '').trim(),
+        num_nit: cleanWorkerNit === '—' ? '' : cleanWorkerNit,
         num_isss: (body.num_isss || '').trim(),
         cargo_laboral: (body.cargo_laboral || '').trim().toUpperCase(),
         obligaciones: (body.obligaciones || '').trim().toUpperCase(),
@@ -156,14 +166,14 @@ const buildContratoPayload = (body, patronoCfg) => {
         fecha_creacion: body.fecha_creacion,
         salario_mensual: parseFloat(body.salario_mensual) || 0,
         lugar_pago: (body.lugar_pago || '').trim().toUpperCase(),
-        forma_pago: (body.forma_pago || 'TRANFERENCIA BANCARIA').trim().toUpperCase(),
+        forma_pago: normalizeFormaPago(body.forma_pago),
         horario_dia_inicio: (body.horario_dia_inicio || 'LUNES').trim().toUpperCase(),
         horario_dia_fin: (body.horario_dia_fin || 'VIERNES').trim().toUpperCase(),
         horario_manana_desde: (body.horario_manana_desde || '8:00 A.M.').trim().toUpperCase(),
         horario_manana_hasta: (body.horario_manana_hasta || '12:00 P.M.').trim().toUpperCase(),
-        horario_tarde_desde: (body.horario_tarde_desde || '1:00 P.M.').trim().toUpperCase(),
-        horario_tarde_hasta: (body.horario_tarde_hasta || '5:00 P.M.').trim().toUpperCase(),
-        horario_dia_extra: (body.horario_dia_extra || 'SABADO').trim().toUpperCase(),
+        horario_tarde_desde: (body.horario_tarde_desde !== undefined ? String(body.horario_tarde_desde || '') : '1:00 P.M.').trim().toUpperCase(),
+        horario_tarde_hasta: (body.horario_tarde_hasta !== undefined ? String(body.horario_tarde_hasta || '') : '5:00 P.M.').trim().toUpperCase(),
+        horario_dia_extra: (body.horario_dia_extra !== undefined ? String(body.horario_dia_extra || '') : 'SABADO').trim().toUpperCase(),
         horario_extra_desde: (body.horario_extra_desde || '8:00 A.M.').trim().toUpperCase(),
         horario_extra_hasta: (body.horario_extra_hasta || '12:00 P.M.').trim().toUpperCase(),
         total_horas_semana: parseFloat(body.total_horas_semana) || 44,
@@ -179,7 +189,7 @@ const buildContratoPayload = (body, patronoCfg) => {
         patrono_dui_extendido: (body.patrono_dui_extendido ?? patronoCfg.patrono_dui_extendido ?? '').trim().toUpperCase(),
         patrono_nit: (body.patrono_nit || patronoCfg.patrono_nit || '').trim(),
         herramientas_materiales: body.herramientas_materiales || null,
-        otras_estipulaciones: body.otras_estipulaciones || null,
+        otras_estipulaciones: body.otras_estipulaciones ? normalizeOtrasEstipulaciones(body.otras_estipulaciones) : null,
         estado: body.estado || 'vigente'
     };
 };

@@ -1,5 +1,6 @@
 const { describe, it, after } = require('node:test');
 const assert = require('node:assert/strict');
+const zlib = require('node:zlib');
 const pool = require('../../src/config/db');
 const {
     normalizeLegalName,
@@ -8,8 +9,41 @@ const {
     fetchPatronoConfig,
     resolveContratoPatrono
 } = require('../../src/services/rhPatrono.service');
-const { generateContratoLaboralPDF } = require('../../src/services/rhContratoLaboralPdf.service');
+const {
+    generateContratoLaboralPDF,
+    resolveWorkerNit,
+    normalizeFormaPago,
+    normalizeOtrasEstipulaciones
+} = require('../../src/services/rhContratoLaboralPdf.service');
 const { contratoLaboralSchema } = require('../../src/schemas/rhSchemas');
+
+function extractPdfDetails(pdfBuffer) {
+    const raw = pdfBuffer.toString('latin1');
+    const pageCount = (raw.match(/\/Type\s*\/Page\b/g) || []).length;
+    let idx = 0;
+    const pagesText = [];
+    while ((idx = raw.indexOf('stream\n', idx)) !== -1) {
+        const end = raw.indexOf('\nendstream', idx);
+        if (end === -1) break;
+        const chunk = pdfBuffer.subarray(idx + 7, end);
+        try {
+            const decompressed = zlib.inflateSync(chunk).toString('latin1');
+            const text = [...decompressed.matchAll(/<([0-9a-fA-F]+)>\s*Tj|\[(.*?)\]\s*TJ/g)]
+                .map((m) => {
+                    if (m[1]) return Buffer.from(m[1], 'hex').toString('latin1');
+                    return [...m[2].matchAll(/<([0-9a-fA-F]+)>/g)]
+                        .map((x) => Buffer.from(x[1], 'hex').toString('latin1'))
+                        .join('');
+                })
+                .join('');
+            if (text) pagesText.push(text);
+        } catch {
+            // Non-content stream
+        }
+        idx = end + 10;
+    }
+    return { pageCount, pagesText, fullText: pagesText.join('\n') };
+}
 
 describe('RH Patrono Multi-Tenant Isolation & Contract Resolution', () => {
     after(async () => {
@@ -122,7 +156,17 @@ describe('RH Patrono Multi-Tenant Isolation & Contract Resolution', () => {
         assert.equal(parsed.patrono_edad, null);
     });
 
-    it('returns Inversiones Lil data (not Raul Rafael Sosa Castellanos) for company 1 and CT-2026-0002', async () => {
+    it('normalizes worker placeholder NIT, payment method, and stipulation typos', () => {
+        assert.equal(resolveWorkerNit('0000-000000-000-0', '06611058-8'), '06611058-8');
+        assert.equal(resolveWorkerNit('0617-230698-104-5', '05731659-1'), '0617-230698-104-5');
+        assert.equal(normalizeFormaPago('TRANFERENCIA BANCARIA'), 'TRANSFERENCIA BANCARIA');
+        assert.match(
+            normalizeOtrasEstipulaciones('TENGA QUE EL TRABAJAR EL DIA DOMINGO, SE SUSTITUIRA EL DIA DE DESCANDO SEMANAL'),
+            /TENGA QUE TRABAJAR.*DESCANSO SEMANAL/
+        );
+    });
+
+    it('renders CT-2026-0002 in 2 pages with accurate patrono, supervisor, payment place, and obligations', async () => {
         const cfg1 = await fetchPatronoConfig(1);
         assert.notEqual(cfg1.patrono_nombre.toUpperCase(), 'RAUL RAFAEL SOSA CASTELLANOS');
         assert.equal(cfg1.patrono_nit, '0614-270114-103-3');
@@ -135,12 +179,35 @@ describe('RH Patrono Multi-Tenant Isolation & Contract Resolution', () => {
         const merged = { ...rows[0], ...resolveContratoPatrono(rows[0], cfg1) };
         assert.equal(merged.patrono_nombre.toUpperCase(), 'INVERSIONES LIL, S.A. DE C.V.');
         assert.equal(merged.patrono_nit, '0614-270114-103-3');
+        assert.equal(merged.patrono_nacionalidad, 'SALVADOREÑA');
         assert.equal(merged.patrono_edad, null);
         assert.equal(merged.patrono_profesion, '');
 
         const pdfBuffer = await generateContratoLaboralPDF(merged);
-        assert.ok(Buffer.isBuffer(pdfBuffer));
-        assert.ok(pdfBuffer.length > 1500);
+        const { pageCount, fullText } = extractPdfDetails(pdfBuffer);
+        assert.equal(pageCount, 2);
+        assert.ok(fullText.includes('INVERSIONES LIL, S.A. DE C.V.'));
+        assert.ok(!fullText.includes('RAUL RAFAEL SOSA CASTELLANOS'));
+        assert.ok(!fullText.includes('0000-000000-000-0'));
+        assert.ok(fullText.includes('jefe inmediato: CORINA DE HERNANDEZ.'));
+        assert.ok(!fullText.includes('por el patrono: CORINA DE HERNANDEZ'));
+        assert.ok(fullText.includes('en: BANCO PROMERICA'));
+        assert.ok(fullText.includes('TRANSFERENCIA BANCARIA'));
+        assert.ok(!fullText.includes('TRANFERENCIA'));
+        assert.ok(fullText.includes('ATENCION AL CLIENTE, ORDEN Y LIMPIEZA, VENTAS'));
+        assert.ok(!fullText.includes('C.V..'));
+
+        // Verify optional extra day can be omitted cleanly without breaking 2-page layout
+        const noExtraDayPdf = await generateContratoLaboralPDF({
+            ...merged,
+            horario_dia_extra: '',
+            jefe_inmediato: ''
+        });
+        const noExtraDetails = extractPdfDetails(noExtraDayPdf);
+        const compactNoExtra = noExtraDetails.fullText.replace(/\s+/g, '');
+        assert.equal(noExtraDetails.pageCount, 2);
+        assert.ok(!compactNoExtra.includes('DíaSABADO'));
+        assert.ok(compactNoExtra.includes('porelpatronoosusrepresentantes.'));
 
         // Company 2 keeps its own patrono data intact
         const cfg2 = await fetchPatronoConfig(2);

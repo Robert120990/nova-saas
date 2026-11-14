@@ -78,7 +78,7 @@ async function fetchPatronoConfig(companyId) {
         pool.query(
             `SELECT direccion FROM branches
              WHERE company_id = ? AND direccion IS NOT NULL AND TRIM(direccion) != ''
-             ORDER BY id ASC LIMIT 1`,
+             ORDER BY es_casa_matriz DESC, id ASC LIMIT 1`,
             [companyId]
         )
     ]);
@@ -127,6 +127,15 @@ function resolveContratoPatrono(record = {}, patronoCfg = {}) {
         (recNameUpper === compNameUpper && !recHasDui);
 
     if (useCompanyConfig) {
+        const isCorporateEntityOnly = !patronoCfg.has_configured_patrono && (
+            String(patronoCfg.company_tipo_persona || '') === '2' ||
+            /S\.?A\.?|C\.?V\.?|SOCIEDAD|LTDA|LIMITADA|R\.L\./i.test(compNameUpper)
+        );
+        const rawRecNac = !contaminated ? String(record.patrono_nacionalidad || '').trim().toUpperCase() : '';
+        const resolvedNac = isCorporateEntityOnly
+            ? (rawRecNac && rawRecNac !== 'SALVADOREÑO' ? rawRecNac : DEFAULT_PATRONO.patrono_nacionalidad)
+            : (rawRecNac || patronoCfg.patrono_nacionalidad || DEFAULT_PATRONO.patrono_nacionalidad);
+
         return {
             company_razon_social: patronoCfg.company_razon_social || '',
             company_tipo_persona: patronoCfg.company_tipo_persona || '',
@@ -136,7 +145,7 @@ function resolveContratoPatrono(record = {}, patronoCfg = {}) {
             patrono_estado_civil: patronoCfg.patrono_estado_civil || '',
             patrono_profesion: patronoCfg.patrono_profesion || '',
             patrono_direccion: (!contaminated && String(record.patrono_direccion || '').trim()) || patronoCfg.patrono_direccion || '',
-            patrono_nacionalidad: (!contaminated && String(record.patrono_nacionalidad || '').trim()) || patronoCfg.patrono_nacionalidad || DEFAULT_PATRONO.patrono_nacionalidad,
+            patrono_nacionalidad: resolvedNac,
             patrono_dui: patronoCfg.patrono_dui || '',
             patrono_dui_extendido: patronoCfg.patrono_dui_extendido || '',
             patrono_nit: (!contaminated && String(record.patrono_nit || '').trim()) || patronoCfg.patrono_nit || ''

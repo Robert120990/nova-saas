@@ -36,7 +36,6 @@ export const PLAZOS_CONTRATO = [
 ];
 
 export const FORMAS_PAGO_OPCIONES = [
-    'TRANFERENCIA BANCARIA',
     'TRANSFERENCIA BANCARIA',
     'EFECTIVO',
     'CHEQUE',
@@ -80,7 +79,7 @@ export const DEFAULT_PATRONO_DATA = {
 };
 
 export const DEFAULT_HERRAMIENTAS = 'las herramientas y utensilios necesarios para el buen desempeño de sus funciones.';
-export const DEFAULT_OTRAS_ESTIPULACIONES = 'CUANDO POR LA NATURALEZA DEL NEGOCIO TENGA QUE EL TRABAJAR EL DIA DOMINGO, SE SUSTITUIRA EL DIA DE DESCANDO SEMANAL POR CUALQUIER DIA DE LA SEMANA, PREVIO ACUERDO ENTRE AMBAS PARTES.';
+export const DEFAULT_OTRAS_ESTIPULACIONES = 'CUANDO POR LA NATURALEZA DEL NEGOCIO TENGA QUE TRABAJAR EL DIA DOMINGO, SE SUSTITUIRA EL DIA DE DESCANSO SEMANAL POR CUALQUIER DIA DE LA SEMANA, PREVIO ACUERDO ENTRE AMBAS PARTES.';
 
 export const calculateAgeFromBirthDate = (birthDateStr) => {
     if (!birthDateStr) return '';
@@ -122,6 +121,11 @@ export const mapEmployeeToContratoFields = (emp, currentForm = {}) => {
     const extendidoEn = DEPARTAMENTOS_SV_MAP[deptoCode] || currentForm.dui_extendido_en || 'SAN SALVADOR';
     const birthDate = toDateInput(emp.fecha_nacimiento);
 
+    const rawEmpNit = String(emp.num_nit || '').trim();
+    const resolvedEmpNit = rawEmpNit && !/^0{4}-0{6}-0{3}-0$/.test(rawEmpNit) && rawEmpNit !== '---'
+        ? rawEmpNit
+        : (emp.num_dui || currentForm.num_nit || '');
+
     return {
         ...currentForm,
         empleado_id: emp.id,
@@ -132,7 +136,7 @@ export const mapEmployeeToContratoFields = (emp, currentForm = {}) => {
         direccion: (emp.direccion || currentForm.direccion || '').toUpperCase(),
         num_dui: emp.num_dui || currentForm.num_dui || '',
         dui_extendido_en: extendidoEn,
-        num_nit: emp.num_nit || currentForm.num_nit || '',
+        num_nit: resolvedEmpNit,
         num_isss: emp.num_isss || currentForm.num_isss || '',
         cargo_laboral: (emp.cargo_nombre || currentForm.cargo_laboral || '').toUpperCase(),
         lugar_trabajo: (emp.branch_nombre || emp.departamento_nombre || currentForm.lugar_trabajo || '').toUpperCase(),
@@ -159,7 +163,9 @@ export const buildInitialContratoForm = (selected = null, patronoDefaults = {}) 
             nacionalidad: selected.nacionalidad || 'SALVADOREÑO',
             num_dui: selected.num_dui || '',
             dui_extendido_en: selected.dui_extendido_en || '',
-            num_nit: selected.num_nit || '',
+            num_nit: (selected.num_nit && !/^0{4}-0{6}-0{3}-0$/.test(String(selected.num_nit).trim()))
+                ? selected.num_nit
+                : (selected.num_dui || ''),
             num_isss: selected.num_isss || '',
             cargo_laboral: selected.cargo_laboral || '',
             obligaciones: selected.obligaciones || 'ATENCION AL CLIENTE, ORDEN Y LIMPIEZA',
@@ -171,14 +177,14 @@ export const buildInitialContratoForm = (selected = null, patronoDefaults = {}) 
             fecha_creacion: toDateInput(selected.fecha_creacion) || getTodayString(),
             salario_mensual: selected.salario_mensual ?? 0,
             lugar_pago: selected.lugar_pago || 'BANCO PROMERICA',
-            forma_pago: selected.forma_pago || 'TRANFERENCIA BANCARIA',
+            forma_pago: (selected.forma_pago || 'TRANSFERENCIA BANCARIA').replace(/\bTRANFERENCIA\b/g, 'TRANSFERENCIA'),
             horario_dia_inicio: selected.horario_dia_inicio || 'LUNES',
             horario_dia_fin: selected.horario_dia_fin || 'VIERNES',
             horario_manana_desde: selected.horario_manana_desde || '8:00 A.M.',
             horario_manana_hasta: selected.horario_manana_hasta || '12:00 P.M.',
-            horario_tarde_desde: selected.horario_tarde_desde || '1:00 P.M.',
-            horario_tarde_hasta: selected.horario_tarde_hasta || '5:00 P.M.',
-            horario_dia_extra: selected.horario_dia_extra || 'SABADO',
+            horario_tarde_desde: selected.horario_tarde_desde ?? '1:00 P.M.',
+            horario_tarde_hasta: selected.horario_tarde_hasta ?? '5:00 P.M.',
+            horario_dia_extra: selected.horario_dia_extra ?? 'SABADO',
             horario_extra_desde: selected.horario_extra_desde || '8:00 A.M.',
             horario_extra_hasta: selected.horario_extra_hasta || '12:00 P.M.',
             total_horas_semana: selected.total_horas_semana ?? 44,
@@ -196,7 +202,9 @@ export const buildInitialContratoForm = (selected = null, patronoDefaults = {}) 
             patrono_dui_extendido: hasSelectedPatrono ? (selected.patrono_dui_extendido || '') : (pat.patrono_dui_extendido || ''),
             patrono_nit: selected.patrono_nit || pat.patrono_nit || '',
             herramientas_materiales: selected.herramientas_materiales || DEFAULT_HERRAMIENTAS,
-            otras_estipulaciones: selected.otras_estipulaciones || DEFAULT_OTRAS_ESTIPULACIONES,
+            otras_estipulaciones: (selected.otras_estipulaciones || DEFAULT_OTRAS_ESTIPULACIONES)
+                .replace(/\bTENGA QUE EL TRABAJAR\b/g, 'TENGA QUE TRABAJAR')
+                .replace(/\bDESCANDO SEMANAL\b/g, 'DESCANSO SEMANAL'),
             estado: selected.estado || 'vigente'
         };
     }
@@ -225,7 +233,7 @@ export const buildInitialContratoForm = (selected = null, patronoDefaults = {}) 
         fecha_creacion: getTodayString(),
         salario_mensual: 409,
         lugar_pago: 'BANCO PROMERICA',
-        forma_pago: 'TRANFERENCIA BANCARIA',
+        forma_pago: 'TRANSFERENCIA BANCARIA',
         horario_dia_inicio: 'LUNES',
         horario_dia_fin: 'VIERNES',
         horario_manana_desde: '8:00 A.M.',
