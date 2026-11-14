@@ -1201,7 +1201,13 @@ async function generateDTE(payload) {
 
     if (tipoDte === '05' || tipoDte === '06') {
         if (!payload.documentoRelacionado || payload.documentoRelacionado.length === 0) {
-            throw new Error(`La ${tipoDte === '05' ? 'Nota de Crédito' : 'Nota de Débito'} requiere al menos un documento relacionado (Factura o Crédito Fiscal previo)`);
+            throw new Error(`La ${tipoDte === '05' ? 'Nota de Crédito' : 'Nota de Débito'} requiere al menos un documento relacionado (Crédito Fiscal 03 o Comprobante de Retención 07)`);
+        }
+        for (const relDoc of payload.documentoRelacionado) {
+            const relTipo = String(relDoc.tipoDocumento || relDoc.doc_type || '').trim();
+            if (!['03', '07'].includes(relTipo)) {
+                throw new Error(`Normativa MH: La ${tipoDte === '05' ? 'Nota de Crédito (05)' : 'Nota de Débito (06)'} no puede referenciar un documento tipo "${relTipo}"${relTipo === '01' ? ' (Factura Consumidor Final)' : ''}. Solo se permite referenciar Crédito Fiscal (03) o Comprobante de Retención (07).`);
+            }
         }
     }
 
