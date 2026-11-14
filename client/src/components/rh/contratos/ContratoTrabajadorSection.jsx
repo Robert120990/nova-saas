@@ -231,12 +231,12 @@ const ContratoTrabajadorSection = ({ form, onChange }) => {
                 </div>
 
                 <div>
-                    <label className={labelCls}>Jefe Inmediato</label>
+                    <label className={labelCls}>Jefe Inmediato (Supervisor Autorizado)</label>
                     <input
                         type="text"
                         value={form.jefe_inmediato}
                         onChange={(e) => handleField('jefe_inmediato', e.target.value)}
-                        placeholder="NOMBRE DEL JEFE INMEDIATO"
+                        placeholder="NOMBRE DEL JEFE INMEDIATO O SUPERVISOR"
                         className={inputCls}
                     />
                 </div>

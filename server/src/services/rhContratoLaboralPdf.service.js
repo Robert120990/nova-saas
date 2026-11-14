@@ -66,9 +66,38 @@ function formatClosingDateParts(dateVal) {
     const day = d.getDate();
     const month = MESES_MINUS[d.getMonth()];
     const year = d.getFullYear();
-    const dayWord = day === 1 ? 'un' : numeroALetras(day).toLowerCase();
+    const dayWord = day === 1 ? 'primer' : numeroALetras(day).toLowerCase();
     const yearWord = numeroALetras(year).toLowerCase();
-    return { dayWord, month, yearWord };
+    return { day, dayWord, month, yearWord };
+}
+
+function resolveWorkerNit(rawNit, rawDui) {
+    const cleanNit = String(rawNit || '').trim();
+    if (
+        cleanNit &&
+        cleanNit !== '---' &&
+        cleanNit !== 'N/A' &&
+        cleanNit !== '000000-0' &&
+        !/^0{4}-0{6}-0{3}-0$/.test(cleanNit)
+    ) {
+        return cleanNit;
+    }
+    const cleanDui = String(rawDui || '').trim();
+    return cleanDui || '—';
+}
+
+function normalizeFormaPago(rawVal) {
+    const clean = String(rawVal || 'TRANSFERENCIA BANCARIA').trim().toUpperCase();
+    return clean.replace(/\bTRANFERENCIA\b/g, 'TRANSFERENCIA');
+}
+
+function normalizeOtrasEstipulaciones(rawVal) {
+    const fallback = 'CUANDO POR LA NATURALEZA DEL NEGOCIO TENGA QUE TRABAJAR EL DIA DOMINGO, SE SUSTITUIRA EL DIA DE DESCANSO SEMANAL POR CUALQUIER DIA DE LA SEMANA, PREVIO ACUERDO ENTRE AMBAS PARTES.';
+    return String(rawVal || fallback)
+        .trim()
+        .toUpperCase()
+        .replace(/\bTENGA QUE EL TRABAJAR\b/g, 'TENGA QUE TRABAJAR')
+        .replace(/\bDESCANDO SEMANAL\b/g, 'DESCANSO SEMANAL');
 }
 
 function generateContratoLaboralPDF(data) {
@@ -98,7 +127,7 @@ function generateContratoLaboralPDF(data) {
             const empNacionalidad = (data.nacionalidad || 'SALVADOREÑO').trim().toUpperCase();
             const empDui = (data.num_dui || '').trim();
             const empExtendido = (data.dui_extendido_en || '').trim().toUpperCase();
-            const empNit = (data.num_nit || '').trim();
+            const empNit = resolveWorkerNit(data.num_nit, empDui);
             const empIsss = (data.num_isss || '').trim();
 
             const companyRazonSocial = (data.company_razon_social || '')
@@ -114,19 +143,30 @@ function generateContratoLaboralPDF(data) {
                 .replace(/\bS\s*,\s*A\s*,/gi, 'S.A.')
                 .replace(/\bC\s*,\s*V\s*[,.]?/gi, 'C.V.')
                 .toUpperCase());
-            const patEdad = data.patrono_edad && Number(data.patrono_edad) > 0 ? data.patrono_edad : '';
-            const patSexo = (data.patrono_sexo || '').trim().toUpperCase();
-            const patEstadoCivil = (data.patrono_estado_civil || '').trim().toUpperCase();
-            const patProfesion = (data.patrono_profesion || '').trim().toUpperCase();
+            const rawPatEdad = data.patrono_edad && Number(data.patrono_edad) > 0 ? data.patrono_edad : '';
+            const rawPatDui = (data.patrono_dui || '').trim();
+            const isCorporateEntityOnly = isPersonaJuridica &&
+                !rawPatDui &&
+                !rawPatEdad &&
+                (!companyRazonSocial || patNombre === companyRazonSocial);
+
+            const patEdad = isCorporateEntityOnly ? '—' : rawPatEdad;
+            const patSexo = isCorporateEntityOnly ? '—' : (data.patrono_sexo || '').trim().toUpperCase();
+            const patEstadoCivil = isCorporateEntityOnly ? '—' : (data.patrono_estado_civil || '').trim().toUpperCase();
+            const patProfesion = isCorporateEntityOnly ? '—' : (data.patrono_profesion || '').trim().toUpperCase();
             const patDireccion = (data.patrono_direccion || '').trim().toUpperCase();
-            const patNacionalidad = (data.patrono_nacionalidad || 'SALVADOREÑA').trim().toUpperCase();
-            const patDui = (data.patrono_dui || '').trim();
-            const patExtendido = (data.patrono_dui_extendido || '').trim().toUpperCase();
+            const rawPatNacionalidad = (data.patrono_nacionalidad || 'SALVADOREÑA').trim().toUpperCase();
+            const patNacionalidad = (isCorporateEntityOnly && rawPatNacionalidad === 'SALVADOREÑO')
+                ? 'SALVADOREÑA'
+                : rawPatNacionalidad;
+            const patDui = isCorporateEntityOnly ? '—' : rawPatDui;
+            const patExtendido = isCorporateEntityOnly ? '—' : (data.patrono_dui_extendido || '').trim().toUpperCase();
             const patNit = (data.patrono_nit || '').trim();
             const entidadEmpleadora = (isPersonaJuridica && companyRazonSocial) ? companyRazonSocial : patNombre;
 
             const lugarTrabajo = (data.lugar_trabajo || 'OFICINA PRINCIPAL').trim().toUpperCase();
             const cargoLaboral = (data.cargo_laboral || 'EMPLEADO').trim().toUpperCase();
+            const obligaciones = (data.obligaciones || '').trim().toUpperCase();
             const plazoContrato = (data.plazo_contrato || 'TIEMPO INDEFINIDO').trim().toUpperCase();
             const fechaInicioLarga = formatLongSpanishDate(data.fecha_inicio);
             const jefeInmediato = (data.jefe_inmediato || '').trim().toUpperCase();
@@ -135,21 +175,21 @@ function generateContratoLaboralPDF(data) {
             const diaFin = (data.horario_dia_fin || 'VIERNES').trim().toUpperCase();
             const manDesde = (data.horario_manana_desde || '8:00 A.M.').trim().toUpperCase();
             const manHasta = (data.horario_manana_hasta || '12:00 P.M.').trim().toUpperCase();
-            const tarDesde = (data.horario_tarde_desde || '1:00 P.M.').trim().toUpperCase();
-            const tarHasta = (data.horario_tarde_hasta || '5:00 P.M.').trim().toUpperCase();
-            const diaExtra = (data.horario_dia_extra || 'SABADO').trim().toUpperCase();
+            const tarDesde = (data.horario_tarde_desde ?? '1:00 P.M.').trim().toUpperCase();
+            const tarHasta = (data.horario_tarde_hasta ?? '5:00 P.M.').trim().toUpperCase();
+            const diaExtra = (data.horario_dia_extra !== undefined && data.horario_dia_extra !== null
+                ? String(data.horario_dia_extra)
+                : 'SABADO'
+            ).trim().toUpperCase();
             const extDesde = (data.horario_extra_desde || '8:00 A.M.').trim().toUpperCase();
             const extHasta = (data.horario_extra_hasta || '12:00 P.M.').trim().toUpperCase();
             const horasSemana = data.total_horas_semana || 44;
 
             const salarioLetras = formatSalaryWords(data.salario_mensual);
-            const formaPago = (data.forma_pago || 'TRANFERENCIA BANCARIA').trim().toUpperCase();
-            const lugarPago = (data.lugar_trabajo || data.lugar_pago || lugarTrabajo).trim().toUpperCase();
+            const formaPago = normalizeFormaPago(data.forma_pago);
+            const lugarPago = (data.lugar_pago || lugarTrabajo).trim().toUpperCase();
             const herramientas = (data.herramientas_materiales || 'las herramientas y utensilios necesarios para el buen desempeño de sus funciones.').trim();
-            const otrasEstipulaciones = (
-                data.otras_estipulaciones ||
-                'CUANDO POR LA NATURALEZA DEL NEGOCIO TENGA QUE EL TRABAJAR EL DIA DOMINGO, SE SUSTITUIRA EL DIA DE DESCANDO SEMANAL POR CUALQUIER DIA DE LA SEMANA, PREVIO ACUERDO ENTRE AMBAS PARTES.'
-            ).trim().toUpperCase();
+            const otrasEstipulaciones = normalizeOtrasEstipulaciones(data.otras_estipulaciones);
             const lugarCreacion = (data.lugar_creacion || 'SAN SALVADOR').trim().toUpperCase();
             const closingParts = formatClosingDateParts(data.fecha_creacion);
 
@@ -200,14 +240,14 @@ function generateContratoLaboralPDF(data) {
             drawFieldRow(rightX, y, 'Estado Civil', patEstadoCivil, 60, 190);
             y += rH;
 
-            // Row 4: Profesion u Oficio
-            drawFieldRow(leftX, y, 'Profesion u Oficio', empProfesion, 82, 180);
-            drawFieldRow(rightX, y, 'Profesion u Oficio', patProfesion, 82, 180);
+            // Row 4: Profesión u Oficio
+            drawFieldRow(leftX, y, 'Profesión u Oficio', empProfesion, 82, 180);
+            drawFieldRow(rightX, y, 'Profesión u Oficio', patProfesion, 82, 180);
             y += rH;
 
-            // Row 5: Direccion
-            drawFieldRow(leftX, y, 'Direccion', empDireccion, 60, 210);
-            drawFieldRow(rightX, y, 'Direccion', patDireccion, 60, 210);
+            // Row 5: Dirección
+            drawFieldRow(leftX, y, 'Dirección', empDireccion, 60, 208);
+            drawFieldRow(rightX, y, 'Dirección', patDireccion, 60, 200);
             y += rH + 7;
 
             // Row 6: Nacionalidad
@@ -288,17 +328,24 @@ function generateContratoLaboralPDF(data) {
                    align: 'justify',
                    lineGap: 1.5,
                    continued: true
-               })
-               .font('Times-Bold').text(`${cargoLaboral}. `, { underline: true, continued: true })
-               .font('Times-Roman').text(
-                   'Además de las obligaciones que le impongan las leyes laborales y sus reglamentos, el contrato colectivo de trabajo, si lo hubiere y el reglamento interno de trabajo, tendrá como obligaciones propias de su cargo el ser diligente con su trabajo, cumplir los horarios establecidos, respetar a los compañeros de trabajo y todas las demas obligaciones que esten relacionadas de forma directa o indirecta con lo que habitualmente se realiza en sus funciones designadas dentro de la empresa o las que el supervisor o jefaturas establezcan según la visión y misión de la empresa. Y aquellas establecidas en la descripción de funciones y obligaciones de los puestos laborales de la empresa, que para efectos del presente contrato forman parte integrante de las obligaciones laborales frente a la empresa.',
-                   { underline: false }
-               );
+               });
+            if (obligaciones) {
+                doc.font('Times-Bold').text(cargoLaboral, { underline: true, continued: true })
+                   .font('Times-Roman').text(', desempeñando como obligaciones principales: ', { underline: false, continued: true })
+                   .font('Times-Bold').text(obligaciones, { underline: true, continued: true })
+                   .font('Times-Roman').text('. ', { underline: false, continued: true });
+            } else {
+                doc.font('Times-Bold').text(`${cargoLaboral}. `, { underline: true, continued: true });
+            }
+            doc.font('Times-Roman').text(
+                'Además de las obligaciones que le impongan las leyes laborales y sus reglamentos, el contrato colectivo de trabajo, si lo hubiere, y el reglamento interno de trabajo, tendrá como obligaciones propias de su cargo el ser diligente con su trabajo, cumplir los horarios establecidos, respetar a los compañeros de trabajo y todas las demás obligaciones que estén relacionadas de forma directa o indirecta con lo que habitualmente se realiza en sus funciones designadas dentro de la empresa o las que el supervisor o jefaturas establezcan según la visión y misión de la empresa, y aquellas establecidas en la descripción de funciones y obligaciones de los puestos laborales de la empresa, que para efectos del presente contrato forman parte integrante de las obligaciones laborales frente a la empresa.',
+                { underline: false }
+            );
 
-            y = doc.y + 8;
+            y = doc.y + 7;
 
             // B) DURACION DEL CONTRATO Y TIEMPO DE SERVICIO
-            doc.font('Times-Bold').fontSize(9.2).text('B) DURACION DEL CONTRATO Y TIEMPO DE SERVICIO', M, y);
+            doc.font('Times-Bold').fontSize(9.2).text('B) DURACIÓN DEL CONTRATO Y TIEMPO DE SERVICIO:', M, y);
             y = doc.y + 1.5;
             doc.font('Times-Roman').fontSize(9.2)
                .text('El presente contrato se celebra por: ', M, y, { continued: true })
@@ -308,11 +355,11 @@ function generateContratoLaboralPDF(data) {
                .text('A partir del: ', M, y, { width: W, align: 'justify', lineGap: 1.5, continued: true })
                .font('Times-Bold').text(`${fechaInicioLarga}. `, { underline: true, continued: true })
                .font('Times-Roman').text(
-                   'Fecha desde la cual el trabajador presta servicios al patrono sin que la relacion laboral se haya disusuelto. Queda estipulado para trabajadores de nuevo ingreso que los primero treinta dias serán de prueba y dentro de este término, cualquiera de las partes podrá dar por terminado el contrato sin empresión de causa ni responsabilidad alguna en cumplimiento al articulo 28 del código de trabajo vigente.',
+                   'Fecha desde la cual el trabajador presta servicios al patrono sin que la relación laboral se haya disuelto. Queda estipulado para trabajadores de nuevo ingreso que los primeros treinta días serán de prueba y dentro de este término, cualquiera de las partes podrá dar por terminado el contrato sin expresión de causa ni responsabilidad alguna, en cumplimiento al artículo 28 del Código de Trabajo vigente.',
                    { underline: false }
                );
 
-            y = doc.y + 8;
+            y = doc.y + 7;
 
             // C) LUGAR DE PRESTACIÓN DE SERVICIOS Y ALOJAMIENTO:
             doc.font('Times-Bold').fontSize(9.2)
@@ -324,13 +371,13 @@ function generateContratoLaboralPDF(data) {
                })
                .font('Times-Roman').text('El lugar de prestación de servicios será: ', { continued: true })
                .font('Times-Bold').text(`${lugarTrabajo}, `, { underline: true, continued: true })
-               .font('Times-Roman').text('sin embargo, según la naturaleza de las labores estas podrán ser ejecutadas en lugares fuera de la empresa, cuando sea necesario. Y el trabajador habitara en ', { underline: false, continued: true })
-               .font('Times-Bold').text('En su propia casa', { underline: true, continued: true })
-               .font('Times-Roman').text(' Dado que la empresa ', { underline: false, continued: true })
+               .font('Times-Roman').text('sin embargo, según la naturaleza de las labores estas podrán ser ejecutadas en lugares fuera de la empresa, cuando sea necesario. Y el trabajador habitará ', { underline: false, continued: true })
+               .font('Times-Bold').text('en su propia casa', { underline: true, continued: true })
+               .font('Times-Roman').text(', dado que la empresa ', { underline: false, continued: true })
                .font('Times-Bold').text('NO ', { underline: false, continued: true })
-               .font('Times-Roman').text('se le proporcionara alojamiento.', { underline: false });
+               .font('Times-Roman').text('le proporcionará alojamiento.', { underline: false });
 
-            y = doc.y + 8;
+            y = doc.y + 7;
 
             // D) HORARIO DE TRABAJO:
             doc.font('Times-Bold').fontSize(9.2).text('D) HORARIO DE TRABAJO:', M, y);
@@ -346,21 +393,25 @@ function generateContratoLaboralPDF(data) {
                .font('Times-Roman').text('  a ', { underline: false, continued: true })
                .font('Times-Bold').text(manHasta, { underline: true });
 
-            y = doc.y + 1.5;
-            doc.font('Times-Roman').fontSize(9.2)
-               .text('Y de ', M, y, { continued: true })
-               .font('Times-Bold').text(tarDesde, { underline: true, continued: true })
-               .font('Times-Roman').text('  a  ', { underline: false, continued: true })
-               .font('Times-Bold').text(tarHasta, { underline: true });
+            if (tarDesde && tarHasta) {
+                y = doc.y + 1.5;
+                doc.font('Times-Roman').fontSize(9.2)
+                   .text('Y de ', M, y, { continued: true })
+                   .font('Times-Bold').text(tarDesde, { underline: true, continued: true })
+                   .font('Times-Roman').text('  a  ', { underline: false, continued: true })
+                   .font('Times-Bold').text(tarHasta, { underline: true });
+            }
 
-            y = doc.y + 1.5;
-            doc.font('Times-Roman').fontSize(9.2)
-               .text('Día ', M, y, { continued: true })
-               .font('Times-Bold').text(diaExtra, { underline: true, continued: true })
-               .font('Times-Roman').text(' de ', { underline: false, continued: true })
-               .font('Times-Bold').text(extDesde, { underline: true, continued: true })
-               .font('Times-Roman').text('  a  ', { underline: false, continued: true })
-               .font('Times-Bold').text(extHasta, { underline: true });
+            if (diaExtra) {
+                y = doc.y + 1.5;
+                doc.font('Times-Roman').fontSize(9.2)
+                   .text('Día ', M, y, { continued: true })
+                   .font('Times-Bold').text(diaExtra, { underline: true, continued: true })
+                   .font('Times-Roman').text(' de ', { underline: false, continued: true })
+                   .font('Times-Bold').text(extDesde, { underline: true, continued: true })
+                   .font('Times-Roman').text('  a  ', { underline: false, continued: true })
+                   .font('Times-Bold').text(extHasta, { underline: true });
+            }
 
             y = doc.y + 1.5;
             doc.font('Times-Roman').fontSize(9.2)
@@ -370,22 +421,25 @@ function generateContratoLaboralPDF(data) {
 
             y = doc.y + 1.5;
             doc.font('Times-Roman').fontSize(9.2)
-               .text('Únicamente podrán ejecutarse trabajos extraordinarios cuando se reciba la orden de verificarlos, dado ', M, y, {
+               .text('Únicamente podrán ejecutarse trabajos extraordinarios cuando se reciba la orden de verificarlos, dada ', M, y, {
                    width: W,
                    align: 'justify',
                    lineGap: 1.5,
                    continued: true
                })
-               .font('Times-Bold').text('VERBALMENTE', { underline: true, continued: true })
-               .font('Times-Roman').text(' por el patrono: ', { underline: false, continued: Boolean(jefeInmediato) });
+               .font('Times-Bold').text('VERBALMENTE', { underline: true, continued: true });
             if (jefeInmediato) {
-                doc.font('Times-Bold').text(jefeInmediato, { underline: true });
+                doc.font('Times-Roman')
+                   .text(' por el patrono o sus representantes, por medio del jefe inmediato: ', { underline: false, continued: true })
+                   .font('Times-Bold').text(`${jefeInmediato}.`, { underline: true });
+            } else {
+                doc.font('Times-Roman').text(' por el patrono o sus representantes.', { underline: false });
             }
 
-            y = doc.y + 8;
+            y = doc.y + 7;
 
             // E) SALARIO
-            doc.font('Times-Bold').fontSize(9.2).text('E) SALARIO', M, y);
+            doc.font('Times-Bold').fontSize(9.2).text('E) SALARIO:', M, y);
             y = doc.y + 1.5;
             doc.font('Times-Roman').fontSize(9.2)
                .text('El salario que recibirá el trabajador, por sus servicios será la suma de: ', M, y, { continued: true })
@@ -393,31 +447,31 @@ function generateContratoLaboralPDF(data) {
 
             y = doc.y + 1.5;
             doc.font('Times-Roman').fontSize(9.2)
-               .text('Se pagara en dólares de los Estados Unidos de Norte América en: ', M, y, { continued: true })
+               .text('Se pagará en dólares de los Estados Unidos de América en: ', M, y, { continued: true })
                .font('Times-Bold').text(lugarPago, { underline: true });
 
             y = doc.y + 1.5;
             doc.font('Times-Roman').fontSize(9.2)
-               .text('Dicho pago se hará de la manera siguiente ', M, y, { continued: true })
+               .text('Dicho pago se hará de la manera siguiente: ', M, y, { continued: true })
                .font('Times-Bold').text(formaPago, { underline: true });
 
             y = doc.y + 1.5;
             doc.font('Times-Roman').fontSize(9.2)
-               .text('La operación del pago principiara y se continuara sin interrupción, a mas tardar dentro de las horas siguientes a la terminación de la jornada de trabajo correspondiente a la fecha respectiva, y únicamente se admitirán reclamos después de pagada la planilla el día ', M, y, {
+               .text('La operación del pago principiará y se continuará sin interrupción, a más tardar dentro de las horas siguientes a la terminación de la jornada de trabajo correspondiente a la fecha respectiva, y únicamente se admitirán reclamos después de pagada la planilla el día ', M, y, {
                    width: W,
                    align: 'justify',
                    lineGap: 1.5,
                    continued: true
                })
-               .font('Times-Bold').text('HABIL SIGUIENTE', { underline: true });
+               .font('Times-Bold').text('HÁBIL SIGUIENTE.', { underline: true });
 
-            y = doc.y + 8;
+            y = doc.y + 7;
 
             // F) HERRAMIENTAS Y MATERIALES:
             doc.font('Times-Bold').fontSize(9.2).text('F) HERRAMIENTAS Y MATERIALES:', M, y);
             y = doc.y + 1.5;
             doc.font('Times-Roman').fontSize(9.2)
-               .text('El patrono suministrara al trabajador las herramientas y materiales siguientes: ', M, y, {
+               .text('El patrono suministrará al trabajador las herramientas y materiales siguientes: ', M, y, {
                    width: W,
                    align: 'justify',
                    lineGap: 1.5,
@@ -450,9 +504,9 @@ function generateContratoLaboralPDF(data) {
 
             y = doc.y + 10;
 
-            // G) PERSONAS QUE DEPENDAN ECONOMICAMENTE DEL TRABAJADOR.
+            // G) PERSONAS QUE DEPENDAN ECONÓMICAMENTE DEL TRABAJADOR.
             doc.font('Times-Bold').fontSize(9.2)
-               .text('G) PERSONAS QUE DEPENDAN ECONOMICAMENTE DEL TRABAJADOR.', M, y);
+               .text('G) PERSONAS QUE DEPENDAN ECONÓMICAMENTE DEL TRABAJADOR.', M, y);
             y = doc.y + 6;
 
             // Dependents 4-row table
@@ -475,7 +529,7 @@ function generateContratoLaboralPDF(data) {
 
             // Header row
             doc.strokeColor('#000000').lineWidth(0.8);
-            const headers = ['Nombre', 'Apellido', 'Edad', 'Direccion'];
+            const headers = ['Nombre', 'Apellido', 'Edad', 'Dirección'];
             headers.forEach((h, i) => {
                 doc.rect(colX[i], y, colWidths[i], tblHeaderH).stroke();
                 doc.font('Times-Bold').fontSize(8).text(h, colX[i] + 4, y + 3.5, { width: colWidths[i] - 8 });
@@ -515,34 +569,35 @@ function generateContratoLaboralPDF(data) {
             y = doc.y + 5;
 
             // I) CLAUSULA DE CONFIDENCIALIDAD
+            const entidadConPunto = entidadEmpleadora.endsWith('.') ? entidadEmpleadora : `${entidadEmpleadora}.`;
             doc.font('Times-Roman').fontSize(8.8)
                .text(
-                   'I) EL TRABAJOR/A se compromete a prestar sus servicios en forma exclusiva y realizar el trabajo convenido, debiendo desempeñar el trabajo con diligencia, eficiencia y en la forma, tiempo y lugar convenidos; guardando rigurosa reserva y estricta confidencialidad de los secretos e informacion. Por lo que con la firma del contrato se obliga a no divulgar, utilizar, compartir, publicar, enjenar, intercambiar, u obtener un beneficio personal o para terceras personas en estas naturales o juridicas, de la informacion de los que tuviera conocimiento en razón de su cargo y en razón de donde lo desempeñe y sobre los asuntos administrativos cuya divulgacion causaren prejuicios a ',
+                   'I) EL TRABAJADOR/A se compromete a prestar sus servicios en forma exclusiva y realizar el trabajo convenido, debiendo desempeñar el trabajo con diligencia, eficiencia y en la forma, tiempo y lugar convenidos; guardando rigurosa reserva y estricta confidencialidad de los secretos e información. Por lo que con la firma del contrato se obliga a no divulgar, utilizar, compartir, publicar, enajenar, intercambiar, u obtener un beneficio personal o para terceras personas, sean estas naturales o jurídicas, de la información de la que tuviera conocimiento en razón de su cargo y en razón de donde lo desempeñe y sobre los asuntos administrativos cuya divulgación causaren perjuicios a ',
                    M, y,
                    { width: W, align: 'justify', lineGap: 1.35, continued: true }
                )
-               .font('Times-Bold').text(`${entidadEmpleadora}. `, { underline: true, continued: true })
+               .font('Times-Bold').text(`${entidadConPunto} `, { underline: true, continued: true })
                .font('Times-Roman').text(
-                   'Dicha información es considerada desde ya como SECRETO PERSONAL entre las partes para los efectos legales correspondientes. El TRABAJOR/A declara conocer que son secretos empresariales, entre otros, los relacionados a: estructura legal, organizacional y fisica, informacion de personal, patentes, propiedad intelectual, procedimientos administrativos, contratos, informacion contable, tributaria y/o contractual; programas o softwares informaticos y tecnologia especializada; información desde y hacia empresas filiales, matrices, proveedores, clientes, etc.; informacionn tecnica y comercial, costos y precios, datos de los proveedores o clientes; datos relacionados a insumos, procesos de compra y sistemas de venta en relacion a los productos y servicios y/o actividades de ',
+                   'Dicha información es considerada desde ya como SECRETO PROFESIONAL entre las partes para los efectos legales correspondientes. EL TRABAJADOR/A declara conocer que son secretos empresariales, entre otros, los relacionados a: estructura legal, organizacional y física, información de personal, patentes, propiedad intelectual, procedimientos administrativos, contratos, información contable, tributaria y/o contractual; programas o softwares informáticos y tecnología especializada; información desde y hacia empresas filiales, matrices, proveedores, clientes, etc.; información técnica y comercial, costos y precios, datos de los proveedores o clientes; datos relacionados a insumos, procesos de compra y sistemas de venta en relación a los productos y servicios y/o actividades de ',
                    { underline: false, continued: true }
                )
-               .font('Times-Bold').text(`${entidadEmpleadora}.`, { underline: true });
+               .font('Times-Bold').text(entidadConPunto, { underline: true });
 
             y = doc.y + 1.5;
             doc.font('Times-Roman').fontSize(8.8)
                .text(
-                   'Ademas el TRABAJOR/A declara conocer que la divulgacion de información protegida, asi como el uso no autorizados de la misma. Tiene como como consecuencia un grave daño economico para el patrono y en consecuencia, la infracción a esta norma implica falta grave, sin perjuicio del derecho de acción penal que le asiste en especial de conformidad a los delitos contenidos en los articulos 184, 185, 186, 187, 230 y 231 segun sea el caso, del código penal. La obligacion contenida en la presente cláusula, se mantiene aun despues de termindo el presente contrato sea por despido, retiro voluntario, renuncia, abandono o cualquier otra causa de terminacion de contrato reconocida por la ley por un tiempo adicional de ',
+                   'Además EL TRABAJADOR/A declara conocer que la divulgación de información protegida, así como el uso no autorizado de la misma, tiene como consecuencia un grave daño económico para el patrono y, en consecuencia, la infracción a esta norma implica falta grave, sin perjuicio del derecho de acción penal que le asiste, en especial de conformidad a los delitos contenidos en los artículos 184, 185, 186, 187, 230 y 231, según sea el caso, del Código Penal. La obligación contenida en la presente cláusula se mantiene aún después de terminado el presente contrato, sea por despido, retiro voluntario, renuncia, abandono o cualquier otra causa de terminación de contrato reconocida por la ley, por un tiempo adicional de ',
                    M, y,
                    { width: W, align: 'justify', lineGap: 1.35, continued: true }
                )
                .font('Times-Bold').text('CINCO AÑOS ', { continued: true })
                .font('Times-Roman').text(
-                   'contados desde la fecha que dejare de trabajar para el patrono; en el caso de los secretos empresariales y en forma indefinida en el caso de los datos protegidos de carácter bancario o financiero. Se le prohibe al TRABAJOR/A emplear útiles, productos, materiales enn general, maquinarias informacion o herramientas suministrador por el patrono; para un objeto distinto de aquel al que estan normalmente destinados o en beneficio propio o de personas ajenas a los clientes. Ademas por el termino de ',
+                   'contados desde la fecha en que dejare de trabajar para el patrono en el caso de los secretos empresariales, y en forma indefinida en el caso de los datos protegidos de carácter bancario o financiero. Se le prohíbe al TRABAJADOR/A emplear útiles, productos, materiales en general, maquinarias, información o herramientas suministrados por el patrono para un objeto distinto de aquel al que están normalmente destinados o en beneficio propio o de personas ajenas a los clientes. Además, por el término de ',
                    { continued: true }
                )
-               .font('Times-Bold').text('CINCO AÑOS', { continued: true })
+               .font('Times-Bold').text('CINCO AÑOS ', { continued: true })
                .font('Times-Roman').text(
-                   ', de terminada la relacion laboral, EL TRABAJOR/A declara y acepta con firma en el presente contrato que no va a realizar directa o indirectamente, dar a conocer a cualquier persona, firma o corporacion los nombres o las direcciones de cualquiera de los clientes o empleados de la empresa o que visitara, buscara clientes, o se llevara, o intentara persuadir al personal de la empresa para visitar o buscar clientes, por lo que el incumplimiento a lo anterior reconozco que sere responsable de los daños y perjuicios en contra de la empresa sin perjuicio de las acciones penales que acarrea, por lo que declaro no revelar dicha informacion.'
+                   'de terminada la relación laboral, EL TRABAJADOR/A declara y acepta con su firma en el presente contrato que no va a realizar, directa o indirectamente, dar a conocer a cualquier persona, firma o corporación los nombres o las direcciones de cualquiera de los clientes o empleados de la empresa, ni visitará, buscará clientes, se llevará o intentará persuadir al personal de la empresa para visitar o buscar clientes; por lo que ante el incumplimiento a lo anterior reconozco que seré responsable de los daños y perjuicios en contra de la empresa, sin perjuicio de las acciones penales que acarrea, por lo que declaro no revelar dicha información.'
                );
 
             y = doc.y + 4;
@@ -573,10 +628,12 @@ function generateContratoLaboralPDF(data) {
                .font('Times-Bold').text(lugarCreacion, { underline: true });
 
             y = doc.y + 6;
+            const closingDayPrefix = closingParts.day === 1 ? 'Al ' : 'A los ';
+            const closingDayLabel = closingParts.day === 1 ? ' día del mes de ' : ' días del mes de ';
             doc.font('Times-Roman').fontSize(9.2)
-               .text('A los ', M, y, { continued: true })
+               .text(closingDayPrefix, M, y, { continued: true })
                .font('Times-Bold').text(closingParts.dayWord, { underline: true, continued: true })
-               .font('Times-Roman').text(' días del mes ', { underline: false, continued: true })
+               .font('Times-Roman').text(closingDayLabel, { underline: false, continued: true })
                .font('Times-Bold').text(closingParts.month, { underline: true, continued: true })
                .font('Times-Roman').text(' de ', { underline: false, continued: true })
                .font('Times-Bold').text(`${closingParts.yearWord}.`, { underline: true });
@@ -635,5 +692,8 @@ module.exports = {
     calculateAge,
     formatLongSpanishDate,
     formatSalaryWords,
-    formatClosingDateParts
+    formatClosingDateParts,
+    resolveWorkerNit,
+    normalizeFormaPago,
+    normalizeOtrasEstipulaciones
 };

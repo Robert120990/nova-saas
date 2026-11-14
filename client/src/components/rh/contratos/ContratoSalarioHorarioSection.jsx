@@ -61,7 +61,7 @@ const ContratoSalarioHorarioSection = ({ form, onChange }) => {
                         list="contrato-formas-pago"
                         value={form.forma_pago}
                         onChange={(e) => handleField('forma_pago', e.target.value)}
-                        placeholder="EJ. TRANFERENCIA BANCARIA"
+                        placeholder="EJ. TRANSFERENCIA BANCARIA"
                         className={inputCls}
                     />
                     <datalist id="contrato-formas-pago">
