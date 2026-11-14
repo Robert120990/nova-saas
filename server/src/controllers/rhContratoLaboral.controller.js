@@ -1,21 +1,13 @@
 const pool = require('../config/db');
 const { generateContratoLaboralPDF, calculateAge } = require('../services/rhContratoLaboralPdf.service');
+const {
+    normalizeLegalName,
+    fetchPatronoConfig,
+    resolveContratoPatrono
+} = require('../services/rhPatrono.service');
 
 const TABLE = 'rh_contratos_laborales';
 const LABEL = 'Contrato laboral';
-
-const DEFAULT_PATRONO = {
-    patrono_nombre: '',
-    patrono_edad: null,
-    patrono_sexo: '',
-    patrono_estado_civil: '',
-    patrono_profesion: '',
-    patrono_direccion: '',
-    patrono_nacionalidad: 'SALVADOREÑA',
-    patrono_dui: '',
-    patrono_dui_extendido: '',
-    patrono_nit: ''
-};
 
 const generateCorrelativo = async (companyId, anio) => {
     const prefix = `CT-${anio}-`;
@@ -37,38 +29,6 @@ const parseDependientes = (raw) => {
         } catch { return []; }
     }
     return [];
-};
-
-const fetchPatronoConfig = async (companyId) => {
-    const [[cfgRows], [compRows]] = await Promise.all([
-        pool.query(
-            `SELECT patrono_nombre, patrono_edad, patrono_sexo, patrono_estado_civil,
-                    patrono_profesion, patrono_direccion, patrono_nacionalidad,
-                    patrono_dui, patrono_dui_extendido, patrono_nit
-             FROM rh_config WHERE company_id = ? LIMIT 1`,
-            [companyId]
-        ),
-        pool.query(
-            `SELECT razon_social, nit, direccion, tipo_persona FROM companies WHERE id = ? LIMIT 1`,
-            [companyId]
-        )
-    ]);
-    const cfg = cfgRows[0] || {};
-    const comp = compRows[0] || {};
-    const hasConfiguredPatrono = Boolean(cfg.patrono_nombre && cfg.patrono_nombre.trim());
-
-    return {
-        patrono_nombre: hasConfiguredPatrono ? cfg.patrono_nombre.trim() : (comp.razon_social || DEFAULT_PATRONO.patrono_nombre),
-        patrono_edad: hasConfiguredPatrono ? (cfg.patrono_edad || null) : DEFAULT_PATRONO.patrono_edad,
-        patrono_sexo: hasConfiguredPatrono ? (cfg.patrono_sexo || '') : DEFAULT_PATRONO.patrono_sexo,
-        patrono_estado_civil: hasConfiguredPatrono ? (cfg.patrono_estado_civil || '') : DEFAULT_PATRONO.patrono_estado_civil,
-        patrono_profesion: hasConfiguredPatrono ? (cfg.patrono_profesion || '') : DEFAULT_PATRONO.patrono_profesion,
-        patrono_direccion: (cfg.patrono_direccion && cfg.patrono_direccion.trim()) || comp.direccion || DEFAULT_PATRONO.patrono_direccion,
-        patrono_nacionalidad: cfg.patrono_nacionalidad || DEFAULT_PATRONO.patrono_nacionalidad,
-        patrono_dui: (cfg.patrono_dui && cfg.patrono_dui.trim()) || DEFAULT_PATRONO.patrono_dui,
-        patrono_dui_extendido: hasConfiguredPatrono ? (cfg.patrono_dui_extendido || '') : DEFAULT_PATRONO.patrono_dui_extendido,
-        patrono_nit: (cfg.patrono_nit && cfg.patrono_nit.trim()) || comp.nit || DEFAULT_PATRONO.patrono_nit
-    };
 };
 
 const getPatronoDefaults = async (req, res) => {
@@ -105,14 +65,21 @@ const getContratos = async (req, res) => {
             params.push(s, s, s, s, s, s, s);
         }
 
-        const [countResult] = await pool.query(`SELECT COUNT(*) as total FROM (${query}) as sub`, params);
+        const [[countResult], patronoCfg] = await Promise.all([
+            pool.query(`SELECT COUNT(*) as total FROM (${query}) as sub`, params),
+            fetchPatronoConfig(req.company_id)
+        ]);
         const total = countResult[0]?.total || 0;
 
         query += ` ORDER BY cl.fecha_creacion DESC, cl.id DESC LIMIT ? OFFSET ?`;
         params.push(limitNum, offset);
 
         const [rows] = await pool.query(query, params);
-        const formatted = rows.map(r => ({ ...r, dependientes: parseDependientes(r.dependientes) }));
+        const formatted = rows.map(r => ({
+            ...r,
+            ...resolveContratoPatrono(r, patronoCfg),
+            dependientes: parseDependientes(r.dependientes)
+        }));
 
         res.json({ data: formatted, total, page: pageNum, totalPages: Math.ceil(total / limitNum) });
     } catch (error) {
@@ -123,20 +90,26 @@ const getContratos = async (req, res) => {
 const getContrato = async (req, res) => {
     try {
         const { id } = req.params;
-        const [rows] = await pool.query(
-            `SELECT cl.*,
-                    e.codigo as empleado_codigo,
-                    e.nombres as empleado_nombres,
-                    e.apellidos as empleado_apellidos
-             FROM ${TABLE} cl
-             LEFT JOIN rh_empleados e ON cl.empleado_id = e.id
-             WHERE cl.id = ? AND cl.company_id = ?`,
-            [id, req.company_id]
-        );
+        const [[rows], patronoCfg] = await Promise.all([
+            pool.query(
+                `SELECT cl.*,
+                        e.codigo as empleado_codigo,
+                        e.nombres as empleado_nombres,
+                        e.apellidos as empleado_apellidos
+                 FROM ${TABLE} cl
+                 LEFT JOIN rh_empleados e ON cl.empleado_id = e.id
+                 WHERE cl.id = ? AND cl.company_id = ?`,
+                [id, req.company_id]
+            ),
+            fetchPatronoConfig(req.company_id)
+        ]);
 
         if (rows.length === 0) return res.status(404).json({ message: `${LABEL} no encontrado` });
-        const record = rows[0];
-        record.dependientes = parseDependientes(record.dependientes);
+        const record = {
+            ...rows[0],
+            ...resolveContratoPatrono(rows[0], patronoCfg),
+            dependientes: parseDependientes(rows[0].dependientes)
+        };
         res.json(record);
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -153,11 +126,17 @@ const buildContratoPayload = (body, patronoCfg) => {
         direccion: (d.direccion || '').trim().toUpperCase()
     }));
 
+    const incomingPatronoName = normalizeLegalName(body.patrono_nombre || '');
+    const resolvedPatronoName = (incomingPatronoName || patronoCfg.patrono_nombre || '').trim().toUpperCase();
+    const parsedPatronoEdad = body.patrono_edad !== undefined && body.patrono_edad !== null && body.patrono_edad !== '' && Number(body.patrono_edad) > 0
+        ? parseInt(body.patrono_edad, 10)
+        : (patronoCfg.patrono_edad || null);
+
     return {
-        empleado_id: body.empleado_id ? parseInt(body.empleado_id, 10) : null,
+        empleado_id: body.empleado_id && Number(body.empleado_id) > 0 ? parseInt(body.empleado_id, 10) : null,
         trabajador_nombre: (body.trabajador_nombre || '').trim().toUpperCase(),
         fecha_nacimiento: body.fecha_nacimiento || null,
-        edad: edadCalc !== '' ? Number(edadCalc) : null,
+        edad: edadCalc !== '' && Number(edadCalc) > 0 ? Number(edadCalc) : null,
         sexo: (body.sexo || 'MASCULINO').trim().toUpperCase(),
         estado_civil: (body.estado_civil || 'SOLTERO').trim().toUpperCase(),
         profesion_oficio: (body.profesion_oficio || 'ESTUDIANTE').trim().toUpperCase(),
@@ -189,17 +168,15 @@ const buildContratoPayload = (body, patronoCfg) => {
         horario_extra_hasta: (body.horario_extra_hasta || '12:00 P.M.').trim().toUpperCase(),
         total_horas_semana: parseFloat(body.total_horas_semana) || 44,
         dependientes: JSON.stringify(deps),
-        patrono_nombre: (body.patrono_nombre || patronoCfg.patrono_nombre || '').trim().toUpperCase(),
-        patrono_edad: body.patrono_edad !== undefined && body.patrono_edad !== null && body.patrono_edad !== ''
-            ? parseInt(body.patrono_edad, 10)
-            : (patronoCfg.patrono_edad || null),
-        patrono_sexo: (body.patrono_sexo || patronoCfg.patrono_sexo || '').trim().toUpperCase(),
-        patrono_estado_civil: (body.patrono_estado_civil || patronoCfg.patrono_estado_civil || '').trim().toUpperCase(),
-        patrono_profesion: (body.patrono_profesion || patronoCfg.patrono_profesion || '').trim().toUpperCase(),
+        patrono_nombre: resolvedPatronoName,
+        patrono_edad: parsedPatronoEdad,
+        patrono_sexo: (body.patrono_sexo ?? patronoCfg.patrono_sexo ?? '').trim().toUpperCase(),
+        patrono_estado_civil: (body.patrono_estado_civil ?? patronoCfg.patrono_estado_civil ?? '').trim().toUpperCase(),
+        patrono_profesion: (body.patrono_profesion ?? patronoCfg.patrono_profesion ?? '').trim().toUpperCase(),
         patrono_direccion: (body.patrono_direccion || patronoCfg.patrono_direccion || '').trim(),
         patrono_nacionalidad: (body.patrono_nacionalidad || patronoCfg.patrono_nacionalidad || 'SALVADOREÑA').trim().toUpperCase(),
-        patrono_dui: (body.patrono_dui || patronoCfg.patrono_dui || '').trim(),
-        patrono_dui_extendido: (body.patrono_dui_extendido || patronoCfg.patrono_dui_extendido || '').trim().toUpperCase(),
+        patrono_dui: (body.patrono_dui ?? patronoCfg.patrono_dui ?? '').trim(),
+        patrono_dui_extendido: (body.patrono_dui_extendido ?? patronoCfg.patrono_dui_extendido ?? '').trim().toUpperCase(),
         patrono_nit: (body.patrono_nit || patronoCfg.patrono_nit || '').trim(),
         herramientas_materiales: body.herramientas_materiales || null,
         otras_estipulaciones: body.otras_estipulaciones || null,
@@ -270,30 +247,22 @@ const deleteContrato = async (req, res) => {
 const exportPDF = async (req, res) => {
     try {
         const { id } = req.params;
-        const [rows] = await pool.query(
-            `SELECT * FROM ${TABLE} WHERE id = ? AND company_id = ?`,
-            [id, req.company_id]
-        );
+        const [[rows], patronoCfg] = await Promise.all([
+            pool.query(
+                `SELECT * FROM ${TABLE} WHERE id = ? AND company_id = ?`,
+                [id, req.company_id]
+            ),
+            fetchPatronoConfig(req.company_id)
+        ]);
 
         if (rows.length === 0) return res.status(404).json({ message: `${LABEL} no encontrado` });
 
         const record = rows[0];
         record.dependientes = parseDependientes(record.dependientes);
 
-        const patronoCfg = await fetchPatronoConfig(req.company_id);
         const mergedRecord = {
-            ...patronoCfg,
             ...record,
-            patrono_nombre: record.patrono_nombre || patronoCfg.patrono_nombre,
-            patrono_edad: record.patrono_edad || patronoCfg.patrono_edad,
-            patrono_sexo: record.patrono_sexo || patronoCfg.patrono_sexo,
-            patrono_estado_civil: record.patrono_estado_civil || patronoCfg.patrono_estado_civil,
-            patrono_profesion: record.patrono_profesion || patronoCfg.patrono_profesion,
-            patrono_direccion: record.patrono_direccion || patronoCfg.patrono_direccion,
-            patrono_nacionalidad: record.patrono_nacionalidad || patronoCfg.patrono_nacionalidad,
-            patrono_dui: record.patrono_dui || patronoCfg.patrono_dui,
-            patrono_dui_extendido: record.patrono_dui_extendido || patronoCfg.patrono_dui_extendido,
-            patrono_nit: record.patrono_nit || patronoCfg.patrono_nit
+            ...resolveContratoPatrono(record, patronoCfg)
         };
 
         const pdfBuffer = await generateContratoLaboralPDF(mergedRecord);
@@ -318,4 +287,3 @@ module.exports = {
     deleteContrato,
     exportPDF
 };
-

@@ -69,11 +69,14 @@ const ContratoLaboralModal = ({
     }, [isOpen, selectedContrato, initialEmployee]);
 
     useEffect(() => {
-        if (!isOpen || selectedContrato || !patronoDefaults) return;
+        if (!isOpen || !patronoDefaults) return;
+        const hasSavedPatrono = Boolean(selectedContrato?.patrono_nombre && String(selectedContrato.patrono_nombre).trim());
+        if (selectedContrato && hasSavedPatrono) return;
+
         setForm((prev) => ({
             ...prev,
             patrono_nombre: patronoDefaults.patrono_nombre ?? '',
-            patrono_edad: patronoDefaults.patrono_edad ?? '',
+            patrono_edad: Number(patronoDefaults.patrono_edad) > 0 ? patronoDefaults.patrono_edad : '',
             patrono_sexo: patronoDefaults.patrono_sexo ?? '',
             patrono_estado_civil: patronoDefaults.patrono_estado_civil ?? '',
             patrono_profesion: patronoDefaults.patrono_profesion ?? '',

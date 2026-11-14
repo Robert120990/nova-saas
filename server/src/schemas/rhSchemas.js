@@ -243,13 +243,22 @@ const dependienteContratoSchema = z.object({
     direccion: z.preprocess(val => (val === undefined || val === null ? '' : String(val).trim()), z.string().optional().default(''))
 }).passthrough();
 
+const optionalPositiveInt = z.preprocess(
+    val => {
+        if (val === '' || val === null || val === undefined) return null;
+        const num = Number(val);
+        return Number.isNaN(num) || num <= 0 ? null : Math.trunc(num);
+    },
+    z.number().int().positive().nullable().optional()
+);
+
 const contratoLaboralSchema = z.object({
-    empleado_id: z.coerce.number().nullable().optional(),
+    empleado_id: optionalPositiveInt,
     trabajador_nombre: z.string({ error: 'El nombre del trabajador es obligatorio' })
         .trim()
         .min(1, 'El nombre del trabajador no puede estar vacío'),
     fecha_nacimiento: emptyToNull.nullable().optional(),
-    edad: z.coerce.number().nullable().optional(),
+    edad: optionalPositiveInt,
     sexo: emptyToNull.nullable().optional().default('MASCULINO'),
     estado_civil: emptyToNull.nullable().optional().default('SOLTERO'),
     profesion_oficio: emptyToNull.nullable().optional().default('ESTUDIANTE'),
@@ -290,7 +299,7 @@ const contratoLaboralSchema = z.object({
     total_horas_semana: z.coerce.number().min(0).optional().default(44),
     dependientes: z.array(dependienteContratoSchema).optional().default([]),
     patrono_nombre: emptyToNull.nullable().optional(),
-    patrono_edad: z.coerce.number().nullable().optional(),
+    patrono_edad: optionalPositiveInt,
     patrono_sexo: emptyToNull.nullable().optional(),
     patrono_estado_civil: emptyToNull.nullable().optional(),
     patrono_profesion: emptyToNull.nullable().optional(),

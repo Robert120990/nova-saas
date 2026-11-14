@@ -1,22 +1,14 @@
 import { useState } from 'react';
 import { DollarSign, Clock, Building2, ChevronDown, ChevronUp } from 'lucide-react';
 import { MoneyInput } from '../../ui/Money';
-import {
-    DIAS_SEMANA_OPCIONES,
-    FORMAS_PAGO_OPCIONES,
-    SEXOS_OPCIONES,
-    ESTADOS_CONTRATO
-} from './contratoConstants';
+import { DIAS_SEMANA_OPCIONES, FORMAS_PAGO_OPCIONES, SEXOS_OPCIONES, ESTADOS_CONTRATO } from './contratoConstants';
 
 const labelCls = "block text-[11px] font-bold text-slate-500 uppercase mb-1";
 const inputCls = "w-full px-3 py-2 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-[13px] font-medium uppercase";
 
 const ContratoSalarioHorarioSection = ({ form, onChange }) => {
     const [showPatrono, setShowPatrono] = useState(false);
-
-    const handleField = (key, val) => {
-        onChange({ ...form, [key]: val });
-    };
+    const handleField = (key, val) => onChange({ ...form, [key]: val });
 
     return (
         <div className="space-y-4">
@@ -227,7 +219,7 @@ const ContratoSalarioHorarioSection = ({ form, onChange }) => {
                                 Datos del Patrono y Cláusulas (Impresión PDF)
                             </h4>
                             <p className="text-[10px] text-slate-500 font-medium truncate max-w-[260px] sm:max-w-xs">
-                                {form.patrono_nombre || 'Sin configurar'} • DUI: {form.patrono_dui || '—'}
+                                {form.patrono_nombre || 'Sin configurar'} • {form.patrono_dui ? `DUI: ${form.patrono_dui}` : `NIT: ${form.patrono_nit || '—'}`}
                             </p>
                         </div>
                     </div>
@@ -262,6 +254,7 @@ const ContratoSalarioHorarioSection = ({ form, onChange }) => {
                                     onChange={(e) => handleField('patrono_sexo', e.target.value)}
                                     className={inputCls}
                                 >
+                                    <option value="">— SIN ESPECIFICAR —</option>
                                     {SEXOS_OPCIONES.map((s) => <option key={s} value={s}>{s}</option>)}
                                 </select>
                             </div>

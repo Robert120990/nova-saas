@@ -1,10 +1,16 @@
 const pool = require('../config/db');
+const { sanitizeRhConfigRow } = require('../services/rhPatrono.service');
 
 const TABLE = 'rh_config';
 
 const getConfig = async (req, res) => {
     try {
-        const [rows] = await pool.query(`SELECT * FROM ${TABLE} WHERE company_id = ?`, [req.company_id]);
+        const [[rows], [compRows]] = await Promise.all([
+            pool.query(`SELECT * FROM ${TABLE} WHERE company_id = ?`, [req.company_id]),
+            pool.query(`SELECT nit FROM companies WHERE id = ? LIMIT 1`, [req.company_id])
+        ]);
+        const companyNit = compRows[0]?.nit || '';
+
         if (rows.length === 0) {
             await pool.query(`INSERT INTO ${TABLE} (company_id) VALUES (?)`, [req.company_id]);
             return res.json({
@@ -29,14 +35,9 @@ const getConfig = async (req, res) => {
                 patrono_nit: ''
             });
         }
-        const cfg = rows[0];
-        const hasPatrono = Boolean(cfg.patrono_nombre && cfg.patrono_nombre.trim());
+        const cfg = sanitizeRhConfigRow(rows[0], companyNit);
         res.json({
             ...cfg,
-            patrono_edad: hasPatrono ? cfg.patrono_edad : null,
-            patrono_sexo: hasPatrono ? (cfg.patrono_sexo || '') : '',
-            patrono_estado_civil: hasPatrono ? (cfg.patrono_estado_civil || '') : '',
-            patrono_profesion: hasPatrono ? (cfg.patrono_profesion || '') : '',
             calculo_renta_modo: cfg.calculo_renta_modo || 'segunda_quincena'
         });
     } catch (error) {

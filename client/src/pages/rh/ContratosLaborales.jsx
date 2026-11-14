@@ -3,24 +3,19 @@ import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
-import {
-    Plus, Edit, Trash2, FileText, FileSignature,
-    Copy, CheckCircle2, Clock, Ban
-} from 'lucide-react';
+import { Plus, Edit, Trash2, FileText, FileSignature, Copy, CheckCircle2, Clock, Ban } from 'lucide-react';
 import Table from '../../components/ui/Table';
 import Pagination from '../../components/ui/Pagination';
 import Money from '../../components/ui/Money';
 import PdfViewerModal from '../../components/ui/PdfViewerModal';
 import { useConfirm } from '../../context/ConfirmContext';
+import { useAuth } from '../../context/AuthContext';
 import { formatDate } from '../../utils/dateUtils';
 import { unwrapList } from '../../utils/apiUtils';
-import {
-    ContratoLaboralModal,
-    ContratosFiltersBar,
-    ESTADOS_CONTRATO
-} from '../../components/rh/contratos';
+import { ContratoLaboralModal, ContratosFiltersBar, ESTADOS_CONTRATO } from '../../components/rh/contratos';
 
 const ContratosLaborales = () => {
+    const { user } = useAuth();
     const queryClient = useQueryClient();
     const confirm = useConfirm();
     const [searchParams] = useSearchParams();
@@ -36,13 +31,7 @@ const ContratosLaborales = () => {
     const [filterHasta, setFilterHasta] = useState('');
     const [page, setPage] = useState(1);
 
-    const [pdfViewer, setPdfViewer] = useState({
-        isOpen: false,
-        url: null,
-        isLoading: false,
-        error: null,
-        item: null
-    });
+    const [pdfViewer, setPdfViewer] = useState({ isOpen: false, url: null, isLoading: false, error: null, item: null });
 
     useEffect(() => {
         const empId = searchParams.get('empleado_id');
@@ -74,7 +63,8 @@ const ContratosLaborales = () => {
     }, [searchTerm]);
 
     const { data: response = { data: [], total: 0, totalPages: 0 }, isLoading } = useQuery({
-        queryKey: ['rh-contratos-laborales', debouncedSearch, filterEstado, filterDesde, filterHasta, page],
+        queryKey: ['rh-contratos-laborales', user?.company_id, debouncedSearch, filterEstado, filterDesde, filterHasta, page],
+        enabled: Boolean(user?.company_id),
         queryFn: async () => {
             const res = await axios.get('/api/rh/contratos-laborales', {
                 params: {
