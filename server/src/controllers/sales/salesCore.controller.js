@@ -150,18 +150,57 @@ const createSale = async (req, res) => {
             }
         }
 
-        // 0c3. Validar Nota de Crédito (05) sobre Crédito Fiscal
-        if (company && company.dte_active && header.dte_type === '05' && customerRow) {
-            const hasCCF = (linkedDocuments || []).some(d => d.doc_type === '03' || d.tipoDte === '03');
-            if (hasCCF) {
-                const rawNit = customerRow.nit || customerRow.numero_documento;
-                const nitVal = validateDocumentNumber(rawNit, 'NIT');
-                if (!nitVal.isValid) {
+        // 0c3. Validar Nota de Crédito (05): solo permite referenciar CCF (03) o Comprobante de Retención (07)
+        if (header.dte_type === '05' || header.tipo_documento === '05') {
+            if (!linkedDocuments || linkedDocuments.length === 0) {
+                await connection.rollback();
+                return res.status(400).json({
+                    message: 'Debe vincular al menos un documento original para emitir una Nota de Crédito (05).',
+                    success: false
+                });
+            }
+
+            for (const doc of linkedDocuments) {
+                const rawType = String(doc.doc_type || doc.tipoDte || doc.tipoDocumento || '').trim();
+                const rawNum = String(doc.doc_number || doc.numeroDocumento || '').trim().toUpperCase();
+
+                if (!['03', '07'].includes(rawType) || rawNum.startsWith('DTE-01-')) {
                     await connection.rollback();
                     return res.status(400).json({
-                        message: `Para emitir Nota de Crédito sobre un Crédito Fiscal, el cliente debe tener un NIT válido. Motivo: ${nitVal.error}`,
+                        message: 'Normativa MH: No se permite emitir una Nota de Crédito (05) referenciando una Factura de Consumidor Final (01). Las Notas de Crédito solo aplican sobre Crédito Fiscal (03) o Comprobante de Retención (07). Para dejar sin efecto una Factura (01), utilice la opción de Invalidación / Anulación.',
                         success: false
                     });
+                }
+
+                if (rawNum) {
+                    const [origRows] = await connection.query(
+                        `SELECT tipo_documento FROM sales_headers 
+                         WHERE company_id = ? AND (codigo_generacion = ? OR numero_control = ?) 
+                         LIMIT 1`,
+                        [req.company_id, rawNum, rawNum]
+                    );
+                    if (origRows.length > 0 && !['03', '07'].includes(String(origRows[0].tipo_documento || '').trim())) {
+                        await connection.rollback();
+                        return res.status(400).json({
+                            message: `Normativa MH: El documento referenciado (${rawNum}) corresponde a tipo "${origRows[0].tipo_documento}" y no puede asociarse a una Nota de Crédito (05). Solo se permite referenciar Crédito Fiscal (03) o Comprobante de Retención (07).`,
+                            success: false
+                        });
+                    }
+                }
+            }
+
+            if (company && company.dte_active && customerRow) {
+                const hasCCF = linkedDocuments.some(d => d.doc_type === '03' || d.tipoDte === '03');
+                if (hasCCF) {
+                    const rawNit = customerRow.nit || customerRow.numero_documento;
+                    const nitVal = validateDocumentNumber(rawNit, 'NIT');
+                    if (!nitVal.isValid) {
+                        await connection.rollback();
+                        return res.status(400).json({
+                            message: `Para emitir Nota de Crédito sobre un Crédito Fiscal, el cliente debe tener un NIT válido. Motivo: ${nitVal.error}`,
+                            success: false
+                        });
+                    }
                 }
             }
         }
@@ -911,7 +950,14 @@ const getSaleById = async (req, res) => {
             try { sale.respuesta_hacienda = JSON.parse(sale.respuesta_hacienda); } catch (e) {}
         }
 
-        const [items] = await pool.query('SELECT * FROM sales_items WHERE sale_id = ? ORDER BY id ASC', [id]);
+        const [items] = await pool.query(
+            `SELECT si.*, COALESCE(p.tipo_combustible, 0) as tipo_combustible
+             FROM sales_items si
+             LEFT JOIN products p ON si.product_id = p.id
+             WHERE si.sale_id = ?
+             ORDER BY si.id ASC`,
+            [id]
+        );
         const [payments] = await pool.query('SELECT * FROM sales_payments WHERE sale_id = ? ORDER BY id ASC', [id]);
         const [linkedDocs] = await pool.query('SELECT * FROM sales_linked_documents WHERE sale_id = ? ORDER BY id ASC', [id]);
 

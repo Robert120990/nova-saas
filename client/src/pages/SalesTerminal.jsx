@@ -1546,12 +1546,30 @@ const SalesTerminal = () => {
         return true;
     };
 
+    const validateNcLinkedDocs = () => {
+        if (tipoDte !== '05') return true;
+        if (linkedDocs.length === 0) {
+            toast.error('Debe seleccionar el documento original a referenciar para la Nota de Crédito');
+            return false;
+        }
+        const refSaleType = referencingSale ? String(referencingSale.tipo_documento || referencingSale.dte_type || '').trim() : null;
+        const hasInvalidDoc = (refSaleType && !['03', '07'].includes(refSaleType)) ||
+            linkedDocs.some(d => {
+                const dt = String(d.doc_type || d.tipoDte || '').trim();
+                const dn = String(d.doc_number || '').trim().toUpperCase();
+                return !['03', '07'].includes(dt) || dn.startsWith('DTE-01-');
+            });
+        if (hasInvalidDoc) {
+            toast.error('Normativa MH: La Nota de Crédito (05) solo puede referenciar un Crédito Fiscal (03) o Comprobante de Retención (07). No se permite referenciar Facturas (01).');
+            return false;
+        }
+        return true;
+    };
+
     const goToPayment = () => {
         if (tipoDte === '07' || tipoDte === '05') {
             if (!validateCustomerData()) return;
-            if (tipoDte === '05' && linkedDocs.length === 0) {
-                return toast.error('Debe seleccionar el documento original a referenciar para la Nota de Crédito');
-            }
+            if (!validateNcLinkedDocs()) return;
             handleProcessSale();
             return;
         }
@@ -1887,8 +1905,11 @@ const SalesTerminal = () => {
         if (tipoDte !== '07' && cart.length === 0) {
             return toast.error('El carrito está vacío');
         }
-        if ((tipoDte === '07' || tipoDte === '05') && linkedDocs.length === 0) {
+        if (tipoDte === '07' && linkedDocs.length === 0) {
             return toast.error('Debe agregar al menos un documento relacionado');
+        }
+        if (tipoDte === '05' && !validateNcLinkedDocs()) {
+            return;
         }
 
         if (!validateCustomerData()) {

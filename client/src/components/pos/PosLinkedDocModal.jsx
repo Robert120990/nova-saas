@@ -71,7 +71,7 @@ const PosLinkedDocModal = ({
             setEmissionDate(getTodayString());
             setMontoGravado('');
             setIvaRetenido('');
-            setDocType(tipoDte === '05' ? '01' : '01');
+            setDocType(tipoDte === '05' ? '03' : '01');
             setGenType('2');
             if (tipoDte === '05') {
                 setActiveTab(customerId ? 'customer' : 'manual');
@@ -98,7 +98,7 @@ const PosLinkedDocModal = ({
     } = useQuery({
         queryKey: ['pos-customer-sales', customerId, debouncedSearch, filterDocType, page, limit],
         queryFn: async () => {
-            const docTypeParam = filterDocType === 'all' ? '01,03,07' : filterDocType;
+            const docTypeParam = filterDocType === 'all' ? '03,07' : filterDocType;
             const res = await axios.get('/api/sales', {
                 params: {
                     customer_id: customerId,
@@ -124,6 +124,11 @@ const PosLinkedDocModal = ({
 
     const handleSelectSale = async (sale) => {
         if (loadingSaleId) return;
+        const selectedDocType = String(sale.tipo_documento || sale.dte_type || '').trim();
+        if (tipoDte === '05' && !['03', '07'].includes(selectedDocType)) {
+            toast.error('Normativa MH: Una Nota de Crédito (05) no puede referenciar una Factura (01). Solo aplica sobre Crédito Fiscal (03) o Comprobante de Retención (07).');
+            return;
+        }
         setLoadingSaleId(sale.id);
         try {
             const { data: fullSale } = await axios.get(`/api/sales/${sale.id}`);
@@ -183,6 +188,7 @@ const PosLinkedDocModal = ({
                     descuento: totalItemDisc,
                     unitDiscount: unitDisc,
                     exento: item.venta_exenta > 0,
+                    tipo_combustible: item.tipo_combustible || 0,
                     isManual: !item.product_id,
                     referencedDoc: refDoc
                 };
@@ -193,7 +199,7 @@ const PosLinkedDocModal = ({
 
             // Vincular documento
             setLinkedDocs([{
-                doc_type: sale.dte_type,
+                doc_type: sale.tipo_documento || sale.dte_type,
                 doc_number: refDoc,
                 control_number: fullSale.numero_control || sale.numero_control || sale.dte_control || null,
                 emission_date: sale.fecha_emision ? sale.fecha_emision.split('T')[0] : getTodayString(),
@@ -216,6 +222,15 @@ const PosLinkedDocModal = ({
         const num = docNumber.trim().toUpperCase();
         if (!num) return toast.error('El número es obligatorio');
         if (!emissionDate) return toast.error('La fecha del documento es obligatoria');
+
+        if (tipoDte === '05') {
+            if (!['03', '07'].includes(String(docType))) {
+                return toast.error('Normativa MH: Una Nota de Crédito (05) solo puede referenciar un Crédito Fiscal (03) o Comprobante de Retención (07), nunca una Factura (01).');
+            }
+            if (num.startsWith('DTE-01-')) {
+                return toast.error('El número de control ingresado corresponde a una Factura (DTE-01). Las Notas de Crédito solo aplican sobre Crédito Fiscal (03) o Retención (07).');
+            }
+        }
 
         const isUUID = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i.test(num);
         const genVal = genType ? parseInt(genType) : (isUUID ? 1 : 2);
@@ -322,39 +337,49 @@ const PosLinkedDocModal = ({
                 <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar">
                     {/* Tabs when Nota de Crédito */}
                     {tipoDte === '05' && (
-                        <div className="flex p-1 bg-slate-100/80 rounded-2xl border border-slate-200/60 shrink-0">
-                            <button
-                                type="button"
-                                onClick={() => setActiveTab('customer')}
-                                className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-black transition-all ${
-                                    activeTab === 'customer'
-                                        ? 'bg-white text-indigo-600 shadow-sm'
-                                        : 'text-slate-500 hover:text-slate-800'
-                                }`}
-                            >
-                                <History size={14} />
-                                <span>Documentos del Cliente</span>
-                                {totalSales > 0 && (
-                                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                                        activeTab === 'customer' ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-200 text-slate-600'
-                                    }`}>
-                                        {totalSales}
-                                    </span>
-                                )}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setActiveTab('manual')}
-                                className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-black transition-all ${
-                                    activeTab === 'manual'
-                                        ? 'bg-white text-indigo-600 shadow-sm'
-                                        : 'text-slate-500 hover:text-slate-800'
-                                }`}
-                            >
-                                <Edit3 size={14} />
-                                <span>Entrada Manual</span>
-                            </button>
-                        </div>
+                        <>
+                            <div className="flex items-start gap-2.5 p-3 bg-amber-50/80 border border-amber-200/80 rounded-2xl text-amber-900">
+                                <AlertCircle size={15} className="text-amber-600 shrink-0 mt-0.5" />
+                                <p className="text-[11px] font-semibold leading-snug">
+                                    <span className="font-black uppercase">Normativa MH:</span> La Nota de Crédito (05) solo aplica sobre{' '}
+                                    <span className="font-black">Crédito Fiscal (03)</span> o{' '}
+                                    <span className="font-black">Comprobante de Retención (07)</span>. Para dejar sin efecto una Factura (01), utilice la opción de Anulación / Invalidación.
+                                </p>
+                            </div>
+                            <div className="flex p-1 bg-slate-100/80 rounded-2xl border border-slate-200/60 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTab('customer')}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-black transition-all ${
+                                        activeTab === 'customer'
+                                            ? 'bg-white text-indigo-600 shadow-sm'
+                                            : 'text-slate-500 hover:text-slate-800'
+                                    }`}
+                                >
+                                    <History size={14} />
+                                    <span>Documentos del Cliente</span>
+                                    {totalSales > 0 && (
+                                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                            activeTab === 'customer' ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-200 text-slate-600'
+                                        }`}>
+                                            {totalSales}
+                                        </span>
+                                    )}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTab('manual')}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-black transition-all ${
+                                        activeTab === 'manual'
+                                            ? 'bg-white text-indigo-600 shadow-sm'
+                                            : 'text-slate-500 hover:text-slate-800'
+                                    }`}
+                                >
+                                    <Edit3 size={14} />
+                                    <span>Entrada Manual</span>
+                                </button>
+                            </div>
+                        </>
                     )}
 
                     {/* Customer Documents Tab for NC */}
@@ -416,14 +441,14 @@ const PosLinkedDocModal = ({
                                             </button>
                                             <button
                                                 type="button"
-                                                onClick={() => handleFilterDocTypeChange('01')}
+                                                onClick={() => handleFilterDocTypeChange('07')}
                                                 className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
-                                                    filterDocType === '01'
+                                                    filterDocType === '07'
                                                         ? 'bg-indigo-600 text-white'
                                                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                                                 }`}
                                             >
-                                                Factura
+                                                C. Retención
                                             </button>
                                             <button
                                                 type="button"
@@ -447,7 +472,7 @@ const PosLinkedDocModal = ({
                                         <div className="p-6 text-center bg-slate-50 rounded-2xl border border-slate-100 text-slate-400 text-xs font-bold">
                                             {debouncedSearch
                                                 ? `No se encontraron documentos que coincidan con "${debouncedSearch}".`
-                                                : 'No se encontraron facturas o créditos fiscales previos para este cliente.'}
+                                                : 'No se encontraron créditos fiscales o comprobantes de retención previos para este cliente.'}
                                             <div className="mt-2">
                                                 <button
                                                     type="button"
@@ -609,7 +634,7 @@ const PosLinkedDocModal = ({
                                         onChange={(e) => setDocType(e.target.value)}
                                         className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-500/20"
                                     >
-                                        <option value="01">Factura (01)</option>
+                                        {tipoDte !== '05' && <option value="01">Factura (01)</option>}
                                         <option value="03">Créd. Fiscal (03)</option>
                                         <option value="07">C. Retención (07)</option>
                                     </select>
