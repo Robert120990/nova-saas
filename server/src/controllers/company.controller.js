@@ -155,10 +155,10 @@ const createCompany = async (req, res) => {
             );
         }
 
-        // 2. Crear sucursal por defecto
+        // 2. Crear sucursal por defecto (Casa Matriz con código MH oficial M001)
         const [branchResult] = await connection.query(
-            'INSERT INTO branches (company_id, codigo, nombre, direccion, tipo_establecimiento, es_casa_matriz) VALUES (?, ?, ?, ?, ?, ?)',
-            [companyId, '0001', 'Sede Central', 'Dirección a definir', '01', 1]
+            `INSERT INTO branches (company_id, codigo, codigo_mh, nombre, direccion, departamento, municipio, distrito, correo, telefono, ambiente, tipo_establecimiento, es_casa_matriz) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [companyId, '0001', 'M001', 'Sede Central', data.direccion || 'Dirección a definir', data.departamento || '06', data.municipio || '23', data.distrito || '14', data.correo || null, data.telefono || null, data.ambiente || '1', '02', 1]
         );
         const branchId = branchResult.insertId;
 
