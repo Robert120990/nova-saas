@@ -9,12 +9,13 @@ const pool = require('../../config/db');
 
 function getEstablecimientoLetter(tipoEstablecimiento, codEstableMH) {
     if (codEstableMH) {
-        const prefix = String(codEstableMH).charAt(0).toUpperCase();
-        if (prefix === 'M') return 'M';
-        if (prefix === 'S') return 'S';
+        const prefix = String(codEstableMH).trim().charAt(0).toUpperCase();
+        if (['M', 'B', 'S', 'P'].includes(prefix)) return prefix;
     }
-    switch (tipoEstablecimiento) {
+    switch (String(tipoEstablecimiento || '')) {
         case '02': return 'M';
+        case '04': return 'B';
+        case '07': return 'P';
         default: return 'S';
     }
 }
@@ -32,8 +33,10 @@ async function generateControlNumber(tipoDte, companyId, tipoEstablecimiento, co
     const connection = await pool.getConnection();
     const year = new Date().getFullYear();
     const letter = getEstablecimientoLetter(tipoEstablecimiento, codEstableMH);
-    const estabCode = String(codEstableMH || '1').replace(/^[^\d]*/, '').padStart(3, '0');
-    const posCode = String(codPuntoVentaMH || '1').replace(/^[^\d]*/, '').slice(-3).padStart(3, '0');
+    const estabDigits = (String(codEstableMH || '1').match(/\d+/) || ['1'])[0];
+    const estabCode = estabDigits.slice(-3).padStart(3, '0');
+    const posDigits = (String(codPuntoVentaMH || '1').match(/\d+/) || ['1'])[0];
+    const posCode = posDigits.slice(-3).padStart(3, '0');
     const serie = `${letter}${estabCode}P${posCode}`;
 
     try {

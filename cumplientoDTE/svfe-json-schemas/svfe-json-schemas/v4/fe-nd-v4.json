@@ -507,7 +507,7 @@
                         "exclusiveMaximum": 100000000000,
                         "multipleOf": 1e-08
                     },
-                    "": {
+                    "tributos": {
                         "description": "Código del Tributo",
                         "type": [
                             "array",
@@ -565,7 +565,7 @@
                     "ventaNoSuj",
                     "ventaExenta",
                     "ventaGravada",
-                    "",
+                    "tributos",
                     "noGravado",
                     "ivaPerci",
                     "totalIva",
@@ -614,13 +614,13 @@
                     "exclusiveMaximum": 100000000000,
                     "multipleOf": 0.01
                 },
-                "": {
+                "tributos": {
                     "type": [
                         "array",
                         "null"
                     ],
                     "uniqueItems": true,
-                    "description": "Resumen de ",
+                    "description": "Resumen de Tributos",
                     "items": {
                         "type": "object",
                         "properties": {
@@ -739,7 +739,7 @@
                 "totalGravada",
                 "subTotalVentas",
                 "totalDescu",
-                "",
+                "tributos",
                 "ivaPerci",
                 "totalIva",
                 "ivaRete",

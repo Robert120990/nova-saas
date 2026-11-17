@@ -297,10 +297,13 @@ async function generateDTE(payload) {
     const codigoGeneracion = uuidv4().toUpperCase();
     const emisorAdic = payload.emisor_adicional || {};
     const codPuntoVentaMH = emisorAdic.codPuntoVentaMH || '001';
+    const effectiveTipoEstab = (branch.es_casa_matriz && (!branch.tipo_establecimiento || branch.tipo_establecimiento === '01'))
+        ? '02'
+        : (branch.tipo_establecimiento || '01');
     const controlResult = await generateControlNumber(
         tipoDte,
         companyId,
-        branch.tipo_establecimiento || '01',
+        effectiveTipoEstab,
         branch.codigo_mh || String(branch.codigo || '1'),
         codPuntoVentaMH
     );
@@ -353,9 +356,10 @@ async function generateDTE(payload) {
 
     // Descripción oficial de actividad económica: si el emisor no envía una
     // descripción propia, se resuelve desde cat_019 por codigo_actividad
+    const resolvedCodActividad = company.codigo_actividad || '47300';
     let emisorDescActividad = emisorAdic.descActividad || company.actividad_economica || '';
     if (!emisorDescActividad) {
-        const oficial = await resolveActividadEconomica(company.codigo_actividad);
+        const oficial = await resolveActividadEconomica(resolvedCodActividad);
         if (oficial) emisorDescActividad = oficial;
     }
 
@@ -363,7 +367,7 @@ async function generateDTE(payload) {
         nit: cleanNumbers(company.nit),
         nrc: cleanNumbers(company.nrc),
         nombre: sanitizeText(company.razon_social),
-        codActividad: company.codigo_actividad || '47300',
+        codActividad: resolvedCodActividad,
         descActividad: sanitizeText(emisorDescActividad || 'Actividad no definida'),
         nombreComercial: sanitizeText(company.nombre_comercial || company.razon_social),
         direccion: {
@@ -383,7 +387,7 @@ async function generateDTE(payload) {
 
     // Estos campos NO van en Nota de Crédito (05) ni Nota de Débito (06)
     if (tipoDte !== '05' && tipoDte !== '06') {
-        emisor.codEstable = (branch.codigo_mh || String(branch.codigo || '1')).padStart(4, '0');
+        emisor.codEstable = String(branch.codigo_mh || branch.codigo || '1').trim().slice(0, 4).padStart(4, '0');
         emisor.codPuntoVenta = String(codPuntoVentaMH || '0001').padStart(4, '0');
     }
 
@@ -913,7 +917,11 @@ async function generateDTE(payload) {
             delete base.subTotal;
             delete base.saldoFavor;
             delete base.pagos;
-            delete base.numPagoElectronico;
+            if (type === '05') {
+                delete base.numPagoElectronico;
+            } else {
+                base.numPagoElectronico = null;
+            }
         } else if (type === '04') {
             // Nota de Remisión es muy básica
             delete base.pagos;
