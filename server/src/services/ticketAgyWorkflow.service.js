@@ -21,7 +21,7 @@ async function ensureAgyFlowSchema() {
         const colNames = cols.map((c) => c.Field);
         const defs = [
             ['agy_status', "ADD COLUMN agy_status VARCHAR(40) NOT NULL DEFAULT 'idle'"],
-            ['agy_model', "ADD COLUMN agy_model VARCHAR(100) NULL DEFAULT 'gemini-4-argon-high'"],
+            ['agy_model', "ADD COLUMN agy_model VARCHAR(100) NULL DEFAULT 'gemini-4-carbon-high'"],
             ['agy_plan_markdown', 'ADD COLUMN agy_plan_markdown LONGTEXT NULL'],
             ['agy_plan_version', 'ADD COLUMN agy_plan_version INT NOT NULL DEFAULT 0'],
             ['agy_execution_log', 'ADD COLUMN agy_execution_log LONGTEXT NULL'],
@@ -32,15 +32,18 @@ async function ensureAgyFlowSchema() {
         for (const [name, sql] of defs) {
             if (!colNames.includes(name)) await pool.query(`ALTER TABLE support_tickets ${sql}`);
         }
+        await pool.query("ALTER TABLE support_tickets MODIFY COLUMN agy_model VARCHAR(100) NULL DEFAULT 'gemini-4-carbon-high'").catch(() => {});
         await pool.query(`CREATE TABLE IF NOT EXISTS agy_server_settings (
             id INT PRIMARY KEY DEFAULT 1, ssh_host VARCHAR(120) NOT NULL DEFAULT 'localhost',
             ssh_port INT NOT NULL DEFAULT 22, ssh_user VARCHAR(100) NOT NULL DEFAULT 'root',
             ssh_password VARCHAR(255) NULL, ssh_private_key_path VARCHAR(500) NULL,
             project_path VARCHAR(500) NOT NULL DEFAULT '/opt/nova-saas', agy_command VARCHAR(255) NOT NULL DEFAULT 'agy',
-            default_model VARCHAR(100) NOT NULL DEFAULT 'gemini-4-argon-high', execution_mode VARCHAR(20) NOT NULL DEFAULT 'auto',
+            default_model VARCHAR(100) NOT NULL DEFAULT 'gemini-4-carbon-high', execution_mode VARCHAR(20) NOT NULL DEFAULT 'auto',
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
-        await pool.query(`INSERT IGNORE INTO agy_server_settings (id, ssh_host, ssh_port, ssh_user, project_path, agy_command, default_model, execution_mode) VALUES (1, 'localhost', 22, 'root', '/opt/nova-saas', 'agy', 'gemini-4-argon-high', 'auto')`);
+        await pool.query(`INSERT IGNORE INTO agy_server_settings (id, ssh_host, ssh_port, ssh_user, project_path, agy_command, default_model, execution_mode) VALUES (1, 'localhost', 22, 'root', '/opt/nova-saas', 'agy', 'gemini-4-carbon-high', 'auto')`);
+        await pool.query(`UPDATE agy_server_settings SET default_model = 'gemini-4-carbon-high' WHERE default_model = 'gemini-4-argon-high' OR default_model IS NULL OR default_model = ''`).catch(() => {});
+        await pool.query(`UPDATE support_tickets SET agy_model = 'gemini-4-carbon-high' WHERE (agy_model IS NULL OR agy_model = '' OR agy_model = 'gemini-4-argon-high') AND status IN ('abierto', 'en_proceso') AND agy_status != 'completado'`).catch(() => {});
         await pool.query(`UPDATE agy_server_settings SET ssh_host = 'localhost', project_path = '/opt/nova-saas' WHERE ssh_host REGEXP '^[0-9]+\\\\.[0-9]+\\\\.[0-9]+\\\\.[0-9]+$' OR project_path = '/var/www/SIPEWEBgas'`);
         await pool.query(`UPDATE support_tickets SET status = 'resuelto', include_in_ai_prompt = 0, resolved_at = COALESCE(resolved_at, NOW()) WHERE agy_status = 'completado' AND status IN ('abierto', 'en_proceso')`);
 
@@ -102,7 +105,8 @@ async function startTicketAgyPlanning(ticketId, { model = null, aiNotes = undefi
     const ticket = await ticketService.getTicketById(ticketId);
     if (!ticket) throw new Error('Ticket no encontrado');
     const settings = await getAgyServerSettings();
-    const chosenModel = (model || ticket.agy_model || settings.default_model || 'gemini-4-argon-high').trim();
+    const rawModel = model || (ticket.agy_model === 'gemini-4-argon-high' ? null : ticket.agy_model) || settings.default_model || 'gemini-4-carbon-high';
+    const chosenModel = String(rawModel).trim();
     const nextVersion = Number(ticket.agy_plan_version || 0) + 1;
     const feedbackHistory = parseFeedbackHistory(ticket.agy_feedback_history);
     let updatedAiNotes = aiNotes !== undefined ? String(aiNotes || '').trim() : (ticket.ai_notes || '');
@@ -212,7 +216,9 @@ async function executeApprovedTicketAgyPlan(ticketId, { approvedBy = 'SuperAdmin
     const settings = await getAgyServerSettings();
     const proj = resolveProjectForTicket(ticket, settings);
     const targetSettings = { ...settings, project_path: proj.projectPath };
-    const chosenModel = ticket.agy_model || settings.default_model || 'gemini-4-argon-high';
+    const chosenModel = (!ticket.agy_model || ticket.agy_model === 'gemini-4-argon-high')
+        ? (settings.default_model || 'gemini-4-carbon-high')
+        : ticket.agy_model;
     const relatedFiles = findRelatedRepoFiles(ticket, proj.projectPath);
     const activePlan = ticket.agy_plan_markdown || buildSynthesizedStructuredPlan(ticket, chosenModel, ticket.agy_plan_version || 1, relatedFiles, proj);
     const execStartLog = `\n[${new Date().toISOString()}] ✅ PLAN v${ticket.agy_plan_version || 1} APROBADO POR ${approvedBy}.\n` +
@@ -266,16 +272,16 @@ async function executeApprovedTicketAgyPlan(ticketId, { approvedBy = 'SuperAdmin
 
             if (patchResult.modifiedFiles.length === 0) {
                 const warnSummary = sanitizeConsoleText(
-                    `⚠️ El motor AGY inspeccionó ${relatedFiles.join(', ')} en ${proj.projectLabel}, pero no se registraron modificaciones de código en disco. Agrega una Directriz Técnica (ai_notes) más específica o aplica el cambio manualmente.`
+                    `⚠️ El motor AGY inspeccionó ${relatedFiles.join(', ')} en ${proj.projectLabel}, pero no se registraron modificaciones de código en disco. Agrega una Directriz Técnica (ai_notes) más específica o reintenta con una indicación puntual.`
                 );
                 await pool.query(
                     `UPDATE support_tickets SET agy_status = 'esperando_aprobacion', agy_execution_log = CONCAT(COALESCE(agy_execution_log, ''), '\n=== AVISO EJECUCIÓN ===\n', ?), agy_updated_at = NOW() WHERE id = ?`,
                     [warnSummary, ticketId]
                 );
-                if (liveProgress) await liveProgress.complete(warnSummary);
+                if (liveProgress) await liveProgress.complete(warnSummary, { success: false });
                 const pendingTicket = await ticketService.getTicketById(ticketId);
                 notifyFrontendAgyUpdate(pendingTicket);
-                await notifyAgyExecutionResultToTelegram(pendingTicket, warnSummary, approvedBy);
+                await notifyAgyExecutionResultToTelegram(pendingTicket, warnSummary, approvedBy, { success: false });
                 return;
             }
 
@@ -301,17 +307,22 @@ async function executeApprovedTicketAgyPlan(ticketId, { approvedBy = 'SuperAdmin
             });
 
             try {
+                const { syncTicketToAiTask } = require('./ticketAiTaskBridge.service');
+                await syncTicketToAiTask(ticketId, { forceSync: true });
+            } catch { /* ignore */ }
+
+            try {
                 const { removeTicketTelegramButtons } = require('./ticketTelegram.service');
                 await removeTicketTelegramButtons(ticketId, telegramContext ? { chatId: telegramContext.sourceChatId, messageId: telegramContext.sourceMessageId } : null);
             } catch { /* ignore */ }
 
-            if (liveProgress) await liveProgress.complete(`Solución ejecutada y ticket #${runningTicket.ticket_code} marcado como RESUELTO.`);
+            if (liveProgress) await liveProgress.complete(`Solución ejecutada y ticket #${runningTicket.ticket_code} marcado como RESUELTO.`, { success: true });
             const doneTicket = await ticketService.getTicketById(ticketId);
             notifyFrontendAgyUpdate(doneTicket);
-            await notifyAgyExecutionResultToTelegram(doneTicket, finalSummary, approvedBy);
+            await notifyAgyExecutionResultToTelegram(doneTicket, finalSummary, approvedBy, { success: true });
         } catch (err) {
             console.error('[TicketAgyWorkflow] Error ejecutando plan AGY:', err);
-            if (liveProgress) await liveProgress.complete(`Aviso en ejecución: ${err.message || 'Error'}`).catch(() => {});
+            if (liveProgress) await liveProgress.complete(`⚠️ Aviso en ejecución: ${err.message || 'Error'}`, { success: false }).catch(() => {});
             await pool.query(`UPDATE support_tickets SET agy_status = 'error', agy_updated_at = NOW() WHERE id = ?`, [ticketId]);
         }
     });

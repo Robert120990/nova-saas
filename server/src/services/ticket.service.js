@@ -315,6 +315,13 @@ async function updateTicketStatus(ticketId, {
         }
     }
 
+    if (status === 'resuelto' || status === 'cerrado') {
+        try {
+            const { syncTicketToAiTask } = require('./ticketAiTaskBridge.service');
+            await syncTicketToAiTask(updatedTicket, { forceSync: true });
+        } catch { /* ignore */ }
+    }
+
     if (updatedByType !== 'telegram' && (status === 'resuelto' || status === 'en_proceso')) {
         const { notifyTicketStatusToTelegram } = require('./ticketTelegram.service');
         notifyTicketStatusToTelegram(updatedTicket).catch(() => {});
