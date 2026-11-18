@@ -451,17 +451,19 @@ const generateRTEEModern = (data) => {
 
             doc.fillColor(THEME.textMuted).fontSize(6.5).font('Helvetica-Bold').text('CONDICIÓN DE LA OPERACIÓN:', col2X, r2y);
             r2y += 8;
-            const esContado = venta.condicion_operacion === 1;
+            const operationCondition = Number(venta.condicion_operacion) || 1;
+            const isCash = operationCondition === 1;
+            const conditionLabel = operationCondition === 1 ? 'CONTADO' : operationCondition === 2 ? 'CRÉDITO' : 'OTRO';
             doc.roundedRect(col2X, r2y, 62, 14, 3)
                .lineWidth(0.75)
-               .strokeColor(esContado ? THEME.prodGreen : THEME.testAmber)
-               .fillColor(esContado ? THEME.prodGreenBg : THEME.testAmberBg)
+               .strokeColor(isCash ? THEME.prodGreen : THEME.testAmber)
+               .fillColor(isCash ? THEME.prodGreenBg : THEME.testAmberBg)
                .fillAndStroke();
 
-            doc.fillColor(esContado ? THEME.prodGreen : THEME.testAmber)
+            doc.fillColor(isCash ? THEME.prodGreen : THEME.testAmber)
                .fontSize(7.5)
                .font('Helvetica-Bold')
-               .text(esContado ? 'CONTADO' : 'CRÉDITO', col2X, r2y + 3.5, { align: 'center', width: 62 });
+               .text(conditionLabel, col2X, r2y + 3.5, { align: 'center', width: 62 });
 
             // ==========================================
             // 4. TABLA DE ÍTEMS / DETALLE
