@@ -874,7 +874,7 @@ module.exports = {
                 venta: {
                     fecha_emision: dteJson.identificacion.fecEmi,
                     hora_emision: dteJson.identificacion.horEmi,
-                    condicion_operacion: dteJson.resumen.condicionOperacion || 1,
+                    condicion_operacion: Number(dteJson.resumen?.condicionOperacion ?? venta.condicion_operacion ?? venta.payment_condition) || 1,
                     subtotal_ventas: dteJson.resumen?.subTotalVentas ?? (parseFloat(dteJson.resumen?.totalGravada || 0) + parseFloat(dteJson.resumen?.totalExenta || 0) + parseFloat(dteJson.resumen?.totalNoSuj || 0)),
                     total_gravado: dteJson.resumen.totalGravada || dteJson.resumen.totalSujetoRetencion || 0,
                     total_exento: dteJson.resumen.totalExenta || 0,
@@ -1071,8 +1071,7 @@ module.exports = {
                 venta: {
                     fecha_emision: dteJson.identificacion.fecEmi,
                     hora_emision: dteJson.identificacion.horEmi,
-                    condicion_operacion: dteJson.resumen.condicionOperacion || 1,
-                    subtotal_ventas: dteJson.resumen?.subTotalVentas || dteJson.resumen?.totalGravada || 0,
+                    condicion_operacion: Number(dteJson.resumen?.condicionOperacion ?? venta.condicion_operacion ?? venta.payment_condition) || 1,
                     subtotal_ventas: dteJson.resumen?.subTotalVentas ?? (parseFloat(dteJson.resumen?.totalGravada || 0) + parseFloat(dteJson.resumen?.totalExenta || 0) + parseFloat(dteJson.resumen?.totalNoSuj || 0)),
                     total_gravado: dteJson.resumen.totalGravada || dteJson.resumen.totalSujetoRetencion || 0,
                     total_exento: dteJson.resumen.totalExenta || 0,
