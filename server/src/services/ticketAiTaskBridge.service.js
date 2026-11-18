@@ -202,8 +202,9 @@ async function syncTicketToAiTask(ticketOrId, options = {}) {
         );
 
         const existing = existingRows[0] || null;
+        const isResolved = ticket.status === 'resuelto' || ticket.status === 'cerrado' || ticket.agy_status === 'completado';
 
-        if (!Number(ticket.include_in_ai_prompt)) {
+        if (!Number(ticket.include_in_ai_prompt) && !isResolved) {
             if (existing && !['cancelada', 'completada'].includes(existing.status)) {
                 await pool.query(
                     `UPDATE ai_agent_tasks SET status = 'cancelada', current_step = 'Retirado del paquete IA en Tickets de Soporte.' WHERE id = ?`,
@@ -212,8 +213,10 @@ async function syncTicketToAiTask(ticketOrId, options = {}) {
             }
             return null;
         }
+        if (!Number(ticket.include_in_ai_prompt) && isResolved && !existing) {
+            return null;
+        }
 
-        const isResolved = ticket.status === 'resuelto';
         const execMode = ticket.ai_mode === 'api' ? 'api' : 'agent_prompt';
         const agentPlat = ticket.agent_platform || 'antigravity';
         const platMeta = getPlatformMeta(agentPlat);
@@ -326,6 +329,20 @@ async function syncTicketToAiTask(ticketOrId, options = {}) {
 
 async function syncAllFlaggedTicketsToAiTasks(companyId = null) {
     try {
+        await pool.query(
+            `UPDATE ai_agent_tasks t
+             INNER JOIN support_tickets st
+                 ON st.ticket_code IS NOT NULL AND st.ticket_code != ''
+                AND (t.title LIKE CONCAT('%[Ticket #', st.ticket_code, ']%') OR t.title LIKE CONCAT('%', st.ticket_code, '%'))
+             SET t.status = 'completada',
+                 t.progress = 100,
+                 t.current_step = 'Mejora/corrección aplicada en código · Ticket resuelto.',
+                 t.completed_at = COALESCE(t.completed_at, st.resolved_at, NOW()),
+                 t.error_message = NULL
+             WHERE t.status IN ('en_proceso', 'pendiente', 'analizando')
+               AND (st.status IN ('resuelto', 'cerrado') OR st.agy_status = 'completado')`
+        ).catch(() => {});
+
         const params = [];
         let where = `WHERE include_in_ai_prompt = 1 AND status NOT IN ('cerrado', 'rechazado')`;
         if (companyId) {

@@ -103,7 +103,7 @@ const approveTicketAndStartAgyPlan = async (req, res) => {
         const actorName = await getActorName(req.user?.id, req.user?.nombre || 'SuperAdmin');
 
         const updated = await startTicketAgyPlanning(id, {
-            model: model || 'gemini-4-argon-high',
+            model: model || 'gemini-4-carbon-high',
             aiNotes: ai_notes,
             approvedBy: actorName,
             additionalFeedback: feedback_comment || null

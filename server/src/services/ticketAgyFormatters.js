@@ -62,7 +62,7 @@ function humanizeAndFormatAgyPlan(ticket, rawPlan) {
 /**
  * Convierte el resultado final de ejecución en un mensaje resumido y en lenguaje humano.
  */
-function formatAgyExecutionResultForTelegram(ticket, summaryText, approvedBy) {
+function formatAgyExecutionResultForTelegram(ticket, summaryText, approvedBy, options = {}) {
     const isFromAdmin = String(ticket?.source_system || '').toLowerCase().includes('admin.sipesv.com') ||
         String(ticket?.ticket_code || '').toUpperCase().startsWith('ADM-');
     const projectTag = isFromAdmin ? 'admin.sipesv.com (SIPE Admin)' : 'sys.sipesv.com (SIPE SaaS)';
@@ -70,10 +70,23 @@ function formatAgyExecutionResultForTelegram(ticket, summaryText, approvedBy) {
     const subject = ticket?.subject || 'Ajuste solicitado';
 
     const clean = sanitizeConsoleText(String(summaryText || ''));
+    const isSuccess = options.success !== undefined ? Boolean(options.success) : !clean.trim().startsWith('⚠️');
+
+    if (!isSuccess) {
+        return (
+            `⚠️ *EJECUCIÓN REQUIERE PRECISIÓN ADICIONAL — #${escapeMd(ticket.ticket_code)}*\n\n` +
+            `📌 *Asunto:* ${escapeMd(subject)}\n` +
+            `🏢 *Módulo:* ${escapeMd(moduleName)} (\`${escapeMd(projectTag)}\`)\n` +
+            `👤 *Solicitado por:* ${escapeMd(approvedBy)}\n\n` +
+            `🔎 *Diagnóstico de ejecución:*\n` +
+            `${escapeMd(clean || 'No se aplicaron escrituras automáticas en disco para evitar modificaciones ambiguas.')}\n\n` +
+            `📌 _El ticket permanece *En Proceso* (NO se ha marcado como resuelto). Usa los botones inferiores para reintentar o especificar el detalle exacto:_`
+        );
+    }
 
     // Detectar si hay componentes o archivos tocados
     let componentsLine = '';
-    const fileMatch = clean.match(/(?:Archivos modificados|Componentes actualizados):\s*([^\n]+)/i);
+    const fileMatch = clean.match(/(?:Archivos modificados|Archivos actualizados|Componentes actualizados):\s*([^\n]+)/i);
     if (fileMatch) {
         const shortFiles = fileMatch[1]
             .split(',')

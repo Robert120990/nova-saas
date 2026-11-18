@@ -3,176 +3,68 @@ const path = require('path');
 const { execSync, spawn } = require('child_process');
 const aiService = require('./ai.service');
 const { setAppVersion } = require('./websocket.service');
+const { isTicketFromAdminProject, resolveProjectForTicket, findSmartRelatedFiles } = require('./ticketAgyRepoDiscovery.service');
 
-const ADMIN_CANDIDATE_PATHS = [process.env.AGY_ADMIN_PROJECT_PATH, '/var/www/sipeadmin', '/opt/sipeadmin', '/home/sistemas/sipeadmin', '/home/sistemas/SIPEOFI', '/opt/SIPEOFI', path.resolve(process.cwd(), '../../SIPEOFI'), path.resolve(process.cwd(), '../SIPEOFI'), 'c:/Proyects local/SIPEOFI'].filter(Boolean);
-const SAAS_CANDIDATE_PATHS = [process.env.AGY_PROJECT_PATH, path.resolve(process.cwd(), '..'), '/opt/nova-saas', '/var/www/SIPEWEBgas', '/home/sistemas/SIPEWEBgas', 'c:/Proyects local/SIPEWEBgas'].filter(Boolean);
-
-function isTicketFromAdminProject(ticket = {}) {
-    const code = String(ticket.ticket_code || '').toUpperCase();
-    const source = String(ticket.source_system || '').toLowerCase();
-    const mod = String(ticket.module_name || '').toLowerCase();
-    const url = String(ticket.page_url || '').toLowerCase();
-    return code.startsWith('ADM-') || source.includes('admin.sipesv.com') || mod.includes('sipe admin') || url.startsWith('/dashboard/');
-}
-
-function resolveProjectForTicket(ticket = {}, settings = {}) {
-    if (isTicketFromAdminProject(ticket)) {
-        const foundAdmin = ADMIN_CANDIDATE_PATHS.find((c) => {
-            try { return fs.existsSync(c) && (fs.existsSync(path.join(c, 'frontend')) || fs.existsSync(path.join(c, 'backend'))); } catch { return false; }
-        });
-        return {
-            isAdmin: true, projectCode: 'ADM', projectLabel: 'admin.sipesv.com (SIPE Admin)',
-            projectPath: foundAdmin || process.env.AGY_ADMIN_PROJECT_PATH || '/var/www/sipeadmin',
-            frontendDir: 'frontend', backendDir: 'backend', pm2AppName: 'sipeadmin-backend'
-        };
-    }
-    const configured = settings?.project_path;
-    const foundSaas = [configured, ...SAAS_CANDIDATE_PATHS].filter(Boolean).find((c) => {
-        try { return fs.existsSync(c) && fs.existsSync(path.join(c, 'client')); } catch { return false; }
-    });
-    return {
-        isAdmin: false, projectCode: 'TKT', projectLabel: 'sys.sipesv.com (SIPE SaaS)',
-        projectPath: foundSaas || configured || '/opt/nova-saas',
-        frontendDir: 'client', backendDir: 'server', pm2AppName: 'nova-saas-api'
-    };
-}
-
-const KNOWN_SAAS_ROUTE_FILES = {
-    '/branches': ['server/src/controllers/branch.controller.js', 'server/src/schemas/companySchemas.js', 'client/src/pages/Branches.jsx', 'client/src/components/branches/BranchModal.jsx'],
-    '/ventas': ['server/src/schemas/salesSchemas.js', 'server/src/controllers/sales/salesEditDteItems.controller.js', 'server/src/controllers/sales/salesDte.controller.js', 'client/src/pages/SalesHistory.jsx', 'client/src/pages/SalesTerminal.jsx'],
-    '/industrial/empaque': ['client/src/components/egg/packaging/EggNewPackagingModal.jsx', 'client/src/components/egg/packaging/PackagingItemsSection.jsx', 'client/src/components/egg/packaging/EggEditPackagingModal.jsx', 'client/src/constants/eggIndustrialCatalogs.js', 'client/src/pages/EggIndustrial/Packaging.jsx'],
-    '/industrial/produccion': ['client/src/components/egg/production/ProductionIsNewBatchModalOpenModal.jsx', 'client/src/constants/eggIndustrialCatalogs.js', 'client/src/pages/EggIndustrial/Production.jsx'],
-    '/industrial/calendario': ['client/src/components/egg/productionCalendar/eggCalendarConstants.js', 'client/src/components/egg/productionCalendar/useProductionCalendarModel.jsx', 'client/src/pages/EggIndustrial/ProductionCalendar.jsx'],
-    '/ventas/descuentos': ['client/src/pages/CustomerDiscounts.jsx', 'client/src/components/sales/CustomerDiscountModal.jsx', 'server/src/controllers/customerDiscount.controller.js', 'server/src/schemas/promoSchemas.js'],
-    '/inventario/movimientos': ['client/src/pages/InventoryAdjustments.jsx', 'client/src/components/inventory/tabs/NewAdjustmentTab.jsx', 'server/src/controllers/inventoryAdjustment/inventoryAdjustmentCore.controller.js']
-};
-
-const KNOWN_ADMIN_ROUTE_FILES = {
-    '/dashboard/operaciones/pedidos': ['backend/routes/operaciones.js', 'frontend/src/pages/PedidosCombustible.jsx'],
-    '/dashboard/consultas/estaciones/ventas': ['backend/routes/consultas.js', 'backend/services/fuelIntelligence.js', 'frontend/src/pages/ConsultaVentasEstaciones.jsx']
-};
-
-function extractExplicitFilesFromTicketText(ticket, rootDir) {
-    const combined = [ticket.ai_notes || '', ticket.agy_plan_markdown || '', ticket.agy_execution_log || '', ticket.description || ''].join('\n');
-    const regex = /((?:client|server|frontend|backend|dte-api)\/[A-Za-z0-9_./-]+\.(?:jsx?|tsx?|css|sql))/g;
-    const explicit = [];
-    let m = regex.exec(combined);
-    while (m) {
-        const rel = m[1].replace(/\\/g, '/');
-        if (!explicit.includes(rel) && fs.existsSync(path.join(rootDir, rel))) explicit.push(rel);
-        m = regex.exec(combined);
-    }
-    return explicit;
-}
-
-function findRouteMappedFiles(rootDir, pageUrl, isAdmin) {
-    if (!pageUrl) return [];
-    const matched = [];
-    const cleanRoute = String(pageUrl).split('?')[0].trim();
-    const routeMap = isAdmin ? KNOWN_ADMIN_ROUTE_FILES : KNOWN_SAAS_ROUTE_FILES;
-    for (const rel of (routeMap[cleanRoute] || [])) {
-        if (fs.existsSync(path.join(rootDir, rel))) matched.push(rel);
-    }
-    const srcBase = isAdmin ? 'frontend/src' : 'client/src';
-    const routerFiles = isAdmin
-        ? [path.join(rootDir, 'frontend/src/pages/DashboardLayout.jsx'), path.join(rootDir, 'frontend/src/App.jsx')]
-        : [path.join(rootDir, 'client/src/App.jsx')];
-
-    for (const rf of routerFiles) {
-        if (!fs.existsSync(rf)) continue;
-        try {
-            const content = fs.readFileSync(rf, 'utf8');
-            const importMap = {};
-            const importRegex = /(?:const|let)\s+([A-Z][A-Za-z0-9_]*)\s*=.*import\(['"]\.\/([^'"]+)['"]\)|import\s+([A-Z][A-Za-z0-9_]*)\s+from\s+['"]\.\/([^'"]+)['"]/g;
-            for (let im = importRegex.exec(content); im; im = importRegex.exec(content)) {
-                const name = im[1] || im[3];
-                const relImport = im[2] || im[4];
-                if (name && relImport) importMap[name] = relImport;
-            }
-            for (const line of content.split('\n').filter((l) => l.includes(cleanRoute))) {
-                for (const raw of (line.match(/<([A-Z][A-Za-z0-9_]+)/g) || [])) {
-                    const compName = raw.replace('<', '');
-                    for (const relCand of [importMap[compName] ? `${srcBase}/${importMap[compName]}.jsx` : null, `${srcBase}/pages/${compName}.jsx`].filter(Boolean)) {
-                        if (fs.existsSync(path.join(rootDir, relCand))) matched.push(relCand);
-                    }
-                }
-            }
-        } catch { /* ignore */ }
-    }
-    return matched;
-}
-
-function findSmartRelatedFiles(ticket, settings = {}) {
-    const proj = resolveProjectForTicket(ticket, settings);
-    const rootDir = proj.projectPath;
-    if (!fs.existsSync(rootDir)) return proj.isAdmin ? ['frontend/src/pages/DashboardLayout.jsx'] : ['client/src/pages/SupportTickets.jsx'];
-    const found = new Set([...extractExplicitFilesFromTicketText(ticket, rootDir), ...findRouteMappedFiles(rootDir, ticket.page_url, proj.isAdmin)]);
-    const stopWords = new Set(['dashboard', 'soporte', 'reporte', 'reportes', 'general', 'modulo', 'sistema', 'error', 'problema', 'quitar', 'poner', 'agregar']);
-    const keywords = [...(String(ticket.page_url || '').split('/').filter(Boolean)), ...(String(ticket.module_name || '').split(/\s+/)), ...(String(ticket.subject || '').split(/\s+/))]
-        .map((k) => k.toLowerCase().replace(/[^a-z0-9]/g, '')).filter((k) => k.length >= 4 && !stopWords.has(k));
-    const dirsToScan = proj.isAdmin ? ['frontend/src/pages', 'frontend/src/components', 'backend/routes', 'backend/services'] : ['client/src/pages', 'client/src/components', 'server/src/controllers', 'server/src/services', 'server/src/schemas'];
-
-    const walk = (dir, depth = 0) => {
-        if (depth > 2 || !fs.existsSync(dir) || found.size >= 6) return;
-        try {
-            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-                if (found.size >= 6) break;
-                const full = path.join(dir, entry.name);
-                if (entry.isDirectory()) walk(full, depth + 1);
-                else if (/\.(jsx?|tsx?)$/.test(entry.name) && keywords.some((kw) => entry.name.toLowerCase().includes(kw))) {
-                    found.add(path.relative(rootDir, full).replace(/\\/g, '/'));
-                }
-            }
-        } catch { /* ignore */ }
-    };
-    dirsToScan.forEach((d) => walk(path.join(rootDir, d), 0));
-    if (found.size === 0) found.add(proj.isAdmin ? 'frontend/src/pages/DashboardLayout.jsx' : 'client/src/pages/SupportTickets.jsx');
-    return Array.from(found).slice(0, 6);
-}
-
-function readCandidateSnippets(rootDir, relFiles = [], maxCharsPerFile = 6000) {
+function readCandidateSnippets(rootDir, relFiles = [], maxCharsPerFile = 85000, queryHint = '') {
     const snippets = [];
+    const hintTerms = String(queryHint || '').toLowerCase().split(/[^a-z0-9_]+/).filter((w) => w.length >= 4);
     for (const rel of relFiles.slice(0, 5)) {
         const abs = path.join(rootDir, rel);
-        if (fs.existsSync(abs) && fs.statSync(abs).isFile()) {
-            try {
-                const raw = fs.readFileSync(abs, 'utf8');
-                snippets.push({ file: rel, content: raw.slice(0, maxCharsPerFile), totalLines: raw.split('\n').length });
-            } catch { /* ignore */ }
-        }
+        if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) continue;
+        try {
+            const raw = fs.readFileSync(abs, 'utf8');
+            const totalLines = raw.split('\n').length;
+            if (raw.length <= maxCharsPerFile) {
+                snippets.push({ file: rel, content: raw, totalLines });
+            } else {
+                const head = raw.slice(0, Math.floor(maxCharsPerFile * 0.45));
+                let focusIdx = -1;
+                for (const t of hintTerms) {
+                    const idx = raw.toLowerCase().indexOf(t, head.length);
+                    if (idx !== -1) { focusIdx = idx; break; }
+                }
+                const midStart = focusIdx !== -1 ? Math.max(head.length, focusIdx - 6000) : Math.max(head.length, raw.length - Math.floor(maxCharsPerFile * 0.5));
+                const tail = raw.slice(midStart, midStart + Math.floor(maxCharsPerFile * 0.5));
+                snippets.push({ file: rel, content: `${head}\n/* ... [sección intermedia omitida] ... */\n${tail}`, totalLines });
+            }
+        } catch { /* ignore */ }
     }
     return snippets;
 }
 
 async function generateAiPlanFromCode(ticket, model, planVersion, proj, relatedFiles) {
-    if (!aiService.deepseek && !aiService.gemini) return null;
-    const snippets = readCandidateSnippets(proj.projectPath, relatedFiles, 5000);
+    const hint = `${ticket.subject || ''} ${ticket.description || ''} ${ticket.ai_notes || ''}`;
+    const snippets = readCandidateSnippets(proj.projectPath, relatedFiles, 32000, hint);
     const codeContext = snippets.map((s) => `--- ARCHIVO: ${s.file} (${s.totalLines} líneas) ---\n${s.content}`).join('\n\n');
-    const systemPrompt = `Eres AGY, el arquitecto de software de SIPE. Analiza el ticket #${ticket.ticket_code} y redacta una propuesta de solución RESUMIDA, CLARA Y EN LENGUAJE HUMANO (máximo 12-15 líneas) para Telegram. Evita tecnicismos excesivos o bloques de código.`;
+    const systemPrompt = `Eres AGY (${model}), arquitecto principal de software de SIPE. Analiza el código real adjunto para el ticket #${ticket.ticket_code} y redacta una propuesta de solución CONCISA, PRECISA Y EN LENGUAJE HUMANO en español (máximo 14 líneas) para Telegram. Sin bloques largos de código.`;
     const userPrompt = [
-        `Ticket: #${ticket.ticket_code} | Proyecto: ${proj.projectLabel}`,
+        `Ticket: #${ticket.ticket_code} | Proyecto: ${proj.projectLabel} | Modelo: ${model}`,
         `Ruta: ${ticket.page_url || 'N/A'} | Módulo: ${ticket.module_name || 'General'}`,
         `Asunto: ${ticket.subject} | Descripción: ${ticket.description}`,
         ticket.ai_notes ? `Directriz del Admin: ${ticket.ai_notes}` : '',
         `Archivos detectados:\n${relatedFiles.join('\n')}`,
-        codeContext ? `Extracto de código actual:\n${codeContext}` : '',
-        `Genera el Plan v${planVersion} con: 🎯 Diagnóstico, 🛠️ Solución propuesta y 📂 Componentes.`
+        codeContext ? `Código actual en repositorio:\n${codeContext}` : '',
+        `Estructura con: 🎯 Diagnóstico, 🛠️ Solución propuesta y 📂 Componentes.`
     ].filter(Boolean).join('\n');
 
     try {
-        const resp = await aiService.generateFinalResponse({ systemPrompt, history: [], finalPrompt: userPrompt });
+        const resp = await aiService.generateCodeResponse({ systemPrompt, userPrompt, jsonMode: false });
         return resp?.content ? String(resp.content).trim() : null;
     } catch { return null; }
 }
 
+function gitExec(cmd, rootDir, timeout = 15000) {
+    return execSync(`git -c safe.directory="*" ${cmd}`, { cwd: rootDir, timeout, stdio: 'pipe' }).toString().trim();
+}
+
 function getGitHeadCommit(rootDir) {
-    try { return execSync('git rev-parse HEAD', { cwd: rootDir, timeout: 5000, stdio: 'pipe' }).toString().trim(); } catch { return ''; }
+    try { return gitExec('rev-parse HEAD', rootDir, 5000); } catch { return ''; }
 }
 
 function getGitDirtySet(rootDir) {
     const set = new Set();
     try {
-        const gitStatus = execSync('git status --porcelain', { cwd: rootDir, timeout: 8000, stdio: 'pipe' }).toString().trim();
+        const gitStatus = gitExec('status --porcelain', rootDir, 8000);
         for (const line of gitStatus ? gitStatus.split('\n') : []) {
             const f = line.trim().split(/\s+/).pop();
             if (f) set.add(f.replace(/\\/g, '/'));
@@ -184,12 +76,12 @@ function getGitDirtySet(rootDir) {
 function syncGitPullLatest(rootDir, onLog = () => {}) {
     if (!fs.existsSync(rootDir)) return;
     try {
-        const branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: rootDir, timeout: 5000, stdio: 'pipe' }).toString().trim() || 'main';
-        const remotes = execSync('git remote', { cwd: rootDir, timeout: 5000, stdio: 'pipe' }).toString().trim().split(/\s+/).filter(Boolean);
-        execSync('git fetch --all --prune', { cwd: rootDir, timeout: 20000, stdio: 'pipe' });
+        const branch = gitExec('rev-parse --abbrev-ref HEAD', rootDir, 5000) || 'main';
+        const remotes = gitExec('remote', rootDir, 5000).split(/\s+/).filter(Boolean);
+        gitExec('fetch --all --prune', rootDir, 20000);
         for (const rem of ['upstream', 'origin'].filter((r) => remotes.includes(r))) {
             try {
-                execSync(`git pull --rebase --autostash ${rem} ${branch}`, { cwd: rootDir, timeout: 30000, stdio: 'pipe' });
+                gitExec(`pull --rebase --autostash ${rem} ${branch}`, rootDir, 30000);
                 onLog(`[AGY] 🔄 Repositorio sincronizado con últimos cambios de ${rem}/${branch}.\n`);
                 break;
             } catch { /* continue */ }
@@ -197,48 +89,84 @@ function syncGitPullLatest(rootDir, onLog = () => {}) {
     } catch { /* ignore */ }
 }
 
-function computeAndBroadcastVersion(rootDir) {
-    try {
-        const commit = execSync('git rev-parse --short HEAD', { cwd: rootDir, timeout: 5000, stdio: 'pipe' }).toString().trim();
-        const count = parseInt(execSync('git rev-list --count HEAD', { cwd: rootDir, timeout: 5000, stdio: 'pipe' }).toString().trim(), 10);
-        const version = !isNaN(count) && count >= 1000 ? `v2.08.${String(count - 999).padStart(2, '0')}` : `v2.07.${String(count || 0).padStart(2, '0')}`;
-        setAppVersion({ version, commit });
-        return { version, commit };
-    } catch { return { version: null, commit: null }; }
-}
+function applyFlexibleEdit(currentContent, searchBlock, replaceBlock) {
+    if (!searchBlock || currentContent === undefined) return currentContent;
+    if (currentContent.includes(searchBlock)) return currentContent.replace(searchBlock, replaceBlock);
+    const crlfSearch = searchBlock.replace(/\r?\n/g, '\r\n');
+    if (currentContent.includes(crlfSearch)) return currentContent.replace(crlfSearch, replaceBlock.replace(/\r?\n/g, '\r\n'));
 
-function syncGitCommitAndPush(rootDir, ticket, modifiedFiles, onLog = () => {}) {
-    const safeFiles = modifiedFiles.filter((f) => f && !f.includes('.env') && !f.endsWith('package-lock.json') && !f.endsWith('pnpm-lock.yaml'));
-    try {
-        if (safeFiles.length > 0) {
-            const quotedFiles = safeFiles.map((f) => `"${f.replace(/"/g, '')}"`).join(' ');
-            execSync(`git add -- ${quotedFiles}`, { cwd: rootDir, timeout: 15000, stdio: 'pipe' });
-            const staged = execSync('git diff --cached --name-only', { cwd: rootDir, timeout: 8000, stdio: 'pipe' }).toString().trim();
-            if (staged) {
-                const cleanSubject = String(ticket.subject || 'ajuste solicitado').replace(/["`$\\]/g, '').slice(0, 72);
-                execSync(`git -c user.name="AGY Server Bot" -c user.email="agy@sipesv.com" commit -m "fix(agy): resolver #${ticket.ticket_code} - ${cleanSubject}"`, { cwd: rootDir, timeout: 15000, stdio: 'pipe' });
+    const eol = currentContent.includes('\r\n') ? '\r\n' : '\n';
+    const srcLines = currentContent.split(/\r?\n/);
+    const searchLines = searchBlock.split(/\r?\n/).filter((l, idx, arr) => !(idx === arr.length - 1 && l === ''));
+    if (searchLines.length >= 2) {
+        const norm = (s) => s.trim();
+        for (let i = 0; i <= srcLines.length - searchLines.length; i++) {
+            let match = true;
+            for (let j = 0; j < searchLines.length; j++) {
+                if (norm(srcLines[i + j]) !== norm(searchLines[j])) { match = false; break; }
+            }
+            if (match) {
+                const updatedLines = [...srcLines.slice(0, i), ...replaceBlock.split(/\r?\n/), ...srcLines.slice(i + searchLines.length)];
+                return updatedLines.join(eol);
             }
         }
-        const commitHash = execSync('git rev-parse --short HEAD', { cwd: rootDir, timeout: 5000, stdio: 'pipe' }).toString().trim();
-        const branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: rootDir, timeout: 5000, stdio: 'pipe' }).toString().trim() || 'main';
-        const remotes = execSync('git remote', { cwd: rootDir, timeout: 5000, stdio: 'pipe' }).toString().trim().split(/\s+/).filter(Boolean);
+    }
+    return currentContent;
+}
+
+function bumpAdminFrontendVersion(rootDir, modifiedFiles) {
+    const pkgRel = 'frontend/package.json';
+    const pkgFull = path.join(rootDir, pkgRel);
+    if (!fs.existsSync(pkgFull)) return null;
+    try {
+        const pkgObj = JSON.parse(fs.readFileSync(pkgFull, 'utf8'));
+        const parts = String(pkgObj.version || '1.0.0').split('.').map((n) => parseInt(n, 10) || 0);
+        parts[2] = (parts[2] || 0) + 1;
+        pkgObj.version = parts.join('.');
+        fs.writeFileSync(pkgFull, `${JSON.stringify(pkgObj, null, 2)}\n`, 'utf8');
+        if (!modifiedFiles.includes(pkgRel)) modifiedFiles.push(pkgRel);
+        return `v${pkgObj.version}`;
+    } catch { return null; }
+}
+
+function syncGitCommitAndPush(rootDir, ticket, modifiedFiles, proj, onLog = () => {}) {
+    const safeFiles = modifiedFiles.filter((f) => f && !f.includes('.env') && !f.endsWith('package-lock.json') && !f.endsWith('pnpm-lock.yaml'));
+    try {
+        const bumpedVer = proj?.isAdmin ? bumpAdminFrontendVersion(rootDir, safeFiles) : null;
+        if (safeFiles.length > 0) {
+            const quotedFiles = safeFiles.map((f) => `"${f.replace(/"/g, '')}"`).join(' ');
+            gitExec(`add -- ${quotedFiles}`, rootDir, 15000);
+            const staged = gitExec('diff --cached --name-only', rootDir, 8000);
+            if (staged) {
+                const cleanSubject = String(ticket.subject || 'ajuste solicitado').replace(/["`$\\]/g, '').slice(0, 72);
+                gitExec(`-c user.name="AGY Server Bot" -c user.email="agy@sipesv.com" commit -m "fix(agy): resolver #${ticket.ticket_code} - ${cleanSubject}"`, rootDir, 15000);
+            }
+        }
+        const commitHash = gitExec('rev-parse --short HEAD', rootDir, 5000);
+        const branch = gitExec('rev-parse --abbrev-ref HEAD', rootDir, 5000) || 'main';
+        const remotes = gitExec('remote', rootDir, 5000).split(/\s+/).filter(Boolean);
         const pushedRemotes = [];
-        execSync('git fetch --all --prune', { cwd: rootDir, timeout: 20000, stdio: 'pipe' });
+        gitExec('fetch --all --prune', rootDir, 20000);
         for (const rem of ['upstream', 'origin'].filter((r) => remotes.includes(r))) {
             try {
-                execSync(`git pull --rebase --autostash ${rem} ${branch}`, { cwd: rootDir, timeout: 30000, stdio: 'pipe' });
-                execSync(`git push ${rem} ${branch}`, { cwd: rootDir, timeout: 30000, stdio: 'pipe' });
+                gitExec(`pull --rebase --autostash ${rem} ${branch}`, rootDir, 30000);
+                gitExec(`push ${rem} ${branch}`, rootDir, 30000);
                 pushedRemotes.push(`${rem}/${branch}`);
             } catch (pushErr) {
                 onLog(`[AGY] ⚠️ Aviso push ${rem}/${branch}: ${pushErr.message?.slice(0, 120)}\n`);
             }
         }
-        const verInfo = computeAndBroadcastVersion(rootDir);
+        let version = bumpedVer;
+        if (!proj?.isAdmin) {
+            const count = parseInt(gitExec('rev-list --count HEAD', rootDir, 5000), 10);
+            version = !isNaN(count) && count >= 1000 ? `v2.08.${String(count - 999).padStart(2, '0')}` : `v2.07.${String(count || 0).padStart(2, '0')}`;
+            setAppVersion({ version, commit: commitHash });
+        }
         const gitLog = pushedRemotes.length > 0
-            ? `Commit ${commitHash} (${verInfo.version || ''}) subido a GitHub (${pushedRemotes.join(', ')}) y actualización notificada.`
-            : `Commit local ${commitHash} (${verInfo.version || ''}) registrado y notificado.`;
+            ? `Commit ${commitHash} (${version || ''}) subido a GitHub (${pushedRemotes.join(', ')}).`
+            : `Commit local ${commitHash} (${version || ''}) registrado.`;
         onLog(`[AGY] 🚀 ${gitLog}\n`);
-        return { commitHash, version: verInfo.version, gitLog };
+        return { commitHash, version, gitLog };
     } catch (err) {
         const msg = `Aviso Git en servidor: ${err.message?.slice(0, 140)}`;
         onLog(`[AGY] ⚠️ ${msg}\n`);
@@ -248,16 +176,16 @@ function syncGitCommitAndPush(rootDir, ticket, modifiedFiles, onLog = () => {}) 
 
 async function applyAiCodePatchAndBuild(ticket, proj, relatedFiles, onLog = () => {}, preExistingDirtySet = new Set(), preHeadCommit = '') {
     const rootDir = proj.projectPath;
-    if (!fs.existsSync(rootDir)) return { modifiedFiles: [], buildSuccess: false, buildLog: '', gitLog: '' };
+    if (!fs.existsSync(rootDir)) return { modifiedFiles: [], buildSuccess: false, buildLog: `Ruta ${rootDir} no localizada`, gitLog: '' };
 
     const modifiedFiles = [];
     for (const f of getGitDirtySet(rootDir)) {
-        if (!preExistingDirtySet.has(f) && !f.endsWith('package-lock.json') && !f.includes('.env')) modifiedFiles.push(f);
+        if (!preExistingDirtySet.has(f) && !f.endsWith('package-lock.json') && !f.endsWith('pnpm-lock.yaml') && !f.includes('.env')) modifiedFiles.push(f);
     }
     const postHeadCommit = getGitHeadCommit(rootDir);
     if (preHeadCommit && postHeadCommit && preHeadCommit !== postHeadCommit) {
         try {
-            const committedDiff = execSync(`git diff --name-only ${preHeadCommit}..${postHeadCommit}`, { cwd: rootDir, timeout: 8000, stdio: 'pipe' }).toString().trim();
+            const committedDiff = gitExec(`diff --name-only ${preHeadCommit}..${postHeadCommit}`, rootDir, 8000);
             for (const f of committedDiff ? committedDiff.split('\n') : []) {
                 const norm = f.trim().replace(/\\/g, '/');
                 if (norm && !modifiedFiles.includes(norm) && !norm.includes('.env')) modifiedFiles.push(norm);
@@ -265,31 +193,33 @@ async function applyAiCodePatchAndBuild(ticket, proj, relatedFiles, onLog = () =
         } catch { /* ignore */ }
     }
 
-    if (modifiedFiles.length === 0 && (aiService.deepseek || aiService.gemini)) {
-        const snippets = readCandidateSnippets(rootDir, relatedFiles, 18000);
+    if (modifiedFiles.length === 0) {
+        const hint = `${ticket.subject || ''} ${ticket.description || ''} ${ticket.ai_notes || ''}`;
+        const snippets = readCandidateSnippets(rootDir, relatedFiles, 85000, hint);
         if (snippets.length > 0) {
-            onLog(`[AGY] Analizando y aplicando cambios en ${snippets.map((s) => s.file).join(', ')}...\n`);
-            const systemPrompt = `Eres un motor de edición quirúrgica de código. Devuelve ÚNICAMENTE un JSON válido sin bloques markdown con el formato: {"edits":[{"file":"ruta/relativa.jsx","search":"bloque exacto existente","replace":"bloque nuevo corregido"}],"summary":"explicación breve del cambio aplicado"}.`;
+            onLog(`[AGY] Aplicando motor quirúrgico de código en ${snippets.map((s) => s.file).join(', ')}...\n`);
+            const systemPrompt = `Eres el motor de edición quirúrgica de código de AGY para ${proj.projectLabel}. Devuelve ÚNICAMENTE un objeto JSON válido con la estructura exacta: {"edits":[{"file":"ruta/relativa.jsx","search":"fragmento exacto actual en el archivo","replace":"fragmento nuevo con la mejora implementada"}],"summary":"resumen claro en español"}. Reglas: "search" debe existir literalmente en el archivo suministrado (incluye 3 a 8 líneas de contexto únicas); nunca edites .env ni credenciales.`;
             const userPrompt = [
-                `Ticket #${ticket.ticket_code} (${proj.projectLabel}) | Asunto: ${ticket.subject} | Descripción: ${ticket.description}`,
-                ticket.ai_notes ? `Directriz: ${ticket.ai_notes}` : '',
-                `Plan aprobado:\n${ticket.agy_plan_markdown || ''}`,
+                `Ticket #${ticket.ticket_code} (${proj.projectLabel}) | Ruta: ${ticket.page_url || 'N/A'} | Módulo: ${ticket.module_name || 'General'}`,
+                `Asunto: ${ticket.subject}\nDescripción: ${ticket.description}`,
+                ticket.ai_notes ? `Directriz Técnica del Administrador: ${ticket.ai_notes}` : '',
+                `Plan de Ejecución Aprobado:\n${ticket.agy_plan_markdown || ''}`,
                 ...snippets.map((s) => `=== FILE: ${s.file} ===\n${s.content}`)
-            ].filter(Boolean).join('\n');
+            ].filter(Boolean).join('\n\n');
 
             try {
-                const resp = await aiService.generateFinalResponse({ systemPrompt, history: [], finalPrompt: userPrompt });
-                const parsed = JSON.parse(String(resp?.content || '').replace(/```json/gi, '').replace(/```/g, '').trim());
+                const resp = await aiService.generateCodeResponse({ systemPrompt, userPrompt, jsonMode: true });
+                const rawJson = String(resp?.content || '').replace(/```json/gi, '').replace(/```/g, '').trim();
+                const jsonMatch = rawJson.match(/\{[\s\S]*\}/);
+                const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : rawJson);
                 for (const edit of Array.isArray(parsed?.edits) ? parsed.edits : []) {
                     if (!edit.file || !edit.search || edit.replace === undefined) continue;
                     const safeRel = path.normalize(edit.file).replace(/^(\.\.(\/|\\|$))+/, '');
+                    if (safeRel.includes('.env') || safeRel.includes('node_modules')) continue;
                     const absPath = path.resolve(rootDir, safeRel);
                     if (!absPath.startsWith(path.resolve(rootDir)) || !fs.existsSync(absPath)) continue;
                     const currentContent = fs.readFileSync(absPath, 'utf8');
-                    const crlfSearch = edit.search.replace(/\r?\n/g, '\r\n');
-                    let updatedContent = currentContent;
-                    if (currentContent.includes(edit.search)) updatedContent = currentContent.replace(edit.search, edit.replace);
-                    else if (currentContent.includes(crlfSearch)) updatedContent = currentContent.replace(crlfSearch, edit.replace.replace(/\r?\n/g, '\r\n'));
+                    const updatedContent = applyFlexibleEdit(currentContent, String(edit.search), String(edit.replace));
                     if (updatedContent !== currentContent) {
                         fs.writeFileSync(absPath, updatedContent, 'utf8');
                         const normRel = safeRel.replace(/\\/g, '/');
@@ -297,14 +227,14 @@ async function applyAiCodePatchAndBuild(ticket, proj, relatedFiles, onLog = () =
                     }
                 }
             } catch (err) {
-                onLog(`[AGY] Aviso motor IA: ${err.message}\n`);
+                onLog(`[AGY] Aviso motor quirúrgico IA: ${err.message}\n`);
             }
         }
     }
 
     if (modifiedFiles.length === 0) return { modifiedFiles: [], buildSuccess: false, buildLog: '', commitHash: null, gitLog: '' };
 
-    const { commitHash, version, gitLog } = syncGitCommitAndPush(rootDir, ticket, modifiedFiles, onLog);
+    const { commitHash, version, gitLog } = syncGitCommitAndPush(rootDir, ticket, modifiedFiles, proj, onLog);
     let buildSuccess = false;
     let buildLog = '';
     const frontendRel = proj.frontendDir;
@@ -313,11 +243,13 @@ async function applyAiCodePatchAndBuild(ticket, proj, relatedFiles, onLog = () =
 
     if (fs.existsSync(frontendFull)) {
         try {
-            onLog(`[AGY] Compilando frontend (${frontendRel}) con versión ${version || commitHash || ''} para lanzar actualización...\n`);
-            const buildCmd = proj.isAdmin ? 'pnpm --filter frontend run build || npm --prefix frontend run build' : 'npm --prefix client run build || pnpm --filter client run build';
-            execSync(buildCmd, { cwd: rootDir, timeout: 120000, stdio: 'pipe' });
+            onLog(`[AGY] Compilando frontend (${frontendRel}) con versión ${version || commitHash || ''}...\n`);
+            const buildCmd = proj.isAdmin
+                ? 'export PATH="/home/sistemas/.local/share/pnpm:/usr/local/bin:$PATH"; pnpm --filter frontend run build || npm --prefix frontend run build'
+                : 'npm --prefix client run build || pnpm --filter client run build';
+            execSync(buildCmd, { cwd: rootDir, timeout: 150000, stdio: 'pipe', shell: process.platform === 'win32' ? undefined : '/bin/bash' });
             buildSuccess = true;
-            buildLog = `Frontend (${frontendRel}/dist) recompilado (${version || commitHash}) y actualización lanzada.`;
+            buildLog = `Frontend (${frontendRel}/dist) recompilado (${version || commitHash}) y desplegado.`;
             onLog(`[AGY] ✅ ${buildLog}\n`);
         } catch (bErr) {
             buildLog = `Aviso al compilar frontend: ${bErr.message?.slice(0, 160)}`;
@@ -329,7 +261,8 @@ async function applyAiCodePatchAndBuild(ticket, proj, relatedFiles, onLog = () =
         buildLog = buildLog ? `${buildLog} Backend (${proj.pm2AppName}) recargado en vivo.` : `Backend (${proj.pm2AppName}) recargado en vivo.`;
         setTimeout(() => {
             try {
-                const child = spawn('sh', ['-c', `pm2 reload ${proj.pm2AppName} --update-env || pm2 reload all --update-env || true`], { cwd: rootDir, detached: true, stdio: 'ignore' });
+                const pm2Cmd = `export PATH="/home/sistemas/.local/share/pnpm:/usr/local/bin:$PATH"; pm2 reload ${proj.pm2AppName} --update-env || sudo -n -u sistemas /home/sistemas/.local/share/pnpm/pm2 reload ${proj.pm2AppName} --update-env || true`;
+                const child = spawn('sh', ['-c', pm2Cmd], { cwd: rootDir, detached: true, stdio: 'ignore' });
                 child.unref();
             } catch { /* ignore */ }
         }, 3000);

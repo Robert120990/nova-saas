@@ -35,7 +35,18 @@ function buildAgyPlanApprovalKeyboard(ticketId, planMarkdown = '') {
     return { inline_keyboard: rows };
 }
 
-function buildAgyPostExecutionKeyboard(ticketId) {
+function buildAgyPostExecutionKeyboard(ticketId, success = true) {
+    if (!success) {
+        return {
+            inline_keyboard: [
+                [{ text: '🔄 Reintentar Ejecución AGY', callback_data: `agy_plan_approve:${ticketId}` }],
+                [
+                    { text: '✏️ Ampliar Directriz y Re-planificar', callback_data: `agy_plan_feedback:${ticketId}` },
+                    { text: '✅ Marcar Resuelto', callback_data: `ticket_resolve:${ticketId}` }
+                ]
+            ]
+        };
+    }
     return {
         inline_keyboard: [
             [
@@ -75,7 +86,7 @@ async function safeEditTelegramMessage(chatId, messageId, text) {
     }
 }
 
-async function createTelegramLiveProgress(ticket, { mode = 'execute', model = 'gemini-4-argon-high', actorName = 'SuperAdmin', sourceChatId = null, sourceMessageId = null } = {}) {
+async function createTelegramLiveProgress(ticket, { mode = 'execute', model = 'gemini-4-carbon-high', actorName = 'SuperAdmin', sourceChatId = null, sourceMessageId = null } = {}) {
     const { getTechChatsForTicket } = require('./ticketTelegram.service');
     const chats = await getTechChatsForTicket(ticket.company_id, ticket.branch_id).catch(() => []);
     const targetChatIds = Array.from(new Set([
@@ -109,11 +120,13 @@ async function createTelegramLiveProgress(ticket, { mode = 'execute', model = 'g
         }).catch(() => {});
     }
 
-    const formatProgressText = (pct, statusText, done = false) => {
+    const formatProgressText = (pct, statusText, done = false, incomplete = false) => {
         const elapsedSec = Math.max(1, Math.round((Date.now() - startTime) / 1000));
-        const icon = done ? '✅' : '⚙️';
+        const icon = incomplete ? '⚠️' : (done ? '✅' : '⚙️');
         const title = mode === 'execute'
-            ? (done ? `SOLUCIÓN EJECUTADA EN CONSOLA AGY — #${escapeMd(ticket.ticket_code)}` : `AGY TRABAJANDO EN LA SOLUCIÓN — #${escapeMd(ticket.ticket_code)}`)
+            ? (incomplete
+                ? `EJECUCIÓN PENDIENTE DE CAMBIOS — #${escapeMd(ticket.ticket_code)}`
+                : (done ? `SOLUCIÓN EJECUTADA EN CONSOLA AGY — #${escapeMd(ticket.ticket_code)}` : `AGY TRABAJANDO EN LA SOLUCIÓN — #${escapeMd(ticket.ticket_code)}`))
             : (done ? `PLAN GENERADO EN CONSOLA AGY — #${escapeMd(ticket.ticket_code)}` : `AGY GENERANDO PLAN DE EJECUCIÓN — #${escapeMd(ticket.ticket_code)}`);
 
         return (
@@ -138,7 +151,7 @@ async function createTelegramLiveProgress(ticket, { mode = 'execute', model = 'g
         const statusToDisplay = latestConsoleLine || step.label;
         for (const item of liveMessages) {
             telegramService.apiCall('sendChatAction', { chat_id: item.chatId, action: 'typing' }).catch(() => {});
-            await safeEditTelegramMessage(item.chatId, item.messageId, formatProgressText(step.pct, statusToDisplay, false));
+            await safeEditTelegramMessage(item.chatId, item.messageId, formatProgressText(step.pct, statusToDisplay, false, false));
         }
     }, 3000);
 
@@ -147,17 +160,20 @@ async function createTelegramLiveProgress(ticket, { mode = 'execute', model = 'g
             const lines = sanitizeConsoleText(rawChunk).split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('==='));
             if (lines.length > 0) latestConsoleLine = lines[lines.length - 1].slice(0, 140);
         },
-        async complete(finalSummary = 'Proceso completado exitosamente en Consola AGY.') {
+        async complete(finalSummary = 'Proceso completado exitosamente en Consola AGY.', opts = {}) {
             clearInterval(timer);
+            const isSuccess = opts.success !== undefined ? Boolean(opts.success) : !String(finalSummary || '').trim().startsWith('⚠️');
             const cleanFinal = sanitizeConsoleText(finalSummary).split('\n')[0].slice(0, 160);
+            const finalPct = isSuccess ? 100 : 85;
             for (const item of liveMessages) {
-                await safeEditTelegramMessage(item.chatId, item.messageId, formatProgressText(100, cleanFinal, true));
+                await safeEditTelegramMessage(item.chatId, item.messageId, formatProgressText(finalPct, cleanFinal, isSuccess, !isSuccess));
             }
             if (sourceChatId && sourceMessageId && mode === 'execute') {
+                const nextMarkup = isSuccess ? { inline_keyboard: [] } : buildAgyPlanApprovalKeyboard(ticket.id, ticket.agy_plan_markdown || '');
                 telegramService.apiCall('editMessageReplyMarkup', {
                     chat_id: sourceChatId,
                     message_id: sourceMessageId,
-                    reply_markup: { inline_keyboard: [] }
+                    reply_markup: nextMarkup
                 }).catch(() => {});
             }
         }
@@ -202,14 +218,15 @@ async function sendAgyPlanToTelegram(ticket) {
     return true;
 }
 
-async function notifyAgyExecutionResultToTelegram(ticket, summaryText, approvedBy) {
+async function notifyAgyExecutionResultToTelegram(ticket, summaryText, approvedBy, options = {}) {
     if (!ticket) return false;
     const { getTechChatsForTicket } = require('./ticketTelegram.service');
     const chats = await getTechChatsForTicket(ticket.company_id, ticket.branch_id);
     if (!chats || chats.length === 0) return false;
 
-    const msg = formatAgyExecutionResultForTelegram(ticket, summaryText, approvedBy);
-    const replyMarkup = buildAgyPostExecutionKeyboard(ticket.id);
+    const isSuccess = options.success !== undefined ? Boolean(options.success) : !String(summaryText || '').trim().startsWith('⚠️');
+    const msg = formatAgyExecutionResultForTelegram(ticket, summaryText, approvedBy, { success: isSuccess });
+    const replyMarkup = buildAgyPostExecutionKeyboard(ticket.id, isSuccess);
     for (const chat of chats) {
         await safeSendTelegramWithKeyboard(chat.chat_id, msg, replyMarkup);
     }
@@ -243,7 +260,9 @@ async function handleAgyTelegramCallback(cb) {
         }
 
         const settings = await getAgyServerSettings();
-        const model = ticket.agy_model || settings.default_model || 'gemini-4-argon-high';
+        const model = (!ticket.agy_model || ticket.agy_model === 'gemini-4-argon-high')
+            ? (settings.default_model || 'gemini-4-carbon-high')
+            : ticket.agy_model;
 
         if (action === 'agy_pick_opt') {
             const optIdx = parseInt(parts[2], 10) || 1;
@@ -310,6 +329,22 @@ async function handleAgyTelegramText(chatId, text, from) {
     if (/^\/cancelar$/i.test(trimmed) && pendingAgyFeedbackMap.has(chatId)) {
         pendingAgyFeedbackMap.delete(chatId);
         await telegramService.sendMessage(chatId, '❎ Ampliación de plan AGY cancelada.');
+        return true;
+    }
+
+    const execCmdMatch = trimmed.match(/^\/(?:ejecutar|reintentar)\s+([A-Za-z0-9#-]+)$/i);
+    if (execCmdMatch) {
+        const { getTicketByCodeOrId } = require('./ticket.service');
+        const { executeApprovedTicketAgyPlan } = require('./ticketAgyWorkflow.service');
+        const ticket = await getTicketByCodeOrId(execCmdMatch[1]);
+        if (!ticket) {
+            await telegramService.sendMessage(chatId, `⚠️ No se encontró el ticket "${execCmdMatch[1]}".`);
+            return true;
+        }
+        await executeApprovedTicketAgyPlan(ticket.id, {
+            approvedBy: `${techName} (Telegram)`,
+            telegramContext: { sourceChatId: chatId }
+        });
         return true;
     }
 

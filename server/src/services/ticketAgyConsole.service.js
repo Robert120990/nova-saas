@@ -28,12 +28,13 @@ const DEFAULT_SETTINGS = {
     ssh_private_key_path: process.env.AGY_SSH_PRIVATE_KEY_PATH || '',
     project_path: process.env.AGY_PROJECT_PATH || detectDefaultProjectRoot(),
     agy_command: process.env.AGY_COMMAND || 'agy',
-    default_model: process.env.AGY_DEFAULT_MODEL || 'gemini-4-argon-high',
+    default_model: process.env.AGY_DEFAULT_MODEL || 'gemini-4-carbon-high',
     execution_mode: process.env.AGY_EXECUTION_MODE || 'auto'
 };
 
 const AVAILABLE_AGY_MODELS = [
-    { id: 'gemini-4-argon-high', label: 'gemini-4-argon-high (Máxima Velocidad e Inteligencia)', badge: 'Recomendado' },
+    { id: 'gemini-4-carbon-high', label: 'gemini-4-carbon-high (Recomendado · Carbon High)', badge: 'Recomendado' },
+    { id: 'gemini-4-argon-high', label: 'gemini-4-argon-high (Argon High)', badge: 'Argon' },
     { id: 'gemini-3.1-pro', label: 'gemini-3.1-pro (Razonamiento Profundo)', badge: 'Pro' },
     { id: 'gemini-3-flash', label: 'gemini-3-flash (Ultra Rápido)', badge: 'Flash' }
 ];
@@ -65,9 +66,13 @@ async function getAgyServerSettings() {
             const safeHost = /^\d+\.\d+\.\d+\.\d+$/.test(rawHost)
                 ? (process.env.AGY_SSH_HOST || 'localhost')
                 : (rawHost || DEFAULT_SETTINGS.ssh_host);
+            const normalizedDefaultModel = (!rows[0].default_model || rows[0].default_model === 'gemini-4-argon-high')
+                ? 'gemini-4-carbon-high'
+                : rows[0].default_model;
             return {
                 ...DEFAULT_SETTINGS,
                 ...rows[0],
+                default_model: normalizedDefaultModel,
                 ssh_host: safeHost,
                 project_path: resolveActiveProjectPath(rows[0].project_path),
                 ssh_password: rows[0].ssh_password || DEFAULT_SETTINGS.ssh_password,
@@ -94,7 +99,7 @@ async function saveAgyServerSettings(payload = {}) {
             : (current.ssh_private_key_path || ''),
         project_path: String(payload.project_path || current.project_path || detectDefaultProjectRoot()).trim(),
         agy_command: String(payload.agy_command || current.agy_command || 'agy').trim(),
-        default_model: String(payload.default_model || current.default_model || 'gemini-4-argon-high').trim(),
+        default_model: String(payload.default_model || current.default_model || 'gemini-4-carbon-high').trim(),
         execution_mode: ['auto', 'ssh', 'local'].includes(payload.execution_mode) ? payload.execution_mode : current.execution_mode
     };
 
@@ -247,9 +252,10 @@ function extractCleanAgyResult(rawTranscript, endMarker) {
 
 function buildRemoteShellScript({ projectPath, agyCommand, model, promptText, isPlanPhase, endMarker }) {
     const b64Prompt = Buffer.from(promptText, 'utf8').toString('base64');
-    const safeModel = String(model || 'gemini-4-argon-high').replace(/[^a-zA-Z0-9._-]/g, '');
+    const safeModel = String(model || 'gemini-4-carbon-high').replace(/[^a-zA-Z0-9._-]/g, '');
     const safeCmd = String(agyCommand || 'agy').trim();
     const safePath = String(projectPath || '/opt/nova-saas').replace(/"/g, '');
+    const maxLoops = isPlanPhase ? 30 : 55;
 
     return `
 shopt -s expand_aliases 2>/dev/null || true
@@ -262,29 +268,57 @@ for n in "$HOME/.nvm/nvm.sh" "/root/.nvm/nvm.sh" "/home/sistemas/.nvm/nvm.sh"; d
 export PATH="$HOME/.local/bin:$HOME/.antigravity/bin:/root/.local/bin:/root/.antigravity/bin:/home/sistemas/.local/bin:/home/sistemas/.antigravity/bin:/home/sistemas/.local/share/pnpm:$HOME/.npm-global/bin:$HOME/.bun/bin:/usr/local/bin:$PATH"
 mkdir -p ~/.gemini/antigravity-cli
 echo '{"model":"${safeModel}","permissions":{"allow":["*"]},"autoApprove":true}' > ~/.gemini/antigravity-cli/settings.json 2>/dev/null || true
-if [ -d "${safePath}" ]; then cd "${safePath}"; elif [ -d "/opt/nova-saas" ]; then cd "/opt/nova-saas"; fi
-PROMPT_FILE="/tmp/agy_ticket_${Date.now()}.txt"
+if [ -d "${safePath}" ]; then cd "${safePath}"; elif [ -d "/home/rsboosted/SIPEWEBgas" ]; then cd "/home/rsboosted/SIPEWEBgas"; elif [ -d "/opt/nova-saas" ]; then cd "/opt/nova-saas"; fi
+git config --global --get-all safe.directory 2>/dev/null | grep -qxF "$(pwd)" || git config --global --add safe.directory "$(pwd)" 2>/dev/null || true
+TS_ID="$$_${Date.now()}"
+PROMPT_FILE="/tmp/agy_ticket_$TS_ID.txt"
+OUT_LOG="/tmp/agy_out_$TS_ID.log"
+FIFO_IN="/tmp/agy_in_$TS_ID.fifo"
 echo "${b64Prompt}" | base64 -d > "$PROMPT_FILE"
 FLAT_PROMPT=$(tr '\\n' ' ' < "$PROMPT_FILE")
 echo "=== CONSOLA AGY | Directorio: $(pwd) | Comando: ${safeCmd} | Modelo: ${safeModel} ==="
 AGY_BIN=$(type -P ${safeCmd} 2>/dev/null || find /root /home /usr/local /opt -name "${safeCmd}" \\( -type f -o -type l \\) -executable 2>/dev/null | head -n 1)
 if [ -n "$AGY_BIN" ]; then
-  (
+  mkfifo "$FIFO_IN" 2>/dev/null || true
+  if [ -p "$FIFO_IN" ] && command -v script >/dev/null 2>&1; then
+    script -q -c "\\"$AGY_BIN\\" --dangerously-skip-permissions" /dev/null < "$FIFO_IN" 2>&1 | tee "$OUT_LOG" &
+    AGY_PID=$!
+    exec 3>"$FIFO_IN"
     sleep 2
-    ${isPlanPhase ? 'echo "/plan $FLAT_PROMPT"' : 'echo "$FLAT_PROMPT"'}
-    ${isPlanPhase ? 'sleep 35' : 'for i in 1 2 3 4 5; do sleep 8; echo "y"; done'}
-    echo "/exit"
-  ) | "$AGY_BIN" --dangerously-skip-permissions 2>&1 || true
+    ${isPlanPhase ? 'printf "/plan %s\\r\\n" "$FLAT_PROMPT" >&3' : 'printf "%s\\r\\n" "$FLAT_PROMPT" >&3'}
+    for i in $(seq 1 ${maxLoops}); do
+      sleep 3
+      if grep -Fq "${endMarker}" "$OUT_LOG" 2>/dev/null; then
+        break
+      fi
+      if ! kill -0 "$AGY_PID" 2>/dev/null; then
+        break
+      fi
+      ${isPlanPhase ? '' : 'if [ $((i % 4)) -eq 0 ]; then printf "y\\r\\n" >&3 2>/dev/null || true; fi'}
+    done
+    printf "/exit\\r\\n" >&3 2>/dev/null || true
+    sleep 1
+    exec 3>&- 2>/dev/null || true
+    kill -TERM "$AGY_PID" 2>/dev/null || true
+    wait "$AGY_PID" 2>/dev/null || true
+  else
+    (
+      sleep 2
+      ${isPlanPhase ? 'echo "/plan $FLAT_PROMPT"' : 'echo "$FLAT_PROMPT"'}
+      ${isPlanPhase ? 'sleep 65' : 'for i in 1 2 3 4 5 6 7 8 9 10 11 12; do sleep 10; echo "y"; done'}
+      echo "/exit"
+    ) | "$AGY_BIN" --dangerously-skip-permissions 2>&1 || true
+  fi
   echo "${endMarker}"
 else
   echo "[AGY] Analizador de repositorio integrado ejecutado en $(pwd) con modelo ${safeModel}."
-  git status -s 2>/dev/null | head -n 10 || true
+  git -c safe.directory="*" status -s 2>/dev/null | head -n 10 || true
 fi
-rm -f "$PROMPT_FILE"
+rm -f "$PROMPT_FILE" "$OUT_LOG" "$FIFO_IN" 2>/dev/null || true
 `;
 }
 
-function runSshInteractiveSession(settings, scriptContent, onChunk, timeoutMs = 120000) {
+function runSshInteractiveSession(settings, scriptContent, onChunk, timeoutMs = 210000) {
     return new Promise((resolve, reject) => {
         const conn = new Client();
         let output = '';
@@ -321,7 +355,7 @@ function runSshInteractiveSession(settings, scriptContent, onChunk, timeoutMs = 
     });
 }
 
-function runLocalInteractiveSession(settings, scriptContent, onChunk, timeoutMs = 120000) {
+function runLocalInteractiveSession(settings, scriptContent, onChunk, timeoutMs = 210000) {
     return new Promise((resolve, reject) => {
         const shellBin = process.platform === 'win32' ? 'bash' : '/bin/bash';
         const targetCwd = resolveActiveProjectPath(settings.project_path);

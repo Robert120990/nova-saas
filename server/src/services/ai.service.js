@@ -229,6 +229,101 @@ class AIService {
         }
     }
 
+    /**
+     * Genera planes técnicos o parches quirúrgicos JSON para tickets AGY (con soporte DeepSeek + Gemini).
+     */
+    async generateCodeResponse({ systemPrompt = '', userPrompt = '', history = [], jsonMode = false }) {
+        let lastErr = null;
+        const cleanHistory = Array.isArray(history)
+            ? history
+                .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && m.content)
+                .map((m) => ({ role: m.role, content: String(m.content) }))
+            : [];
+
+        const deepseekClient = this.deepseek || (process.env.DEEPSEEK_API_KEY
+            ? new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: process.env.DEEPSEEK_API_KEY })
+            : null);
+
+        if (deepseekClient) {
+            try {
+                const reqPayload = {
+                    model: 'deepseek-chat',
+                    temperature: 0.15,
+                    max_tokens: 8192,
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        ...cleanHistory,
+                        { role: 'user', content: userPrompt }
+                    ]
+                };
+                if (jsonMode) {
+                    reqPayload.response_format = { type: 'json_object' };
+                }
+                const completion = await deepseekClient.chat.completions.create(reqPayload);
+                const text = completion.choices?.[0]?.message?.content || '';
+                if (text && text.trim()) {
+                    return { provider: 'deepseek', role: 'assistant', content: text.trim() };
+                }
+            } catch (err) {
+                lastErr = err;
+                console.warn('[AI Service] DeepSeek generateCodeResponse fallback a Gemini:', err.message);
+            }
+        }
+
+        const geminiClient = this.gemini || (process.env.GEMINI_API_KEY
+            ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+            : null);
+
+        if (geminiClient) {
+            const candidateModels = [
+                'gemini-2.5-flash',
+                'gemini-2.0-flash',
+                'gemini-flash-latest',
+                'gemini-2.5-flash-lite',
+                'gemini-flash-lite-latest'
+            ];
+            for (const gModel of candidateModels) {
+                try {
+                    const generationConfig = {
+                        temperature: 0.15,
+                        maxOutputTokens: 8192
+                    };
+                    if (jsonMode) {
+                        generationConfig.responseMimeType = 'application/json';
+                    }
+                    const model = geminiClient.getGenerativeModel({
+                        model: gModel,
+                        systemInstruction: systemPrompt ? { role: 'system', parts: [{ text: systemPrompt }] } : undefined,
+                        generationConfig
+                    });
+                    const result = await model.generateContent(userPrompt);
+                    const text = result.response?.text?.() || '';
+                    if (text && text.trim()) {
+                        return { provider: 'gemini', model: gModel, role: 'assistant', content: text.trim() };
+                    }
+                } catch (gErr) {
+                    lastErr = gErr;
+                    console.warn(`[AI Service] Gemini ${gModel} generateCodeResponse warning:`, gErr.message);
+                }
+            }
+        }
+
+        if (lastErr) throw lastErr;
+        throw new Error('No hay motor IA configurado (DEEPSEEK_API_KEY / GEMINI_API_KEY).');
+    }
+
+    /**
+     * Alias retrocompatible utilizado por ticketAgyCodeEngine.service.js
+     */
+    async generateFinalResponse({ systemPrompt = '', history = [], finalPrompt = '', jsonMode = false } = {}) {
+        return this.generateCodeResponse({
+            systemPrompt,
+            userPrompt: finalPrompt,
+            history,
+            jsonMode
+        });
+    }
+
     async extractDteFromImage(imageBuffer, mimeType = 'image/jpeg', options = {}) {
         const recognizeItems = options.recognizeItems === true;
 
