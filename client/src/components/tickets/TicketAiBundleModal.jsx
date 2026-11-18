@@ -143,7 +143,7 @@ export default function TicketAiBundleModal({ open, onClose, selectedIds = [], o
                         <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-400/40 flex items-center justify-center text-indigo-300"><Bot size={22} /></div>
                         <div>
                             <div className="flex flex-wrap items-center gap-2">
-                                <h2 className="text-base sm:text-lg font-extrabold tracking-tight">Empaquetador Inteligente de Tickets & Logs para IA</h2>
+                                <h2 className="text-base sm:text-lg font-extrabold tracking-tight">Solucionador IA</h2>
                                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">{items.length} ticket(s)</span>
                             </div>
                             <p className="text-xs text-slate-300">Configura <strong>Modo 1 (API Interna)</strong> o <strong>Modo 2 (Prompt + Logs para Antigravity / Cursor / Claude)</strong>.</p>
