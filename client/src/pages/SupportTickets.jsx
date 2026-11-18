@@ -137,7 +137,7 @@ const SupportTickets = () => {
                             className="inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-sm transition-all cursor-pointer w-full sm:w-auto"
                         >
                             <Bot size={15} className="text-indigo-400" />
-                            <span>Empaquetar Prompt IA</span>
+                            <span>Solucionador IA</span>
                             <span className="px-1.5 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
                                 {aiSelectedCount}
                             </span>

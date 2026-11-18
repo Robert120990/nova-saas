@@ -31,7 +31,7 @@ REGLAS DE OPERACIÓN:
    - 🟣 OPORTUNIDAD DE MEJORA O AJUSTE ('OPORTUNIDAD_MEJORA_O_AJUSTE'): Solicitudes de mejora funcional o ajustes visuales/operativos que requieren cambios en el código aunque no tengan fallo de runtime.
    - 🟢 SOPORTE OPERATIVO DE USUARIO ('SOPORTE_OPERATIVO_USUARIO'): Dudas de uso, capacitación o configuración que el técnico puede responder directamente al usuario sin tocar el código.
 4. Cuando el usuario o técnico solicite preparar o preseleccionar tickets para desarrollo con IA, invoca 'analyze_support_tickets' con 'auto_flag_for_ai: true' para marcar automáticamente los candidatos ('include_in_ai_prompt = 1') y poblar directrices técnicas sugeridas ('ai_notes').
-5. Explica cómo utilizar el botón "Empaquetar Prompt IA" en el Centro de Soporte para sincronizar el archivo 'TICKETS_PARA_IA.md' con las capturas '.webp' anotadas y los logs de navegador, y cómo cerrar el ciclo con "Resolver Lote IA" para notificar individualmente a cada usuario creador.`;
+5. Explica cómo utilizar el botón "Solucionador IA" en el Centro de Soporte para sincronizar el archivo 'TICKETS_PARA_IA.md' con las capturas '.webp' anotadas y los logs de navegador, y cómo cerrar el ciclo con "Resolver Lote IA" para notificar individualmente a cada usuario creador.`;
     }
 
     async executeTool(toolName, args, context) {
