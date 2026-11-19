@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
 const notificationService = require('../services/notification.service');
+const sessionService = require('../services/session.service');
 const { invalidateSessionCache } = require('../middlewares/auth');
 
 const isSuperAdmin = (req) => req.user?.role === 'SuperAdmin';
@@ -31,7 +32,7 @@ const getUsers = async (req, res) => {
         const companyId = req.user?.company_id || null;
 
         let query = `
-            SELECT u.id, u.username, u.nombre, u.email, u.telefono, u.status, u.allowed_ips, ue.role_id, r.name as role_name 
+            SELECT u.id, u.username, u.nombre, u.email, u.telefono, u.status, u.allowed_ips, u.allow_concurrent_sessions, ue.role_id, r.name as role_name 
             FROM users u 
             LEFT JOIN usuario_empresa ue ON u.id = ue.usuario_id AND ue.empresa_id = ?
             LEFT JOIN roles r ON ue.role_id = r.id
@@ -69,7 +70,7 @@ const getUsers = async (req, res) => {
 };
 
 const createUser = async (req, res) => {
-    const { username, password, nombre, email, telefono, role_id, branches, allowed_ips } = req.body;
+    const { username, password, nombre, email, telefono, role_id, branches, allowed_ips, allow_concurrent_sessions } = req.body;
     const companyId = req.user.company_id;
 
     if (telefono && !/^\d{4}-\d{4}$/.test(telefono)) {
@@ -108,8 +109,8 @@ const createUser = async (req, res) => {
             const hashedPassword = await bcrypt.hash(password, 10);
             const ipArray = allowed_ips ? (Array.isArray(allowed_ips) ? allowed_ips : allowed_ips.split('\n').map(s => s.trim()).filter(Boolean)) : [];
             const [userResult] = await connection.query(
-                'INSERT INTO users (username, password, nombre, email, telefono, allowed_ips) VALUES (?, ?, ?, ?, ?, ?)',
-                [username, hashedPassword, nombre, email, telefono || null, ipArray.length > 0 ? JSON.stringify(ipArray) : null]
+                'INSERT INTO users (username, password, nombre, email, telefono, allowed_ips, allow_concurrent_sessions) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [username, hashedPassword, nombre, email, telefono || null, ipArray.length > 0 ? JSON.stringify(ipArray) : null, allow_concurrent_sessions ? 1 : 0]
             );
             userId = userResult.insertId;
         }
@@ -139,7 +140,7 @@ const createUser = async (req, res) => {
 
 const updateUser = async (req, res) => {
     const { id } = req.params;
-    const { username, nombre, email, telefono, role_id, status, branches, password, allowed_ips } = req.body;
+    const { username, nombre, email, telefono, role_id, status, branches, password, allowed_ips, allow_concurrent_sessions } = req.body;
     const companyId = req.user.company_id;
 
     if (telefono && !/^\d{4}-\d{4}$/.test(telefono)) {
@@ -171,6 +172,10 @@ const updateUser = async (req, res) => {
             const ipArray = Array.isArray(allowed_ips) ? allowed_ips : allowed_ips.split('\n').map(s => s.trim()).filter(Boolean);
             updates.push('allowed_ips = ?');
             params.push(ipArray.length > 0 ? JSON.stringify(ipArray) : null);
+        }
+        if (allow_concurrent_sessions !== undefined) {
+            updates.push('allow_concurrent_sessions = ?');
+            params.push(allow_concurrent_sessions ? 1 : 0);
         }
 
         if (password && password.trim() !== '') {
@@ -802,7 +807,7 @@ const terminateSession = async (req, res) => {
         const companyId = req.user.company_id;
 
         const [sessions] = await pool.query(
-            `SELECT us.id FROM user_sessions us
+            `SELECT us.id, us.user_id FROM user_sessions us
              JOIN users u ON us.user_id = u.id
              WHERE us.id = ? AND us.company_id = ?`,
             [id, companyId]
@@ -812,10 +817,13 @@ const terminateSession = async (req, res) => {
             return res.status(404).json({ message: 'Sesión no encontrada' });
         }
 
-        await pool.query('UPDATE user_sessions SET is_active = 0 WHERE id = ?', [id]);
-        if (typeof invalidateSessionCache === 'function') {
-            invalidateSessionCache(id);
-        }
+        await sessionService.revokeSession({
+            sessionId: id,
+            userId: sessions[0].user_id,
+            reason: 'admin_revoked',
+            disconnectSocket: true
+        });
+        invalidateSessionCache(id);
         res.json({ message: 'Sesión finalizada' });
     } catch (error) {
         console.error('Error terminating session:', error);

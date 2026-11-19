@@ -4,6 +4,58 @@ const pool = require('../config/db');
 const SESSION_CACHE_TTL_MS = 15000;
 const sessionValidityCache = new Map();
 
+const getTerminationMessage = (reason) => {
+    switch (reason) {
+        case 'replaced_by_new_login':
+            return 'Tu sesión fue cerrada automáticamente porque iniciaste sesión en otro equipo.';
+        case 'logout':
+            return 'Tu sesión fue cerrada.';
+        case 'expired':
+            return 'Tu sesión ha expirado. Inicia sesión nuevamente.';
+        default:
+            return 'Sesión finalizada o revocada por un administrador.';
+    }
+};
+
+const checkSessionStatus = async (sessionId, userId) => {
+    if (!sessionId) return { valid: true, reason: null };
+
+    const now = Date.now();
+    const cached = sessionValidityCache.get(sessionId) || sessionValidityCache.get(String(sessionId));
+
+    if (cached && (now - cached.ts) < SESSION_CACHE_TTL_MS) {
+        return { valid: cached.valid, reason: cached.reason || null };
+    }
+
+    let isValid = true;
+    let reason = null;
+    let dbQueried = false;
+    try {
+        const [rows] = await pool.query(
+            'SELECT id, is_active, terminated_reason FROM user_sessions WHERE id = ? AND user_id = ? LIMIT 1',
+            [sessionId, userId]
+        );
+        dbQueried = true;
+        if (Array.isArray(rows) && rows.length > 0) {
+            isValid = rows[0].is_active !== 0 && rows[0].is_active !== false;
+            reason = rows[0].terminated_reason || null;
+        } else {
+            isValid = false;
+            reason = 'admin_revoked';
+        }
+    } catch (dbErr) {
+        console.error('Session validation DB error (failing open):', dbErr.message);
+    }
+
+    if (dbQueried) {
+        const entry = { valid: isValid, reason, ts: now };
+        sessionValidityCache.set(sessionId, entry);
+        sessionValidityCache.set(String(sessionId), entry);
+    }
+
+    return { valid: isValid, reason };
+};
+
 const invalidateSessionCache = (sessionId) => {
     if (sessionId !== undefined && sessionId !== null) {
         sessionValidityCache.delete(sessionId);
@@ -51,42 +103,13 @@ const verifyToken = async (req, res, next) => {
     }
 
     if (decoded.session_id) {
-        const sessionId = decoded.session_id;
-        const now = Date.now();
-        const cached = sessionValidityCache.get(sessionId) || sessionValidityCache.get(String(sessionId));
-
-        if (cached && (now - cached.ts) < SESSION_CACHE_TTL_MS) {
-            if (!cached.valid) {
-                return res.status(401).json({
-                    message: 'Sesión finalizada o revocada por un administrador.',
-                    sessionTerminated: true
-                });
-            }
-        } else {
-            let isValid = true;
-            let dbQueried = false;
-            try {
-                const [rows] = await pool.query(
-                    'SELECT id, is_active FROM user_sessions WHERE id = ? AND user_id = ? LIMIT 1',
-                    [sessionId, decoded.id]
-                );
-                dbQueried = true;
-                isValid = Array.isArray(rows) && rows.length > 0 && rows[0].is_active !== 0 && rows[0].is_active !== false;
-            } catch (dbErr) {
-                console.error('Session validation DB error (failing open):', dbErr.message);
-            }
-
-            if (dbQueried) {
-                const entry = { valid: isValid, ts: now };
-                sessionValidityCache.set(sessionId, entry);
-                sessionValidityCache.set(String(sessionId), entry);
-                if (!isValid) {
-                    return res.status(401).json({
-                        message: 'Sesión finalizada o revocada por un administrador.',
-                        sessionTerminated: true
-                    });
-                }
-            }
+        const status = await checkSessionStatus(decoded.session_id, decoded.id);
+        if (!status.valid) {
+            return res.status(401).json({
+                message: getTerminationMessage(status.reason),
+                sessionTerminated: true,
+                reason: status.reason || 'admin_revoked'
+            });
         }
     }
 
@@ -153,5 +176,5 @@ const checkPermission = (permission) => {
     };
 };
 
-module.exports = { verifyToken, checkRole, checkPermission, invalidateSessionCache, clearSessionCache, sessionValidityCache };
+module.exports = { verifyToken, checkRole, checkPermission, invalidateSessionCache, clearSessionCache, sessionValidityCache, checkSessionStatus, getTerminationMessage };
 

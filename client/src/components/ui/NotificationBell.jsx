@@ -17,6 +17,12 @@ const NotificationBell = () => {
   const dropdownRef = useRef(null);
   const { user } = useAuth();
   const wsRef = useRef(null);
+  const reconnectTimerRef = useRef(null);
+  const isOpenRef = useRef(isOpen);
+
+  useEffect(() => {
+    isOpenRef.current = isOpen;
+  }, [isOpen]);
 
   const { data: unreadData } = useQuery({
     queryKey: ['notifications-unread-count'],
@@ -80,14 +86,29 @@ const NotificationBell = () => {
   }, []);
 
   const connectWebSocket = useCallback(() => {
-    if (!user?.company_id || !user?.id) return;
+    if (!user?.company_id || !user?.id || !localStorage.getItem('token')) return;
 
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
 
     try {
       const ws = createAuthenticatedSocket('/ws/notifications', user.company_id);
       ws.onmessage = (event) => {
         try {
           const { event: evt, data } = JSON.parse(event.data);
+          if (evt === 'session_terminated') {
+            if (reconnectTimerRef.current) {
+              clearTimeout(reconnectTimerRef.current);
+              reconnectTimerRef.current = null;
+            }
+            ws.onclose = null;
+            ws.close();
+            wsRef.current = null;
+            window.dispatchEvent(new CustomEvent('auth:session-terminated', { detail: data }));
+            return;
+          }
           if ((evt === 'app_version' || evt === 'system_update') && (data?.version || data?.commit)) {
             if (typeof window.__onVersionReceived === 'function') {
               window.__onVersionReceived(data);
@@ -103,7 +124,7 @@ const NotificationBell = () => {
           }
           if (evt === 'new_notification') {
             queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
-            if (isOpen) {
+            if (isOpenRef.current) {
               queryClient.invalidateQueries({ queryKey: ['notifications-recent'] });
             }
 
@@ -118,18 +139,33 @@ const NotificationBell = () => {
           }
         } catch (e) {}
       };
-      ws.onclose = () => {
-        setTimeout(connectWebSocket, 5000);
+      ws.onclose = (event) => {
+        wsRef.current = null;
+        if (event?.code === 4001 || event?.code === 1008 || !localStorage.getItem('token')) {
+          return;
+        }
+        if (!reconnectTimerRef.current) {
+          reconnectTimerRef.current = setTimeout(() => {
+            reconnectTimerRef.current = null;
+            connectWebSocket();
+          }, 5000);
+        }
       };
       wsRef.current = ws;
     } catch (e) {}
-  }, [user?.company_id, user?.id, queryClient, isOpen, navigate]);
+  }, [user?.company_id, user?.id, queryClient, navigate]);
 
   useEffect(() => {
     connectWebSocket();
     return () => {
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
       if (wsRef.current) {
+        wsRef.current.onclose = null;
         wsRef.current.close();
+        wsRef.current = null;
       }
     };
   }, [connectWebSocket]);

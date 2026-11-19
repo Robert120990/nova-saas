@@ -2,6 +2,7 @@ const WebSocket = require('ws');
 const jwt = require('jsonwebtoken');
 const { getAccess, hasPermission } = require('./eggAccess.service');
 const telemetry = require('./eggTelemetry.service');
+const { checkSessionStatus } = require('../middlewares/auth');
 const companyClients = new Map();
 const userClients = new Map();
 let currentAppVersion = 'unknown';
@@ -33,6 +34,10 @@ function initWebSocket(server, appVersion = 'unknown') {
             const token = protocols.find(p => p.startsWith('auth.'))?.slice(5);
             if (!token || !protocols.includes('sipe')) throw new Error('Sesión requerida.');
             const user = jwt.verify(token, process.env.JWT_SECRET);
+            if (user.session_id) {
+                const sessionStatus = await checkSessionStatus(user.session_id, user.id);
+                if (!sessionStatus.valid) throw new Error('Sesión finalizada.');
+            }
             const companyId = Number(url.searchParams.get('company_id'));
             if (!Number.isInteger(companyId) || companyId <= 0) throw new Error('Empresa inválida.');
             const access = await getAccess(user, companyId);
@@ -45,6 +50,7 @@ function initWebSocket(server, appVersion = 'unknown') {
     });
     wss.on('connection', (ws, req) => {
         const { companyId, user, path } = req.wsContext;
+        ws.sessionId = user?.session_id ? Number(user.session_id) : null;
         add(companyClients, companyId, ws);
         if (user?.id) add(userClients, Number(user.id), ws);
         const versionPayload = typeof currentAppVersion === 'object' && currentAppVersion !== null
@@ -68,10 +74,66 @@ function initWebSocket(server, appVersion = 'unknown') {
 }
 const broadcastToCompany = (companyId, event, data) => send(companyClients.get(Number(companyId)), event, data);
 const sendToUser = (userId, event, data) => send(userClients.get(Number(userId)), event, data);
+
+function hasActiveSocketForSession(userId, sessionId) {
+    const clients = userClients.get(Number(userId));
+    if (!clients || !sessionId) return false;
+    const targetId = Number(sessionId);
+    for (const socket of clients) {
+        if (socket.readyState === WebSocket.OPEN && socket.sessionId === targetId) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function disconnectUserSessions(userId, { excludeSessionId = null, targetSessionIds = null, payload = null } = {}) {
+    const clients = userClients.get(Number(userId));
+    if (!clients || clients.size === 0) return 0;
+
+    const targets = Array.isArray(targetSessionIds) ? new Set(targetSessionIds.map(Number)) : null;
+    const excluded = excludeSessionId !== null && excludeSessionId !== undefined ? Number(excludeSessionId) : null;
+    const rawPayload = payload ? JSON.stringify({ event: 'session_terminated', data: payload }) : null;
+    let count = 0;
+
+    for (const socket of Array.from(clients)) {
+        const matches = targets
+            ? targets.has(socket.sessionId)
+            : (excluded === null || socket.sessionId !== excluded);
+        if (!matches) continue;
+
+        count += 1;
+        if (socket.readyState === WebSocket.OPEN) {
+            if (rawPayload) {
+                try {
+                    socket.send(rawPayload, () => {
+                        try { socket.close(4001, 'Session terminated'); } catch { /* ignore */ }
+                    });
+                } catch {
+                    try { socket.close(4001, 'Session terminated'); } catch { /* ignore */ }
+                }
+            } else {
+                try { socket.close(4001, 'Session terminated'); } catch { /* ignore */ }
+            }
+        } else {
+            try { socket.close(4001, 'Session terminated'); } catch { /* ignore */ }
+        }
+    }
+    return count;
+}
+
 function broadcastToAll(event, data) { for (const clients of companyClients.values()) send(clients, event, data); }
 function setAppVersion(version) { 
     currentAppVersion = version; 
     const payload = typeof version === 'object' && version !== null ? version : { version, commit: version };
     broadcastToAll('app_version', payload); 
 }
-module.exports = { initWebSocket, broadcastToCompany, broadcastToAll, sendToUser, setAppVersion };
+module.exports = {
+    initWebSocket,
+    broadcastToCompany,
+    broadcastToAll,
+    sendToUser,
+    hasActiveSocketForSession,
+    disconnectUserSessions,
+    setAppVersion
+};

@@ -22,6 +22,18 @@ export default function useWebSocket({ companyId, onMessage }) {
         ws.onmessage = (event) => {
             try {
                 const parsed = JSON.parse(event.data);
+                if (parsed.event === 'session_terminated') {
+                    if (reconnectTimerRef.current) {
+                        clearTimeout(reconnectTimerRef.current);
+                        reconnectTimerRef.current = null;
+                    }
+                    ws.onclose = null;
+                    ws.close();
+                    wsRef.current = null;
+                    setIsConnected(false);
+                    window.dispatchEvent(new CustomEvent('auth:session-terminated', { detail: parsed.data }));
+                    return;
+                }
                 if ((parsed.event === 'app_version' || parsed.event === 'system_update') && parsed.data) {
                     if (typeof window.__onVersionReceived === 'function') {
                         window.__onVersionReceived(parsed.data);
@@ -35,9 +47,12 @@ export default function useWebSocket({ companyId, onMessage }) {
             }
         };
 
-        ws.onclose = () => {
+        ws.onclose = (event) => {
             setIsConnected(false);
             wsRef.current = null;
+            if (event?.code === 4001 || event?.code === 1008 || !localStorage.getItem('token')) {
+                return;
+            }
             if (!reconnectTimerRef.current) {
                 reconnectTimerRef.current = setTimeout(() => {
                     reconnectTimerRef.current = null;

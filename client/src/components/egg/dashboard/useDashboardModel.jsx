@@ -36,6 +36,13 @@ export default function useDashboardModel() {
         ws.onmessage = (event) => {
             try {
                 const parsed = JSON.parse(event.data);
+                if (parsed.event === 'session_terminated') {
+                    ws.onclose = null;
+                    ws.close();
+                    setSocketConnected(false);
+                    window.dispatchEvent(new CustomEvent('auth:session-terminated', { detail: parsed.data }));
+                    return;
+                }
                 if (parsed.event === 'telemetry_initial' || parsed.event === 'telemetry_update') {
                     setTelemetry(parsed.data);
                 } else if (parsed.event === 'haccp_alert') {

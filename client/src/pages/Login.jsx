@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, LOGOUT_NOTICE_KEY } from '../context/AuthContext';
 import { toast } from 'sonner';
-import { Building2, MapPin, ChevronRight, LogIn } from 'lucide-react';
+import { Building2, MapPin, ChevronRight, LogIn, AlertTriangle, MonitorOff, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 
@@ -11,10 +11,24 @@ const Login = () => {
     const [selectionData, setSelectionData] = useState(null);
     const [selectedCompanyId, setSelectedCompanyId] = useState('');
     const [selectedBranchId, setSelectedBranchId] = useState('');
+    const [logoutNotice, setLogoutNotice] = useState(null);
     const [versionInfo, setVersionInfo] = useState(() => ({
         commit: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '...',
         version: typeof __APP_SEMANTIC_VERSION__ !== 'undefined' ? __APP_SEMANTIC_VERSION__ : ''
     }));
+
+    useEffect(() => {
+        try {
+            const rawNotice = sessionStorage.getItem(LOGOUT_NOTICE_KEY);
+            if (rawNotice) {
+                sessionStorage.removeItem(LOGOUT_NOTICE_KEY);
+                const parsed = JSON.parse(rawNotice);
+                if (parsed && parsed.message) {
+                    setLogoutNotice(parsed);
+                }
+            }
+        } catch { /* ignore storage errors */ }
+    }, []);
 
     useEffect(() => {
         fetch('/api/health', { headers: { 'Cache-Control': 'no-cache' } })
@@ -42,7 +56,7 @@ const Login = () => {
                 if (res.companies.length === 1) {
                     setSelectedCompanyId(res.companies[0].id);
                 }
-            } else {
+            } else if (!res?.previousSessionClosed) {
                 toast.success('¡Bienvenido!');
             }
         } catch (error) {
@@ -53,8 +67,10 @@ const Login = () => {
     const handleSelectContext = async (e) => {
         e.preventDefault();
         try {
-            await selectContext(Number(selectedCompanyId), Number(selectedBranchId));
-            toast.success('¡Bienvenido!');
+            const res = await selectContext(Number(selectedCompanyId), Number(selectedBranchId));
+            if (!res?.previousSessionClosed) {
+                toast.success('¡Bienvenido!');
+            }
         } catch (error) {
             toast.error(error.response?.data?.message || 'Error al seleccionar contexto');
         }
@@ -84,7 +100,25 @@ const Login = () => {
                         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Seleccionar Acceso</h1>
                         <p className="text-slate-500 mt-2 text-sm italic font-spanish font-medium">Hola {selectionData.user.nombre}, selecciona la oficina para trabajar hoy</p>
                     </div>
-                    {/* ... form ... */}
+
+                    {selectionData.hasActiveOtherSession && selectionData.activeOtherSession && (
+                        <div className="mb-6 p-3.5 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 text-amber-900 text-xs">
+                            <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                            <div className="space-y-1">
+                                <p className="font-bold">Tienes una sesión activa en otro equipo</p>
+                                <p className="text-amber-800 leading-relaxed">
+                                    Al presionar <strong>Ingresar al Sistema</strong> se cerrará automáticamente la sesión en{' '}
+                                    <span className="font-semibold">
+                                        {[
+                                            selectionData.activeOtherSession.device,
+                                            selectionData.activeOtherSession.ip_address ? `IP ${selectionData.activeOtherSession.ip_address}` : null,
+                                            selectionData.activeOtherSession.branch_name || selectionData.activeOtherSession.company_name
+                                        ].filter(Boolean).join(' · ')}
+                                    </span>.
+                                </p>
+                            </div>
+                        </div>
+                    )}
 
                     <form onSubmit={handleSelectContext} className="space-y-6">
                         <div>
@@ -162,6 +196,47 @@ const Login = () => {
                     <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{settings?.system_name || 'SaaS Facturación'}</h1>
                     <p className="text-slate-500 mt-2 font-medium">Ingresa a tu cuenta para continuar</p>
                 </div>
+
+                {logoutNotice && (
+                    <div
+                        className={`mb-6 p-3.5 rounded-xl border flex items-start gap-3 text-xs ${
+                            logoutNotice.reason === 'replaced_by_new_login'
+                                ? 'bg-amber-50 border-amber-200 text-amber-900'
+                                : 'bg-rose-50 border-rose-200 text-rose-900'
+                        }`}
+                    >
+                        <MonitorOff
+                            size={18}
+                            className={`shrink-0 mt-0.5 ${
+                                logoutNotice.reason === 'replaced_by_new_login' ? 'text-amber-600' : 'text-rose-600'
+                            }`}
+                        />
+                        <div className="flex-1 min-w-0 space-y-1">
+                            <p className="font-bold">
+                                {logoutNotice.reason === 'replaced_by_new_login'
+                                    ? 'Sesión cerrada automáticamente'
+                                    : 'Sesión finalizada'}
+                            </p>
+                            <p className="leading-relaxed">{logoutNotice.message}</p>
+                            {(logoutNotice.deviceInfo?.newDevice || logoutNotice.deviceInfo?.newIp) && (
+                                <p className="text-[11px] opacity-80">
+                                    Nuevo acceso:{' '}
+                                    {[logoutNotice.deviceInfo.newDevice, logoutNotice.deviceInfo.newIp ? `IP ${logoutNotice.deviceInfo.newIp}` : null]
+                                        .filter(Boolean)
+                                        .join(' · ')}
+                                </p>
+                            )}
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setLogoutNotice(null)}
+                            className="p-0.5 opacity-60 hover:opacity-100 transition-opacity shrink-0"
+                            title="Cerrar aviso"
+                        >
+                            <X size={15} />
+                        </button>
+                    </div>
+                )}
                 
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div>

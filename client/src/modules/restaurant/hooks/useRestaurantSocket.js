@@ -80,6 +80,19 @@ export default function useRestaurantSocket({ companyId, onEvent }) {
                 const parsed = JSON.parse(messageEvent.data);
                 const { event, data } = parsed;
 
+                if (event === 'session_terminated') {
+                    if (reconnectTimerRef.current) {
+                        clearTimeout(reconnectTimerRef.current);
+                        reconnectTimerRef.current = null;
+                    }
+                    ws.onclose = null;
+                    ws.close();
+                    wsRef.current = null;
+                    setIsConnected(false);
+                    window.dispatchEvent(new CustomEvent('auth:session-terminated', { detail: data }));
+                    return;
+                }
+
                 // Reproducción de sonido contextual
                 if (event === 'restaurant:new_order' || event === 'restaurant:order_updated') {
                     playTone('chime');
@@ -97,9 +110,12 @@ export default function useRestaurantSocket({ companyId, onEvent }) {
             }
         };
 
-        ws.onclose = () => {
+        ws.onclose = (event) => {
             setIsConnected(false);
             wsRef.current = null;
+            if (event?.code === 4001 || event?.code === 1008 || !localStorage.getItem('token')) {
+                return;
+            }
             if (!reconnectTimerRef.current) {
                 reconnectTimerRef.current = setTimeout(() => {
                     reconnectTimerRef.current = null;

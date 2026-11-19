@@ -130,6 +130,8 @@ const Users = () => {
             }
         }
 
+        data.allow_concurrent_sessions = formData.get('allow_concurrent_sessions') === 'on' ? 1 : 0;
+
         mutation.mutate(data);
     };
 
@@ -331,7 +333,7 @@ const Users = () => {
                 title={selectedUser ? 'Editar Miembro' : 'Nuevo Miembro del Equipo'}
                 maxWidth="max-w-2xl"
             >
-                <form onSubmit={handleSubmit} className="space-y-6">
+                <form key={selectedUser?.id ?? 'new'} onSubmit={handleSubmit} className="space-y-6">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>Nombre Completo</label>
@@ -384,6 +386,25 @@ const Users = () => {
                             className={fieldCls + ' resize-none'}
                             defaultValue={selectedUser?.allowed_ips ? (Array.isArray(selectedUser.allowed_ips) ? selectedUser.allowed_ips : JSON.parse(selectedUser.allowed_ips)).join('\n') : ''}
                         />
+                    </div>
+
+                    <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
+                        <label className="flex items-start gap-3 cursor-pointer select-none">
+                            <input
+                                type="checkbox"
+                                name="allow_concurrent_sessions"
+                                defaultChecked={Boolean(selectedUser?.allow_concurrent_sessions)}
+                                className="mt-0.5 w-4 h-4 rounded accent-indigo-600 cursor-pointer shrink-0"
+                            />
+                            <div className="space-y-0.5">
+                                <span className="block text-xs font-bold text-slate-800 uppercase tracking-wider">
+                                    Permitir múltiples sesiones simultáneas
+                                </span>
+                                <span className="block text-[11px] text-slate-500 font-medium">
+                                    Por defecto, cada usuario solo puede mantener una sesión activa a la vez; al iniciar sesión en otro equipo se cerrará la sesión anterior automáticamente.
+                                </span>
+                            </div>
+                        </label>
                     </div>
 
                     <div className="flex justify-end gap-3 pt-6 border-t border-slate-100">

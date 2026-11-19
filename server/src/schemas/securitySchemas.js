@@ -20,6 +20,15 @@ const branchItemSchema = z.union([
     z.coerce.number().int().positive()
 ]);
 
+const allowConcurrentFlag = z.preprocess(
+    val => {
+        if (val === undefined || val === null || val === '') return undefined;
+        if (val === true || val === 1 || val === '1' || val === 'true' || val === 'on') return 1;
+        return 0;
+    },
+    z.union([z.literal(0), z.literal(1)]).optional()
+);
+
 // ==========================================
 // 1. USUARIOS (Users)
 // ==========================================
@@ -41,7 +50,8 @@ const userCreateSchema = z.object({
     ),
     role_id: z.coerce.number().optional(),
     branches: z.array(branchItemSchema).optional(),
-    allowed_ips: z.any().optional()
+    allowed_ips: z.any().optional(),
+    allow_concurrent_sessions: allowConcurrentFlag
 }).passthrough();
 
 const userUpdateSchema = z.object({
@@ -71,7 +81,8 @@ const userUpdateSchema = z.object({
     status: z.enum(['activo', 'inactivo'], { error: 'Estado de usuario inválido' }).optional(),
     role_id: z.coerce.number().optional(),
     branches: z.array(branchItemSchema).optional(),
-    allowed_ips: z.any().optional()
+    allowed_ips: z.any().optional(),
+    allow_concurrent_sessions: allowConcurrentFlag
 }).passthrough();
 
 const userProfileSchema = z.object({

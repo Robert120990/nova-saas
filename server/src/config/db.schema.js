@@ -50,6 +50,7 @@ REGLAS DE MULTI-TENENCIA:
 
 ### users (Usuarios del sistema)
 - id, company_id, role_id, username, password (hash), nombre, email
+- telefono, allowed_ips JSON, allow_concurrent_sessions TINYINT(1) DEFAULT 0
 - status ENUM('activo','inactivo'), created_at
 - UNIQUE(company_id, username)
 
@@ -66,9 +67,10 @@ REGLAS DE MULTI-TENENCIA:
 
 ### user_sessions (Sesiones activas de usuarios)
 - id, user_id, company_id, branch_id
-- ip_address VARCHAR(45), user_agent VARCHAR(500)
+- ip_address VARCHAR(45), user_agent VARCHAR(500), device_id VARCHAR(64)
 - logged_in_at TIMESTAMP, last_heartbeat TIMESTAMP
 - is_active BOOLEAN DEFAULT TRUE
+- terminated_reason VARCHAR(40) NULL, terminated_at TIMESTAMP NULL, replaced_by_session_id INT NULL
 - FK: user_id → users.id, company_id → companies.id
 
 ### audit_log (Auditoría de cambios)

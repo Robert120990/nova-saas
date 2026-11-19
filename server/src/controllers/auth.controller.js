@@ -2,16 +2,8 @@ const pool = require('../config/db');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const loginRateLimit = require('../services/loginRateLimit.service');
-
-async function createSession(userId, companyId, branchId, req) {
-    const ip = req.ip || req.connection?.remoteAddress || null;
-    const ua = req.headers['user-agent'] || null;
-    const [result] = await pool.query(
-        'INSERT INTO user_sessions (user_id, company_id, branch_id, ip_address, user_agent) VALUES (?, ?, ?, ?, ?)',
-        [userId, companyId, branchId, ip, ua]
-    );
-    return result.insertId;
-}
+const sessionService = require('../services/session.service');
+const { getTerminationMessage } = require('../middlewares/auth');
 
 function parsePermissions(permissions) {
     if (!permissions) return [];
@@ -160,11 +152,20 @@ const login = async (req, res) => {
         }
 
         // Si solo tiene una empresa y una sucursal, entramos directo
+        const allowConcurrent = Boolean(user.allow_concurrent_sessions);
+
         if (companies.length === 1 && companies[0].branches.length === 1) {
             const company = companies[0];
             const branch = company.branches[0];
 
-            const sessionId = await createSession(user.id, company.id, branch.id, req);
+            const sessionResult = await sessionService.createExclusiveSession({
+                userId: user.id,
+                companyId: company.id,
+                branchId: branch.id,
+                req,
+                allowConcurrent
+            });
+            const sessionId = sessionResult.sessionId;
             
             const token = jwt.sign(
                 { 
@@ -195,11 +196,22 @@ const login = async (req, res) => {
 
             return res.json({
                 token,
-                user: userResponse
+                user: userResponse,
+                previousSessionClosed: sessionResult.previousSessionClosed,
+                closedSessionsCount: sessionResult.closedSessionsCount,
+                replacedSession: sessionResult.replacedSession
             });
         }
 
-        // Si tiene múltiples, devolvemos un token temporal y la lista
+        // Si tiene múltiples, devolvemos un token temporal y la lista (sin cerrar aún la sesión del otro equipo)
+        let activeOtherSessions = [];
+        if (!allowConcurrent) {
+            activeOtherSessions = await sessionService.findActiveOtherSessions(
+                user.id,
+                sessionService.extractDeviceId(req)
+            );
+        }
+
         const tempToken = jwt.sign(
             { id: user.id, isTemp: true },
             process.env.JWT_SECRET,
@@ -210,6 +222,8 @@ const login = async (req, res) => {
             mustSelectContext: true,
             tempToken,
             companies,
+            hasActiveOtherSession: activeOtherSessions.length > 0,
+            activeOtherSession: activeOtherSessions[0] || null,
             user: {
                 id: user.id,
                 username: user.username,
@@ -305,8 +319,43 @@ const selectContext = async (req, res) => {
 
         const [userRows] = await pool.query('SELECT * FROM users WHERE id = ?', [userId]);
         const user = userRows[0];
+        const allowConcurrent = Boolean(user.allow_concurrent_sessions);
 
-        const sessionId = await createSession(userId, company_id, branch_id, req);
+        let sessionId;
+        let previousSessionClosed = false;
+        let closedSessionsCount = 0;
+        let replacedSession = null;
+
+        if (!req.user.isTemp && req.user.session_id) {
+            // Context switch within an already-authenticated session: reuse the same session_id
+            const switched = await sessionService.switchSessionContext({
+                sessionId: req.user.session_id,
+                userId,
+                companyId: company_id,
+                branchId: branch_id,
+                req
+            });
+            if (!switched) {
+                return res.status(401).json({
+                    message: getTerminationMessage('replaced_by_new_login'),
+                    sessionTerminated: true,
+                    reason: 'replaced_by_new_login'
+                });
+            }
+            sessionId = req.user.session_id;
+        } else {
+            const sessionResult = await sessionService.createExclusiveSession({
+                userId,
+                companyId: company_id,
+                branchId: branch_id,
+                req,
+                allowConcurrent
+            });
+            sessionId = sessionResult.sessionId;
+            previousSessionClosed = sessionResult.previousSessionClosed;
+            closedSessionsCount = sessionResult.closedSessionsCount;
+            replacedSession = sessionResult.replacedSession;
+        }
 
         const token = jwt.sign(
             { 
@@ -338,7 +387,10 @@ const selectContext = async (req, res) => {
 
         res.json({
             token,
-            user: userResponse
+            user: userResponse,
+            previousSessionClosed,
+            closedSessionsCount,
+            replacedSession
         });
     } catch (error) {
         console.error(error);
@@ -407,12 +459,18 @@ const heartbeat = async (req, res) => {
         if (!sessionId) return res.json({ ok: true, forceLogout: false });
 
         const [sessions] = await pool.query(
-            'SELECT id, is_active FROM user_sessions WHERE id = ?',
+            'SELECT id, is_active, terminated_reason FROM user_sessions WHERE id = ?',
             [sessionId]
         );
 
         if (sessions.length === 0 || !sessions[0].is_active) {
-            return res.json({ ok: true, forceLogout: true });
+            const reason = sessions[0]?.terminated_reason || 'expired';
+            return res.json({
+                ok: true,
+                forceLogout: true,
+                reason,
+                message: getTerminationMessage(reason)
+            });
         }
 
         await pool.query(
@@ -424,7 +482,10 @@ const heartbeat = async (req, res) => {
         if (!global._lastSessionCleanup || Date.now() - global._lastSessionCleanup > 30000) {
             global._lastSessionCleanup = Date.now();
             await pool.query(
-                `UPDATE user_sessions SET is_active = 0 
+                `UPDATE user_sessions
+                 SET is_active = 0,
+                     terminated_reason = COALESCE(terminated_reason, 'expired'),
+                     terminated_at = COALESCE(terminated_at, NOW())
                  WHERE is_active = 1 AND last_heartbeat < NOW() - INTERVAL 2 HOUR`
             );
         }
@@ -440,10 +501,12 @@ const logout = async (req, res) => {
     try {
         const sessionId = req.user.session_id;
         if (sessionId) {
-            await pool.query(
-                'UPDATE user_sessions SET is_active = 0 WHERE id = ?',
-                [sessionId]
-            );
+            await sessionService.revokeSession({
+                sessionId,
+                userId: req.user.id,
+                reason: 'logout',
+                disconnectSocket: true
+            });
         }
         res.json({ message: 'Sesión cerrada' });
     } catch (error) {
