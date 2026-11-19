@@ -112,13 +112,24 @@ const userAccessSchema = z.object({
 const bulkAccessSchema = z.object({
     userIds: z.array(z.coerce.number(), { error: 'Debe seleccionar al menos un usuario' })
         .min(1, 'Debe seleccionar al menos un usuario'),
+    roleId: z.coerce.number().int().positive().optional(),
     assignments: z.array(z.object({
         companyId: z.coerce.number({ error: 'El ID de empresa es obligatorio' }),
-        roleId: z.coerce.number({ error: 'El ID de rol es obligatorio' }),
+        roleId: z.coerce.number({ error: 'El ID de rol es obligatorio' }).int().positive().optional(),
         branches: z.array(branchItemSchema).optional()
     }), { error: 'Debe especificar al menos una empresa con rol' })
         .min(1, 'Debe especificar al menos una empresa con rol')
-}).passthrough();
+}).passthrough().superRefine((data, ctx) => {
+    data.assignments.forEach((item, idx) => {
+        if (!item?.roleId && !data.roleId) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['assignments', idx, 'roleId'],
+                message: 'El ID de rol es obligatorio'
+            });
+        }
+    });
+});
 
 const cloneAccessSchema = z.object({
     sourceUserId: z.coerce.number({ error: 'Debe especificar el usuario origen' }),

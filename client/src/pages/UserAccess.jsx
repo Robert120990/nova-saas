@@ -29,7 +29,6 @@ const UserAccess = () => {
     const [filterCompany, setFilterCompany] = useState('');
     const [filterRole, setFilterRole] = useState('');
     const [selectedRowKeys, setSelectedRowKeys] = useState([]); // ['userId-companyId']
-    const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
     // 1. Fetch access summary
     const { data: accessSummary = [], isLoading: loadingSummary } = useQuery({
@@ -76,10 +75,10 @@ const UserAccess = () => {
 
     const deleteMutation = useMutation({
         mutationFn: ({ userId, companyId }) => axios.delete(`/api/users/access/${userId}/${companyId}`),
-        onSuccess: () => {
+        onSuccess: (_res, variables) => {
             toast.success('Acceso eliminado correctamente');
             queryClient.invalidateQueries({ queryKey: ['access-summary'] });
-            setSelectedRowKeys(prev => prev.filter(k => !k.startsWith(`${deleteMutation.variables?.userId}-${deleteMutation.variables?.companyId}`)));
+            setSelectedRowKeys(prev => prev.filter(k => k !== `${variables.userId}-${variables.companyId}`));
         },
         onError: (error) => {
             toast.error(error.response?.data?.message || 'Error al eliminar acceso');
@@ -151,14 +150,16 @@ const UserAccess = () => {
         }
     };
 
-    const handleDeleteSingle = (userId, companyId) => {
-        const id = `${userId}-${companyId}`;
-        if (confirmDeleteId === id) {
-            deleteMutation.mutate({ userId, companyId });
-            setConfirmDeleteId(null);
-        } else {
-            setConfirmDeleteId(id);
-            setTimeout(() => setConfirmDeleteId(null), 3000);
+    const handleDeleteSingle = async (acc) => {
+        const ok = await confirm({
+            title: '¿Eliminar acceso?',
+            message: `El usuario "${acc.user_name}" (@${acc.username}) perderá acceso a "${acc.company_name}" y a sus sucursales asignadas.`,
+            confirmLabel: 'Sí, eliminar',
+            cancelLabel: 'Cancelar',
+            variant: 'danger'
+        });
+        if (ok) {
+            deleteMutation.mutate({ userId: acc.user_id, companyId: acc.company_id });
         }
     };
 
@@ -350,6 +351,7 @@ const UserAccess = () => {
                                         <td className="px-4 py-3.5">
                                             <div className="flex items-center justify-end gap-1.5">
                                                 <button 
+                                                    type="button"
                                                     onClick={() => openEditModal(acc)}
                                                     className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all cursor-pointer"
                                                     title="Editar Acceso"
@@ -357,13 +359,11 @@ const UserAccess = () => {
                                                     <Edit size={16} />
                                                 </button>
                                                 <button 
-                                                    onClick={() => handleDeleteSingle(acc.user_id, acc.company_id)}
-                                                    className={`p-1.5 rounded-lg transition-all cursor-pointer ${
-                                                        confirmDeleteId === rowKey
-                                                        ? 'text-white bg-red-600 shadow-md shadow-red-600/20'
-                                                        : 'text-slate-400 hover:text-red-500 hover:bg-red-50'
-                                                    }`}
-                                                    title={confirmDeleteId === rowKey ? "Confirmar eliminación" : "Eliminar Acceso"}
+                                                    type="button"
+                                                    onClick={() => handleDeleteSingle(acc)}
+                                                    disabled={deleteMutation.isPending}
+                                                    className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all cursor-pointer disabled:opacity-50"
+                                                    title="Eliminar Acceso"
                                                 >
                                                     <Trash2 size={16} />
                                                 </button>
@@ -425,6 +425,7 @@ const UserAccess = () => {
                 roles={roles}
                 companiesTree={companiesTree}
                 loadingTree={loadingTree}
+                accessSummary={accessSummary}
                 onClose={() => {
                     setIsAssignModalOpen(false);
                     setEditingAccess(null);

@@ -458,7 +458,7 @@ const getCompaniesWithBranchesTree = async (req, res) => {
 };
 
 const assignBulkAccess = async (req, res) => {
-    const { userIds, assignments } = req.body;
+    const { userIds, roleId: defaultRoleId, assignments } = req.body;
 
     if (!Array.isArray(userIds) || userIds.length === 0) {
         return res.status(400).json({ message: 'Debe seleccionar al menos un usuario' });
@@ -469,7 +469,8 @@ const assignBulkAccess = async (req, res) => {
 
     if (!isSuperAdmin(req)) {
         for (const assignment of assignments) {
-            if (assignment?.roleId && await isRoleSuperAdmin(pool, assignment.roleId)) {
+            const effectiveRoleId = assignment?.roleId || defaultRoleId;
+            if (effectiveRoleId && await isRoleSuperAdmin(pool, effectiveRoleId)) {
                 return res.status(403).json({ message: 'Solo un SuperAdmin puede asignar el rol SuperAdmin' });
             }
         }
@@ -487,14 +488,15 @@ const assignBulkAccess = async (req, res) => {
         for (const userId of userIds) {
             for (const assignment of assignments) {
                 const { companyId, roleId, branches } = assignment;
-                if (!companyId || !roleId) continue;
+                const effectiveRoleId = roleId || defaultRoleId;
+                if (!companyId || !effectiveRoleId) continue;
 
                 // 1. usuario_empresa
                 await connection.query(
                     `INSERT INTO usuario_empresa (usuario_id, empresa_id, role_id, has_access)
                      VALUES (?, ?, ?, 1)
                      ON DUPLICATE KEY UPDATE role_id = VALUES(role_id), has_access = 1`,
-                    [userId, companyId, roleId]
+                    [userId, companyId, effectiveRoleId]
                 );
 
                 // 2. Limpiar sucursales previas en esta empresa

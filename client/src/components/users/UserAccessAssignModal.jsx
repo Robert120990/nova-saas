@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { 
     ShieldCheck, Building2, GitBranch, Save, Search, 
     Users as UsersIcon, X, Layers, ChevronDown, ChevronRight, 
-    Sparkles, Check 
+    Sparkles, Check, Info
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -20,11 +20,13 @@ export default function UserAccessAssignModal({
     roles = [],
     companiesTree = [],
     loadingTree = false,
+    accessSummary = [],
     onClose,
     onSuccess,
 }) {
     const queryClient = useQueryClient();
     const isEditing = !!editingAccess;
+    const lastPreloadedUserIdRef = useRef(null);
 
     const [modalTab, setModalTab] = useState(defaultTab); // 'individual' | 'masivo'
 
@@ -49,17 +51,55 @@ export default function UserAccessAssignModal({
         enabled: !!selectedCompanyId && open && modalTab === 'individual'
     });
 
+    // Index existing accesses per user
+    const accessByUserMap = useMemo(() => {
+        const map = new Map();
+        const list = Array.isArray(accessSummary) ? accessSummary : [];
+        for (const acc of list) {
+            const key = String(acc.user_id);
+            if (!map.has(key)) map.set(key, []);
+            map.get(key).push(acc);
+        }
+        return map;
+    }, [accessSummary]);
+
+    const singleSelectedBulkUserAccesses = useMemo(() => {
+        const map = new Map();
+        if (bulkUserSelectionType === 'specific' && bulkSelectedUserIds.length === 1) {
+            const list = accessByUserMap.get(String(bulkSelectedUserIds[0])) || [];
+            for (const acc of list) {
+                map.set(String(acc.company_id), acc);
+            }
+        }
+        return map;
+    }, [bulkUserSelectionType, bulkSelectedUserIds, accessByUserMap]);
+
+    const individualUserAccesses = useMemo(() => {
+        if (!selectedUserId) return [];
+        return accessByUserMap.get(String(selectedUserId)) || [];
+    }, [selectedUserId, accessByUserMap]);
+
+    const existingIndividualAccess = useMemo(() => {
+        if (!selectedCompanyId) return null;
+        return individualUserAccesses.find(a => String(a.company_id) === String(selectedCompanyId)) || null;
+    }, [individualUserAccesses, selectedCompanyId]);
+
     // Reset or populate on open
     useEffect(() => {
-        if (!open) return;
+        if (!open) {
+            lastPreloadedUserIdRef.current = null;
+            return;
+        }
 
         if (editingAccess) {
+            lastPreloadedUserIdRef.current = null;
             setModalTab('individual');
             setSelectedUserId(editingAccess.user_id);
             setSelectedCompanyId(editingAccess.company_id);
             setSelectedRoleId(editingAccess.role_id);
             setSelectedBranches((editingAccess.branches || []).map(b => b.id));
         } else {
+            lastPreloadedUserIdRef.current = null;
             setModalTab(defaultTab);
             setSelectedUserId('');
             setSelectedCompanyId('');
@@ -73,6 +113,38 @@ export default function UserAccessAssignModal({
             setExpandedCompanies(companiesTree.map(c => c.id));
         }
     }, [open, editingAccess, defaultTab, companiesTree]);
+
+    // Preload existing companies, branches and default role when a single user is selected in bulk mode
+    useEffect(() => {
+        if (!open) {
+            lastPreloadedUserIdRef.current = null;
+            return;
+        }
+        if (isEditing || modalTab !== 'masivo') return;
+
+        if (bulkUserSelectionType === 'specific' && bulkSelectedUserIds.length === 1) {
+            const singleId = String(bulkSelectedUserIds[0]);
+            if (lastPreloadedUserIdRef.current !== singleId) {
+                lastPreloadedUserIdRef.current = singleId;
+                const existingList = accessByUserMap.get(singleId) || [];
+                const preloaded = {};
+                for (const acc of existingList) {
+                    preloaded[acc.company_id] = {
+                        selected: true,
+                        branches: (acc.branches || []).map(b => b.id)
+                    };
+                }
+                setBulkAssignments(preloaded);
+                setBulkRoleId(existingList.length > 0 ? existingList[0].role_id : '');
+            }
+        } else if (bulkUserSelectionType === 'specific' && bulkSelectedUserIds.length === 0 && lastPreloadedUserIdRef.current !== null) {
+            lastPreloadedUserIdRef.current = null;
+            setBulkAssignments({});
+            setBulkRoleId('');
+        } else if (bulkUserSelectionType === 'all' || bulkSelectedUserIds.length > 1) {
+            lastPreloadedUserIdRef.current = null;
+        }
+    }, [open, isEditing, modalTab, bulkUserSelectionType, bulkSelectedUserIds, accessByUserMap]);
 
     // Mutations
     const assignMutation = useMutation({
@@ -104,6 +176,38 @@ export default function UserAccessAssignModal({
     if (!open) return null;
 
     // Handlers individual
+    const applyIndividualUserSelection = (newUserId, companyId = selectedCompanyId) => {
+        setSelectedUserId(newUserId);
+        if (!newUserId || !companyId) {
+            if (!companyId) setSelectedBranches([]);
+            return;
+        }
+        const userList = accessByUserMap.get(String(newUserId)) || [];
+        const match = userList.find(a => String(a.company_id) === String(companyId));
+        if (match) {
+            setSelectedRoleId(match.role_id);
+            setSelectedBranches((match.branches || []).map(b => b.id));
+        } else {
+            setSelectedBranches([]);
+        }
+    };
+
+    const applyIndividualCompanySelection = (newCompanyId, userId = selectedUserId) => {
+        setSelectedCompanyId(newCompanyId);
+        if (!userId || !newCompanyId) {
+            setSelectedBranches([]);
+            return;
+        }
+        const userList = accessByUserMap.get(String(userId)) || [];
+        const match = userList.find(a => String(a.company_id) === String(newCompanyId));
+        if (match) {
+            setSelectedRoleId(match.role_id);
+            setSelectedBranches((match.branches || []).map(b => b.id));
+        } else {
+            setSelectedBranches([]);
+        }
+    };
+
     const toggleBranch = (id) => {
         setSelectedBranches(prev => 
             prev.includes(id) ? prev.filter(b => b !== id) : [...prev, id]
@@ -227,10 +331,12 @@ export default function UserAccessAssignModal({
             return toast.error('Debe seleccionar el rol a asignar');
         }
 
+        const parsedRoleId = parseInt(bulkRoleId, 10);
         const selectedCompaniesList = Object.keys(bulkAssignments)
             .filter(cid => bulkAssignments[cid]?.selected)
             .map(cid => ({
-                companyId: parseInt(cid),
+                companyId: parseInt(cid, 10),
+                roleId: parsedRoleId,
                 branches: bulkAssignments[cid]?.branches || []
             }));
 
@@ -240,7 +346,7 @@ export default function UserAccessAssignModal({
 
         bulkAssignMutation.mutate({
             userIds: targetUsers,
-            roleId: parseInt(bulkRoleId),
+            roleId: parsedRoleId,
             assignments: selectedCompaniesList
         });
     };
@@ -318,7 +424,7 @@ export default function UserAccessAssignModal({
                                     <select 
                                         value={selectedUserId} 
                                         disabled={isEditing}
-                                        onChange={(e) => setSelectedUserId(e.target.value)}
+                                        onChange={(e) => applyIndividualUserSelection(e.target.value)}
                                         className={selectCls}
                                     >
                                         <option value="">Seleccionar usuario...</option>
@@ -335,10 +441,7 @@ export default function UserAccessAssignModal({
                                     <select 
                                         value={selectedCompanyId} 
                                         disabled={isEditing}
-                                        onChange={(e) => {
-                                            setSelectedCompanyId(e.target.value);
-                                            setSelectedBranches([]);
-                                        }}
+                                        onChange={(e) => applyIndividualCompanySelection(e.target.value)}
                                         className={selectCls}
                                     >
                                         <option value="">Seleccionar empresa...</option>
@@ -365,12 +468,57 @@ export default function UserAccessAssignModal({
                                 </div>
                             </div>
 
+                            {!isEditing && selectedUserId && individualUserAccesses.length > 0 && (
+                                <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-2xl space-y-2">
+                                    <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-900">
+                                        <Info size={14} className="text-emerald-600 shrink-0" />
+                                        <span>
+                                            Accesos actuales del usuario ({individualUserAccesses.length} {individualUserAccesses.length === 1 ? 'empresa' : 'empresas'} — haz clic para editar):
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {individualUserAccesses.map((acc) => {
+                                            const isCurrentCompany = String(selectedCompanyId) === String(acc.company_id);
+                                            return (
+                                                <button
+                                                    key={`${acc.user_id}-${acc.company_id}`}
+                                                    type="button"
+                                                    onClick={() => applyIndividualCompanySelection(acc.company_id)}
+                                                    className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
+                                                        isCurrentCompany
+                                                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                                                            : 'bg-white text-emerald-800 border-emerald-200 hover:border-emerald-400'
+                                                    }`}
+                                                >
+                                                    <span>{acc.company_name}</span>
+                                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase ${
+                                                        isCurrentCompany ? 'bg-emerald-700 text-white' : 'bg-emerald-100 text-emerald-700'
+                                                    }`}>
+                                                        {acc.role_name}
+                                                    </span>
+                                                    <span className="text-[10px] opacity-80">
+                                                        ({(acc.branches || []).length} suc.)
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Sucursales */}
                             <div className="space-y-3 pt-2">
-                                <div className="flex items-center justify-between">
-                                    <label className={labelCls}>
-                                        <GitBranch size={14} className="text-indigo-600" /> 4. Sucursales Autorizadas
-                                    </label>
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <label className={labelCls + ' mb-0'}>
+                                            <GitBranch size={14} className="text-indigo-600" /> 4. Sucursales Autorizadas
+                                        </label>
+                                        {!isEditing && existingIndividualAccess && (
+                                            <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
+                                                Rol y sucursales actuales cargados ({existingIndividualAccess.role_name})
+                                            </span>
+                                        )}
+                                    </div>
                                     {branches.length > 0 && (
                                         <div className="flex items-center gap-2">
                                             <button
@@ -500,30 +648,58 @@ export default function UserAccessAssignModal({
                                                 .filter(u => u.nombre.toLowerCase().includes(bulkUserSearch.toLowerCase()) || u.username.toLowerCase().includes(bulkUserSearch.toLowerCase()))
                                                 .map(u => {
                                                     const isChecked = bulkSelectedUserIds.includes(u.id);
+                                                    const userAccessCount = (accessByUserMap.get(String(u.id)) || []).length;
                                                     return (
                                                         <button
                                                             key={u.id}
                                                             type="button"
                                                             onClick={() => toggleBulkUser(u.id)}
-                                                            className={`flex items-center gap-2 p-2 rounded-lg border text-left text-xs transition-all cursor-pointer ${
+                                                            className={`flex items-center justify-between gap-2 p-2 rounded-lg border text-left text-xs transition-all cursor-pointer ${
                                                                 isChecked
                                                                 ? 'bg-indigo-50 border-indigo-400 text-indigo-800'
                                                                 : 'bg-white border-slate-100 text-slate-700 hover:bg-slate-50'
                                                             }`}
                                                         >
-                                                            <div className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${
-                                                                isChecked ? 'bg-indigo-600 text-white' : 'border border-slate-300'
-                                                            }`}>
-                                                                {isChecked && <Check size={10} strokeWidth={3} />}
+                                                            <div className="flex items-center gap-2 min-w-0">
+                                                                <div className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${
+                                                                    isChecked ? 'bg-indigo-600 text-white' : 'border border-slate-300'
+                                                                }`}>
+                                                                    {isChecked && <Check size={10} strokeWidth={3} />}
+                                                                </div>
+                                                                <div className="truncate">
+                                                                    <span className="font-bold">{u.nombre}</span>
+                                                                    <span className="text-[10px] text-slate-400 ml-1">@{u.username}</span>
+                                                                </div>
                                                             </div>
-                                                            <div className="truncate">
-                                                                <span className="font-bold">{u.nombre}</span>
-                                                                <span className="text-[10px] text-slate-400 ml-1">@{u.username}</span>
-                                                            </div>
+                                                            {userAccessCount > 0 && (
+                                                                <span className="shrink-0 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[9px] font-bold">
+                                                                    {userAccessCount} emp.
+                                                                </span>
+                                                            )}
                                                         </button>
                                                     );
                                                 })}
                                         </div>
+                                        {bulkSelectedUserIds.length === 1 && singleSelectedBulkUserAccesses.size > 0 && (
+                                            <div className="p-2.5 bg-emerald-50/90 border border-emerald-200 rounded-xl flex items-start gap-2 text-[11px] text-emerald-900">
+                                                <Info size={15} className="text-emerald-600 shrink-0 mt-0.5" />
+                                                <div className="space-y-1 min-w-0">
+                                                    <p className="font-bold">
+                                                        Accesos actuales del usuario ({singleSelectedBulkUserAccesses.size} {singleSelectedBulkUserAccesses.size === 1 ? 'empresa' : 'empresas'}) — empresas y sucursales preseleccionadas abajo:
+                                                    </p>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {Array.from(singleSelectedBulkUserAccesses.values()).map((acc) => (
+                                                            <span
+                                                                key={`${acc.user_id}-${acc.company_id}`}
+                                                                className="px-2 py-0.5 bg-white border border-emerald-200 rounded-lg text-[10px] font-semibold text-emerald-800"
+                                                            >
+                                                                {acc.company_name} · <strong className="font-bold">{acc.role_name}</strong> ({(acc.branches || []).length} suc.)
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -596,6 +772,7 @@ export default function UserAccessAssignModal({
                                             const isCompanySelected = bulkAssignments[company.id]?.selected;
                                             const selectedBranchesCount = (bulkAssignments[company.id]?.branches || []).length;
                                             const isExpanded = expandedCompanies.includes(company.id);
+                                            const existingCompanyAccess = singleSelectedBulkUserAccesses.get(String(company.id));
 
                                             return (
                                                 <div 
@@ -629,7 +806,12 @@ export default function UserAccessAssignModal({
                                                             </button>
                                                         </div>
 
-                                                        <div className="flex items-center gap-2">
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            {existingCompanyAccess && (
+                                                                <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
+                                                                    Acceso actual · {existingCompanyAccess.role_name}
+                                                                </span>
+                                                            )}
                                                             {isCompanySelected && company.branches.length > 0 && (
                                                                 <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
                                                                     {selectedBranchesCount} de {company.branches.length} sucursales
