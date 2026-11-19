@@ -1,7 +1,10 @@
 import { BatteryCharging, Cpu, CheckCircle2 } from 'lucide-react';
 
 export default function EnergyBatteryStatus({ gessData }) {
-    const nominalCap = gessData?.nominalCap || 513;
+    const nominalCap = gessData?.nominalCap || 513.6;
+    const socPct = gessData?.socPct ?? 100;
+    const storedKwh = ((nominalCap * Math.min(Math.max(socPct, 0), 100)) / 100).toFixed(1);
+    const batPowerKw = gessData?.batteryPowerKw || 0;
     const dayCharged = gessData?.dayChargedKwh || 0;
     const dayDischarged = gessData?.dayDischargedKwh || 0;
     const monthCharged = gessData?.monthChargedKwh || 0;
@@ -72,10 +75,80 @@ export default function EnergyBatteryStatus({ gessData }) {
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                        Capacidad Nominal: {nominalCap} kW
+                <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`px-3 py-1 rounded-full text-xs font-black border ${
+                        socPct >= 80
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800'
+                            : socPct >= 40
+                            ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800'
+                            : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800'
+                    }`}>
+                        🔋 Carga (SoC): {socPct}%
                     </span>
+                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                        Capacidad Nominal: {nominalCap} kWh
+                    </span>
+                </div>
+            </div>
+
+            {/* Gráfica Visual del Nivel de Batería con Porcentaje */}
+            <div className="mt-4 p-4 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/60 space-y-2.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wide">
+                            Estado de Carga del Banco de Baterías (SoC)
+                        </span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            batPowerKw > 0.5
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                                : batPowerKw < -0.5
+                                ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
+                                : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                        }`}>
+                            {batPowerKw > 0.5 ? `Cargando (+${batPowerKw.toFixed(1)} kW)` :
+                             batPowerKw < -0.5 ? `Descargando (${batPowerKw.toFixed(1)} kW)` : 'En Reserva / Espera'}
+                        </span>
+                    </div>
+                    <div className="flex items-baseline gap-1.5">
+                        <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
+                            {socPct}%
+                        </span>
+                        <span className="text-xs font-semibold text-slate-500">
+                            ({storedKwh} kWh / {nominalCap} kWh)
+                        </span>
+                    </div>
+                </div>
+
+                {/* Barra Gráfica de Batería Segmentada con Porcentaje */}
+                <div className="flex items-center gap-1.5">
+                    <div className="flex-1 h-6 rounded-xl bg-slate-200 dark:bg-slate-700 p-1 border border-slate-300 dark:border-slate-600 relative overflow-hidden flex items-center">
+                        <div
+                            className={`h-full rounded-lg transition-all duration-500 ${
+                                socPct >= 80
+                                    ? 'bg-gradient-to-r from-emerald-500 to-teal-500'
+                                    : socPct >= 40
+                                    ? 'bg-gradient-to-r from-blue-500 to-indigo-500'
+                                    : socPct >= 20
+                                    ? 'bg-gradient-to-r from-amber-500 to-orange-500'
+                                    : 'bg-gradient-to-r from-rose-500 to-red-600'
+                            }`}
+                            style={{ width: `${Math.min(Math.max(socPct, 0), 100)}%` }}
+                        />
+                        <div className="absolute inset-0 grid grid-cols-10 pointer-events-none">
+                            {Array.from({ length: 10 }).map((_, i) => (
+                                <div key={i} className="border-r border-white/25 last:border-r-0" />
+                            ))}
+                        </div>
+                    </div>
+                    <div className="w-2 h-3.5 rounded-r-md bg-slate-400 dark:bg-slate-500 shrink-0" />
+                </div>
+
+                <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 px-0.5">
+                    <span>0% (0 kWh)</span>
+                    <span>25% ({(nominalCap * 0.25).toFixed(0)} kWh)</span>
+                    <span>50% ({(nominalCap * 0.5).toFixed(0)} kWh)</span>
+                    <span>75% ({(nominalCap * 0.75).toFixed(0)} kWh)</span>
+                    <span>100% ({nominalCap} kWh)</span>
                 </div>
             </div>
 

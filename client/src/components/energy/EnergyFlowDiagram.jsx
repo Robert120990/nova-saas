@@ -11,11 +11,14 @@ import {
 export default function EnergyFlowDiagram({ liveData, isPeakHour }) {
     const summary = liveData?.summary || {};
     const config = liveData?.config || {};
+    const hasBatteries = Boolean(summary.hasBatteries || liveData?.hasBatteries || config.gessEnabled || liveData?.gess?.hasBatteries);
     const solarKw = summary.solarPowerKw || 0;
     const batKw = summary.batteryPowerKw || 0;
     const gridKw = summary.gridPowerKw || 0;
     const loadKw = summary.loadPowerKw || 0;
-    const soc = summary.socPct || 0;
+    const soc = summary.socPct ?? liveData?.gess?.socPct ?? 0;
+    const nominalCap = liveData?.gess?.nominalCap || 513.6;
+    const storedKwh = ((nominalCap * Math.min(Math.max(soc, 0), 100)) / 100).toFixed(1);
     const batState = summary.batteryState || 'idle';
 
     return (
@@ -34,13 +37,13 @@ export default function EnergyFlowDiagram({ liveData, isPeakHour }) {
 
                 {/* Banner de Estado Tarifario */}
                 <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold ${
-                    !summary.hasBatteries
+                    !hasBatteries
                         ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
                         : isPeakHour
                         ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800 animate-pulse'
                         : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
                 }`}>
-                    {!summary.hasBatteries ? (
+                    {!hasBatteries ? (
                         <>
                             <Sun className="w-4 h-4 text-amber-500" />
                             <span>
@@ -104,20 +107,20 @@ export default function EnergyFlowDiagram({ liveData, isPeakHour }) {
                                 </div>
                             </div>
                             <span className="text-lg font-black text-blue-600 dark:text-blue-400">
-                                {summary.hasBatteries ? Math.abs(gridKw).toFixed(1) : (solarKw > 0 ? 'Conectada' : '0.0')} <span className="text-xs font-medium">{summary.hasBatteries ? 'kW' : ''}</span>
+                                {hasBatteries ? Math.abs(gridKw).toFixed(1) : (solarKw > 0 ? 'Conectada' : '0.0')} <span className="text-xs font-medium">{hasBatteries ? 'kW' : ''}</span>
                             </span>
                         </div>
                         <div className="mt-2 text-[11px] text-slate-500 flex justify-between">
                             <span>Tarifa: ${config.peakRate || 0.22}/kWh pico</span>
                             <span className="font-semibold text-slate-600 dark:text-slate-400">
-                                {summary.hasBatteries ? (gridKw >= 0 ? 'Entregando a Planta' : 'Inyección Excedente') : 'Interconexión Activa'}
+                                {hasBatteries ? (gridKw >= 0 ? 'Entregando a Planta' : 'Inyección Excedente') : 'Interconexión Activa'}
                             </span>
                         </div>
                     </div>
                 </div>
 
                 {/* Columna Centro: Banco de Baterías O Inyección Directa */}
-                {!summary.hasBatteries ? (
+                {!hasBatteries ? (
                     <div className="flex flex-col items-center justify-center p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border-2 border-dashed border-amber-400/40 relative">
                         <div className="w-full flex items-center justify-between mb-3">
                             <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide flex items-center gap-1.5">
@@ -170,27 +173,27 @@ export default function EnergyFlowDiagram({ liveData, isPeakHour }) {
                                 ) : batState === 'discharging' ? (
                                     <Battery className="w-10 h-10 text-purple-600" />
                                 ) : (
-                                    <Battery className="w-10 h-10 text-blue-600" />
+                                    <Battery className="w-10 h-10 text-emerald-600" />
                                 )}
                                 <div className="text-left">
                                     <span className="text-3xl font-black text-slate-800 dark:text-slate-100">
                                         {soc}%
                                     </span>
                                     <p className="text-[11px] font-semibold text-slate-500">
-                                        Capacidad Almacenada (SoC)
+                                        Capacidad Almacenada ({storedKwh} kWh)
                                     </p>
                                 </div>
                             </div>
 
                             {/* Barra de progreso de carga */}
-                            <div className="w-full bg-slate-200 dark:bg-slate-700 h-2.5 rounded-full mt-3 overflow-hidden">
+                            <div className="w-full bg-slate-200 dark:bg-slate-700 h-3 rounded-full mt-3 overflow-hidden relative">
                                 <div 
                                     className={`h-full transition-all duration-500 ${
                                         soc >= 80 ? 'bg-emerald-500' :
                                         soc >= 40 ? 'bg-blue-500' :
                                         soc >= 20 ? 'bg-amber-500' : 'bg-rose-500'
                                     }`} 
-                                    style={{ width: `${Math.min(soc, 100)}%` }} 
+                                    style={{ width: `${Math.min(Math.max(soc, 0), 100)}%` }} 
                                 />
                             </div>
 
@@ -235,19 +238,48 @@ export default function EnergyFlowDiagram({ liveData, isPeakHour }) {
                                 {loadKw.toFixed(1)} <span className="text-xs font-medium">kW</span>
                             </span>
                         </div>
-                        <div className="mt-3 text-xs text-slate-600 dark:text-slate-400 border-t border-purple-200/40 dark:border-purple-800/40 pt-2 space-y-1">
+                        <div className="mt-3 text-xs text-slate-600 dark:text-slate-400 border-t border-purple-200/40 dark:border-purple-800/40 pt-2 space-y-1.5">
                             <div className="flex justify-between text-[11px]">
                                 <span>Aporte Solar:</span>
                                 <strong>{solarKw > 0 ? `${solarKw.toFixed(1)} kW` : '0 kW'}</strong>
                             </div>
                             <div className="flex justify-between text-[11px]">
                                 <span>Aporte Batería:</span>
-                                <strong>{summary.hasBatteries ? (batKw < 0 ? `${Math.abs(batKw).toFixed(1)} kW` : '0 kW') : '0 kW (Sin Baterías)'}</strong>
+                                <strong>
+                                    {hasBatteries
+                                        ? (batKw < 0 ? `${Math.abs(batKw).toFixed(1)} kW (${soc}% SoC)` : `En Reserva (${soc}% SoC)`)
+                                        : '0 kW (Sin Baterías)'}
+                                </strong>
                             </div>
                             <div className="flex justify-between text-[11px]">
                                 <span>Aporte Red/Poste:</span>
-                                <strong>{summary.hasBatteries ? (gridKw > 0 ? `${gridKw.toFixed(1)} kW` : '0 kW') : 'Red de Apoyo'}</strong>
+                                <strong>{hasBatteries ? (gridKw > 0 ? `${gridKw.toFixed(1)} kW` : '0 kW') : 'Red de Apoyo'}</strong>
                             </div>
+
+                            {/* Gráfica de nivel de batería con porcentaje dentro de Carga Planta */}
+                            {hasBatteries && (
+                                <div className="mt-2.5 pt-2 border-t border-purple-200/40 dark:border-purple-800/40 space-y-1">
+                                    <div className="flex items-center justify-between text-[11px]">
+                                        <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                                            <BatteryCharging className="w-3.5 h-3.5 text-emerald-500" />
+                                            Nivel de Batería (SoC):
+                                        </span>
+                                        <span className="font-black text-emerald-600 dark:text-emerald-400">
+                                            {soc}% ({storedKwh} / 513.6 kWh)
+                                        </span>
+                                    </div>
+                                    <div className="w-full bg-slate-200 dark:bg-slate-700 h-2.5 rounded-full overflow-hidden">
+                                        <div
+                                            className={`h-full transition-all duration-500 ${
+                                                soc >= 80 ? 'bg-emerald-500' :
+                                                soc >= 40 ? 'bg-blue-500' :
+                                                soc >= 20 ? 'bg-amber-500' : 'bg-rose-500'
+                                            }`}
+                                            style={{ width: `${Math.min(Math.max(soc, 0), 100)}%` }}
+                                        />
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

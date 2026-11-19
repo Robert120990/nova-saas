@@ -12,11 +12,14 @@ import {
 
 export default function EnergySummaryCards({ liveData, isPeakHour }) {
     const summary = liveData?.summary || {};
+    const hasBatteries = Boolean(summary.hasBatteries || liveData?.hasBatteries || liveData?.config?.gessEnabled || liveData?.gess?.hasBatteries);
     const solarKw = summary.solarPowerKw || 0;
     const batKw = summary.batteryPowerKw || 0;
     const gridKw = summary.gridPowerKw || 0;
     const loadKw = summary.loadPowerKw || 0;
-    const soc = summary.socPct || 0;
+    const soc = summary.socPct ?? liveData?.gess?.socPct ?? 0;
+    const nominalCap = liveData?.gess?.nominalCap || 513.6;
+    const storedKwh = ((nominalCap * Math.min(Math.max(soc, 0), 100)) / 100).toFixed(1);
     const solarToday = summary.solarTodayKwh || 0;
     const batDischarged = summary.batteryDischargedTodayKwh || 0;
     const savingsUsd = summary.totalEstimatedSavingsUsd || 0;
@@ -56,7 +59,7 @@ export default function EnergySummaryCards({ liveData, isPeakHour }) {
             </div>
 
             {/* 2. Banco de Baterías (SoC & Flujo) O Aporte Solar Directo si no tiene baterías */}
-            {!summary.hasBatteries ? (
+            {!hasBatteries ? (
                 <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all">
                     <div className="flex items-center justify-between">
                         <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
@@ -94,7 +97,7 @@ export default function EnergySummaryCards({ liveData, isPeakHour }) {
                             )}
                         </div>
                     </div>
-                    <div className="mt-3 flex items-baseline gap-2">
+                    <div className="mt-2.5 flex items-baseline justify-between gap-2">
                         <span className="text-3xl font-black text-slate-800 dark:text-slate-100">
                             {soc}%
                         </span>
@@ -103,15 +106,26 @@ export default function EnergySummaryCards({ liveData, isPeakHour }) {
                                 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
                                 : batState === 'discharging'
                                 ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-400'
-                                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                                : 'bg-emerald-50 text-emerald-700 dark:bg-slate-800 dark:text-slate-300'
                         }`}>
                             {batState === 'charging' ? `+${batKw.toFixed(1)} kW Carga` :
-                             batState === 'discharging' ? `${batKw.toFixed(1)} kW Descarga` : 'En Espera'}
+                             batState === 'discharging' ? `${batKw.toFixed(1)} kW Descarga` : 'En Reserva'}
                         </span>
                     </div>
-                    <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+                    {/* Gráfica de barra de batería con porcentaje */}
+                    <div className="w-full bg-slate-200 dark:bg-slate-700 h-2.5 rounded-full mt-2 overflow-hidden">
+                        <div
+                            className={`h-full transition-all duration-500 ${
+                                soc >= 80 ? 'bg-emerald-500' :
+                                soc >= 40 ? 'bg-blue-500' :
+                                soc >= 20 ? 'bg-amber-500' : 'bg-rose-500'
+                            }`}
+                            style={{ width: `${Math.min(Math.max(soc, 0), 100)}%` }}
+                        />
+                    </div>
+                    <div className="mt-1.5 flex items-center justify-between text-xs text-slate-500">
+                        <span>Almacenado: <strong>{storedKwh} / 513.6 kWh</strong></span>
                         <span>Descarga Pico: <strong>{batDischarged.toFixed(1)} kWh</strong></span>
-                        <span className="font-medium text-slate-400">513.6 kWh Cap.</span>
                     </div>
                 </div>
             )}
@@ -120,7 +134,7 @@ export default function EnergySummaryCards({ liveData, isPeakHour }) {
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all">
                 <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                        {summary.hasBatteries ? 'Red Eléctrica / Planta' : 'Aporte a Instalación'}
+                        {hasBatteries ? 'Red Eléctrica / Planta' : 'Aporte a Instalación'}
                     </span>
                     <div className={`p-2 rounded-xl border ${
                         gridKw > 0 
@@ -132,11 +146,11 @@ export default function EnergySummaryCards({ liveData, isPeakHour }) {
                 </div>
                 <div className="mt-3 flex items-baseline gap-2">
                     <span className="text-3xl font-black text-slate-800 dark:text-slate-100">
-                        {summary.hasBatteries ? Math.abs(gridKw).toFixed(1) : solarKw.toFixed(1)}
+                        {hasBatteries ? Math.abs(gridKw).toFixed(1) : solarKw.toFixed(1)}
                     </span>
                     <span className="text-sm font-semibold text-slate-500">kW</span>
                     <span className="text-xs font-bold text-slate-400">
-                        {summary.hasBatteries 
+                        {hasBatteries 
                             ? (gridKw >= 0 ? '(Importando Red)' : '(Inyectando Red)')
                             : '(Inyección Directa)'}
                     </span>
@@ -144,7 +158,7 @@ export default function EnergySummaryCards({ liveData, isPeakHour }) {
                 <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
                     <span className="flex items-center gap-1">
                         <Factory className="w-3.5 h-3.5 text-slate-400" />
-                        {summary.hasBatteries ? (
+                        {hasBatteries ? (
                             <>Carga Planta: <strong>{loadKw.toFixed(1)} kW</strong></>
                         ) : (
                             <>Aporte Fotovoltaico: <strong>{solarKw.toFixed(1)} kW</strong></>
@@ -176,7 +190,7 @@ export default function EnergySummaryCards({ liveData, isPeakHour }) {
                     </span>
                 </div>
                 <div className="mt-2 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
-                    {summary.hasBatteries ? (
+                    {hasBatteries ? (
                         <>
                             <span>Por Batería Pico: <strong><Money value={summary.savingsFromBatteryPeakUsd || 0} /></strong></span>
                             <span>Solar: <strong><Money value={summary.savingsFromSolarUsd || 0} /></strong></span>

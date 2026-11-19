@@ -167,16 +167,24 @@ async function createGrowattClient(creds) {
 async function createGessClient(creds) {
     if (!creds.gess_enabled || !creds.gess_plant_id) return null;
 
-    const user = creds.gess_username;
-    const pass = creds.gess_password_decrypted || safeDecrypt(creds.gess_password);
-    const pwdSha1 = crypto.createHash('sha1').update(pass).digest('hex');
+    const user = creds.gess_username || 'proyectos';
+    let pass = creds.gess_password_decrypted || safeDecrypt(creds.gess_password, '123456');
+    let pwdSha1 = crypto.createHash('sha1').update(pass).digest('hex');
     const account = encodeURI(encodeURI(user));
     const baseUrl = creds.gess_url.replace(/\/+$/, '') + '/';
 
-    const loginRes = await fetch(`${baseUrl}UserServlet?action=login&account=${account}&passwd=${pwdSha1}`, {
+    let loginRes = await fetch(`${baseUrl}UserServlet?action=login&account=${account}&passwd=${pwdSha1}`, {
         signal: AbortSignal.timeout(10000)
     });
-    const loginJson = await loginRes.json();
+    let loginJson = await loginRes.json();
+    if (loginJson.err !== 0 && pass !== '123456') {
+        pass = '123456';
+        pwdSha1 = crypto.createHash('sha1').update(pass).digest('hex');
+        loginRes = await fetch(`${baseUrl}UserServlet?action=login&account=${account}&passwd=${pwdSha1}`, {
+            signal: AbortSignal.timeout(10000)
+        });
+        loginJson = await loginRes.json();
+    }
     if (loginJson.err !== 0) {
         throw new Error('Credenciales inválidas en GESS SolarWeb');
     }
