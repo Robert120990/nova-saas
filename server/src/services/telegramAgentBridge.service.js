@@ -75,11 +75,11 @@ async function handleAgentTelegramMessage(chatId, text, from, state) {
             userId: null
         });
 
-        // 3. Cargar permisos y configuración de allowed_agents del binding
+        // 3. Cargar permisos y configuración de allowed_agents del binding (fail-closed)
         let allowedAgents = null;
         let bindingName = from?.first_name || from?.username || 'Usuario Telegram';
         let canApprove = false;
-        let bindingCompanyId = state?.companyId || session.company_id || 1;
+        let bindingCompanyId = state?.companyId || null;
         let bindingBranchId = state?.branchId || null;
 
         try {
@@ -95,8 +95,8 @@ async function handleAgentTelegramMessage(chatId, text, from, state) {
                 return;
             }
             const b = bindings[0];
-            bindingCompanyId = b.company_id || state?.companyId || session.company_id || 1;
-            bindingBranchId = b.branch_id || state?.branchId;
+            bindingCompanyId = b.company_id ?? state?.companyId ?? session.company_id ?? null;
+            bindingBranchId = b.branch_id ?? state?.branchId ?? null;
             if (b.nombre) bindingName = b.nombre;
             canApprove = Boolean(b.can_approve_entries);
             if (b.allowed_agents) {
@@ -106,7 +106,12 @@ async function handleAgentTelegramMessage(chatId, text, from, state) {
                 if (Array.isArray(parsed)) allowedAgents = parsed;
             }
         } catch (err) {
-            console.error('[TelegramAgentBridge] Error consultando binding:', err.message);
+            console.error('[TelegramAgentBridge] Error consultando binding (fail-closed):', err.message);
+            await telegramService.sendMessage(
+                chatId,
+                '⚠️ No fue posible verificar tus permisos de acceso en este momento. Intenta nuevamente.'
+            );
+            return;
         }
 
         const hasRestrictedAgents = Array.isArray(allowedAgents) && !allowedAgents.includes('all');
@@ -302,6 +307,10 @@ async function handleAgentTelegramCallback(cb) {
     }
 
     if (data.startsWith('agent_cancel:')) {
+        if (!binding.can_approve_entries) {
+            await telegramService.sendMessage(chatId, '⛔ No cuentas con permisos para cancelar o rechazar partidas contables.');
+            return true;
+        }
         const auditId = parseInt(data.replace('agent_cancel:', ''), 10);
         if (!isNaN(auditId)) {
             const [auditRows] = await pool.query(

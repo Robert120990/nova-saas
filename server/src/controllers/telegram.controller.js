@@ -23,7 +23,7 @@ const getStatus = async (req, res) => {
              FROM telegram_chat_bindings b
              LEFT JOIN companies c ON c.id = b.company_id
               LEFT JOIN branches br ON br.id = b.branch_id
-              ${isSuperAdmin ? '' : 'WHERE (b.company_id = ? OR b.company_id IS NULL)'}
+              ${isSuperAdmin ? '' : 'WHERE b.company_id = ?'}
               ORDER BY b.created_at DESC`,
             isSuperAdmin ? [] : [req.company_id]
         );
@@ -105,7 +105,7 @@ const updateBinding = async (req, res) => {
         let whereClause = 'WHERE id = ?';
         params.push(id);
         if (!isSuperAdmin) {
-            whereClause += ' AND (company_id = ? OR company_id IS NULL)';
+            whereClause += ' AND company_id = ?';
             params.push(req.company_id);
         }
 
@@ -212,13 +212,15 @@ const testConnection = async (req, res) => {
 
         if (!targetChat) {
             const [rows] = await pool.query(
-                'SELECT chat_id FROM telegram_chat_bindings WHERE (company_id = ? OR company_id IS NULL) ORDER BY id DESC LIMIT 1',
-                [req.company_id]
+                isSuperAdmin
+                    ? 'SELECT chat_id FROM telegram_chat_bindings ORDER BY id DESC LIMIT 1'
+                    : 'SELECT chat_id FROM telegram_chat_bindings WHERE company_id = ? ORDER BY id DESC LIMIT 1',
+                isSuperAdmin ? [] : [req.company_id]
             );
             targetChat = rows[0]?.chat_id;
         } else if (!isSuperAdmin) {
             const [rows] = await pool.query(
-                'SELECT id FROM telegram_chat_bindings WHERE chat_id = ? AND (company_id = ? OR company_id IS NULL)',
+                'SELECT id FROM telegram_chat_bindings WHERE chat_id = ? AND company_id = ?',
                 [targetChat, req.company_id]
             );
             if (rows.length === 0) {

@@ -14,9 +14,18 @@ const LONG_POLL_TIMEOUT = 25; // segundos
 
 let lastUpdateId = 0;
 let botRunning = false;
+let botStopped = false;
 let botInfoCache = null;
 let pollIntervalId = null;
+let pollBackoffUntil = 0;
+let consecutivePollErrors = 0;
 const chatStates = new Map(); // chat_id -> { step, companyId, branchId, companies, branches, ... }
+
+function redactSecrets(text = '') {
+    return String(text || '')
+        .replace(/bot\d{6,14}:[A-Za-z0-9_-]{20,}/g, 'bot[REDACTED]')
+        .replace(/AIzaSy[A-Za-z0-9_-]{20,}/g, 'AIzaSy[REDACTED]');
+}
 
 let isBotActive = true;
 let lastActiveCheck = 0;
@@ -276,6 +285,7 @@ async function handleMessage(chatId, text, from) {
 // ============ Long polling ============
 
 async function pollOnce() {
+    if (botStopped || Date.now() < pollBackoffUntil) return;
     const active = await checkIsActive();
     if (!active) return;
     const token = await getBotToken();
@@ -287,30 +297,53 @@ async function pollOnce() {
             timeout: LONG_POLL_TIMEOUT,
             allowed_updates: ['message', 'callback_query']
         }, (LONG_POLL_TIMEOUT + 10) * 1000);
+        consecutivePollErrors = 0;
 
         for (const upd of updates || []) {
             lastUpdateId = Math.max(lastUpdateId, upd.update_id);
             if (upd.callback_query) {
                 const { routeTelegramCallback } = require('./telegramInvite.service');
                 routeTelegramCallback(upd.callback_query, { apiCall, sendMessage, chatStates }).catch(err =>
-                    console.error('[Telegram] Error en callback_query:', err.message)
+                    console.error('[Telegram] Error en callback_query:', redactSecrets(err.message))
                 );
             } else if (upd.message && upd.message.text) {
                 handleMessage(upd.message.chat.id, upd.message.text, upd.message.from || {}).catch(err =>
-                    console.error('[Telegram] Error manejando mensaje:', err.message)
+                    console.error('[Telegram] Error manejando mensaje:', redactSecrets(err.message))
                 );
             }
         }
     } catch (error) {
-        if (!/Timeout/i.test(error.message)) {
-            console.error('[Telegram] getUpdates error:', error.message);
+        const cleanMsg = redactSecrets(error.message);
+        if (!/Timeout/i.test(cleanMsg)) {
+            consecutivePollErrors += 1;
+            const isConflict = /409|Conflict/i.test(cleanMsg);
+            const delayMs = isConflict
+                ? Math.min(60000, 10000 * consecutivePollErrors)
+                : Math.min(30000, 3000 * consecutivePollErrors);
+            pollBackoffUntil = Date.now() + delayMs;
+            if (!isConflict || consecutivePollErrors <= 3 || consecutivePollErrors % 10 === 0) {
+                console.error(`[Telegram] getUpdates error (esperando ${Math.round(delayMs / 1000)}s):`, cleanMsg);
+            }
         }
     } finally {
         botRunning = false;
     }
 }
 
+function stopBot() {
+    botStopped = true;
+    if (pollIntervalId) {
+        clearInterval(pollIntervalId);
+        pollIntervalId = null;
+    }
+    console.log('[Telegram] Polling detenido ordenadamente.');
+}
+
 async function startBot() {
+    if (process.env.TELEGRAM_POLLING_ENABLED === 'false') {
+        console.log('[Telegram] Polling desactivado explícitamente mediante TELEGRAM_POLLING_ENABLED=false.');
+        return;
+    }
     // Si no estamos en producción y no se forzó el polling local, desactivar para no colisionar con el servidor VPS
     if (process.env.NODE_ENV !== 'production' && process.env.TELEGRAM_DEV_POLLING !== 'true') {
         console.log('[Telegram] Polling desactivado en entorno local para evitar colisión con el servidor VPS (usar TELEGRAM_DEV_POLLING=true en .env si se desea probar en local).');
@@ -321,6 +354,9 @@ async function startBot() {
         console.warn('[Telegram] TELEGRAM_BOT_TOKEN no configurado — bot desactivado.');
         return;
     }
+    botStopped = false;
+    pollBackoffUntil = 0;
+    consecutivePollErrors = 0;
     const active = await checkIsActive();
     if (!active) {
         console.log('[Telegram] Bot en espera: is_active = 0 en telegram_settings.');
@@ -329,6 +365,7 @@ async function startBot() {
     await getMe(true);
     if (!pollIntervalId) {
         pollIntervalId = setInterval(pollOnce, 1000);
+        if (pollIntervalId.unref) pollIntervalId.unref();
     }
     pollOnce();
 }
@@ -341,5 +378,5 @@ async function setBotToken(newToken) {
 }
 
 module.exports = {
-    sendMessage, apiCall, getMe, startBot, pollOnce, splitText, getBotToken, setBotToken
+    sendMessage, apiCall, getMe, startBot, stopBot, pollOnce, splitText, getBotToken, setBotToken, redactSecrets
 };

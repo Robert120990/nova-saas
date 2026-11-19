@@ -32,14 +32,17 @@ const FORBIDDEN_TABLES = [
     'telegram_settings', 'telegram_chat_bindings', 'telegram_invite_tokens',
     'whatsapp_settings', 'smtp_settings', 'filpro_connections',
     'accounting_settings', 'gas_station_settings', 'energy_system_settings',
+    'agy_server_settings',
     'rh_biometric_devices', 'audit_logs',
-    'ai_agent_tasks', 'ai_agent_task_logs', 'agent_conversations', 'agent_messages',
+    'ai_agent_tasks', 'ai_agent_task_logs', 'ai_agent_sessions', 'ai_agent_messages',
+    'ai_agent_actions_audit', 'agent_conversations', 'agent_messages',
     'information_schema', 'performance_schema', 'mysql', 'sys'
 ];
 
 const FORBIDDEN_COLUMNS = [
     'api_password', 'certificate_password', 'clave_privada', 'clave_publica',
-    'password', 'bot_token', 'agent_key', 'fusion_password', 'fusion_agent_key',
+    'password', 'ssh_password', 'ssh_private_key_path', 'bot_token', 'agent_key',
+    'fusion_password', 'fusion_agent_key',
     'oficina_db_password', 'filpro_password', 'growatt_password', 'gess_password',
     'restart_key'
 ];

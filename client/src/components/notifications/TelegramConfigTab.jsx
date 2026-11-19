@@ -28,7 +28,7 @@ export default function TelegramConfigTab({ telegramStatus, branches = [], isSup
   const saveTokenMutation = useMutation({
     mutationFn: (token) => axios.post('/api/notifications/telegram/token', { token }),
     onSuccess: (res) => {
-      queryClient.invalidateQueries(['telegram-status']);
+      queryClient.invalidateQueries({ queryKey: ['telegram-status'] });
       toast.success(res.data?.message || 'Token guardado exitosamente');
       setTokenInput('');
       setShowTokenInput(false);
@@ -45,7 +45,7 @@ export default function TelegramConfigTab({ telegramStatus, branches = [], isSup
   const deleteBindingMutation = useMutation({
     mutationFn: (id) => axios.delete(`/api/notifications/telegram/bindings/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries(['telegram-status']);
+      queryClient.invalidateQueries({ queryKey: ['telegram-status'] });
       toast.success('Usuario desvinculado de Telegram');
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Error al desvincular')
@@ -54,7 +54,7 @@ export default function TelegramConfigTab({ telegramStatus, branches = [], isSup
   const toggleAlertasMutation = useMutation({
     mutationFn: ({ id, receive_alerts }) => axios.put(`/api/notifications/telegram/bindings/${id}`, { receive_alerts }),
     onSuccess: () => {
-      queryClient.invalidateQueries(['telegram-status']);
+      queryClient.invalidateQueries({ queryKey: ['telegram-status'] });
       toast.success('Preferencia de alertas actualizada');
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Error al actualizar')
@@ -63,7 +63,7 @@ export default function TelegramConfigTab({ telegramStatus, branches = [], isSup
   const toggleBriefingMutation = useMutation({
     mutationFn: (active) => axios.put('/api/notifications/telegram/daily-briefing', { active }),
     onSuccess: (res) => {
-      queryClient.invalidateQueries(['telegram-status']);
+      queryClient.invalidateQueries({ queryKey: ['telegram-status'] });
       toast.success(res.data?.message || 'Reporte diario actualizado');
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Error al actualizar')
@@ -78,7 +78,7 @@ export default function TelegramConfigTab({ telegramStatus, branches = [], isSup
   const toggleReopenMutation = useMutation({
     mutationFn: (active) => axios.put('/api/notifications/telegram/reopen-requests', { active }),
     onSuccess: (res) => {
-      queryClient.invalidateQueries(['telegram-status']);
+      queryClient.invalidateQueries({ queryKey: ['telegram-status'] });
       toast.success(res.data?.message || 'Configuración de reapertura actualizada');
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Error al actualizar')
@@ -179,7 +179,8 @@ export default function TelegramConfigTab({ telegramStatus, branches = [], isSup
             </label>
             <div className="flex gap-2">
               <input
-                type="text"
+                type="password"
+                autoComplete="off"
                 value={tokenInput}
                 onChange={(e) => setTokenInput(e.target.value)}
                 placeholder="123456789:ABCdefGHIjklMNOpqrSTUvwxYZ..."

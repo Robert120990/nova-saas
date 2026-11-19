@@ -19,7 +19,8 @@ async function createInviteToken({
     const defaultPermissions = {
         allowed_agents: ['accounting', 'dte', 'sales', 'inventory', 'gas', 'operations'],
         can_approve_entries: 0,
-        receive_reopen_requests: 1,
+        receive_reopen_requests: 0,
+        receive_support_tickets: 0,
         receive_inventory_alerts: 1,
         receive_dte_alerts: 1,
         ...permissions
@@ -75,18 +76,19 @@ async function resolveInviteToken(tokenStr, chatId, from = {}) {
 
     const allowedAgents = permissions.allowed_agents || ['accounting', 'dte', 'sales', 'inventory', 'gas', 'operations'];
     const canApproveEntries = permissions.can_approve_entries ? 1 : 0;
-    const receiveReopen = permissions.receive_reopen_requests !== undefined ? (permissions.receive_reopen_requests ? 1 : 0) : 1;
+    const receiveReopen = permissions.receive_reopen_requests ? 1 : 0;
+    const receiveSupportTickets = permissions.receive_support_tickets ? 1 : 0;
     const receiveInventory = permissions.receive_inventory_alerts !== undefined ? (permissions.receive_inventory_alerts ? 1 : 0) : 1;
     const receiveDte = permissions.receive_dte_alerts !== undefined ? (permissions.receive_dte_alerts ? 1 : 0) : 1;
 
     const nombre = invite.assigned_name || from.first_name || from.username || 'Usuario';
     const username = from.username || null;
 
-    // Upsert into bindings
+    // Upsert into bindings (con receive_support_tickets explícito = 0 por defecto)
     await pool.query(`
         INSERT INTO telegram_chat_bindings 
-        (chat_id, company_id, branch_id, nombre, username, receive_alerts, receive_reopen_requests, allowed_agents, can_approve_entries, receive_inventory_alerts, receive_dte_alerts)
-        VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+        (chat_id, company_id, branch_id, nombre, username, receive_alerts, receive_reopen_requests, receive_support_tickets, allowed_agents, can_approve_entries, receive_inventory_alerts, receive_dte_alerts)
+        VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
             company_id = VALUES(company_id),
             branch_id = VALUES(branch_id),
@@ -94,6 +96,7 @@ async function resolveInviteToken(tokenStr, chatId, from = {}) {
             username = VALUES(username),
             receive_alerts = 1,
             receive_reopen_requests = VALUES(receive_reopen_requests),
+            receive_support_tickets = VALUES(receive_support_tickets),
             allowed_agents = VALUES(allowed_agents),
             can_approve_entries = VALUES(can_approve_entries),
             receive_inventory_alerts = VALUES(receive_inventory_alerts),
@@ -105,6 +108,7 @@ async function resolveInviteToken(tokenStr, chatId, from = {}) {
         nombre,
         username,
         receiveReopen,
+        receiveSupportTickets,
         JSON.stringify(allowedAgents),
         canApproveEntries,
         receiveInventory,
@@ -133,7 +137,7 @@ async function listPendingInvites(companyId, isSuperAdmin = false) {
         SELECT t.id, t.token, t.company_id, t.branch_id, t.assigned_name,
                t.permissions_template, t.expires_at, t.created_at,
                c.razon_social as company_name, b.nombre as branch_name,
-               u.name as created_by_name
+               u.nombre as created_by_name
         FROM telegram_invite_tokens t
         LEFT JOIN companies c ON c.id = t.company_id
         LEFT JOIN branches b ON b.id = t.branch_id

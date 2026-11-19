@@ -204,7 +204,7 @@ app.use((err, req, res, next) => {
 const http = require('http');
 const { initWebSocket, setAppVersion } = require('./services/websocket.service');
 const { startWorker } = require('./services/notificationWorker');
-const { startBot: startTelegramBot } = require('./services/telegram.service');
+const { startBot: startTelegramBot, stopBot: stopTelegramBot } = require('./services/telegram.service');
 const { startDailyBriefingCron } = require('./services/telegramDailyBriefing.service');
 const { startSuspiciousSalesDetector } = require('./services/suspiciousSalesDetector');
 const { startRrsAutoSyncCron } = require('./services/rrsVentasTiendaAutoSync.service');
@@ -251,6 +251,7 @@ const gracefulShutdown = async (signal) => {
     forceExitTimer.unref();
 
     clearInterval(versionWatcherInterval);
+    try { stopTelegramBot(); } catch { /* ignore */ }
 
     // 1. Dejar de aceptar nuevas conexiones HTTP pero drenar las activas
     if (server.listening) {

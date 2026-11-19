@@ -8,31 +8,56 @@ async function getTechChatsForTicket(companyId, branchId) {
     const active = settingsRows.length > 0 ? (settingsRows[0].support_tickets_active !== 0) : true;
     if (!active) return [];
 
+    // Solo chats con permiso explícito receive_support_tickets = 1:
+    // - Chats globales de soporte (company_id IS NULL), o
+    // - Chats de la misma empresa y sucursal (o globales de esa empresa)
     const [chats] = await pool.query(
-        `SELECT DISTINCT chat_id, nombre, username FROM telegram_chat_bindings
-         WHERE COALESCE(receive_support_tickets, 1) = 1
+        `SELECT DISTINCT chat_id, nombre, username, company_id, branch_id
+         FROM telegram_chat_bindings
+         WHERE receive_support_tickets = 1
            AND (
-               LOWER(COALESCE(nombre, '')) LIKE '%robert%'
-               OR LOWER(COALESCE(username, '')) LIKE '%robert%'
-               OR LOWER(COALESCE(nombre, '')) LIKE '%raul%'
-               OR LOWER(COALESCE(nombre, '')) LIKE '%raúl%'
-               OR LOWER(COALESCE(username, '')) LIKE '%raul%'
-               OR LOWER(COALESCE(username, '')) LIKE '%rrsm%'
-               OR (
-                   receive_alerts = 1
-                   AND (company_id = ? OR company_id IS NULL)
-                   AND (branch_id = ? OR branch_id IS NULL)
-               )
+               company_id IS NULL
+               OR (company_id = ? AND (branch_id = ? OR branch_id IS NULL))
            )`,
         [companyId || null, branchId || null]
     );
-    if (chats.length > 0) return chats;
+    return chats || [];
+}
 
-    const [globalChats] = await pool.query(
-        `SELECT DISTINCT chat_id, nombre, username FROM telegram_chat_bindings
-         WHERE COALESCE(receive_support_tickets, 1) = 1`
-    );
-    return globalChats;
+/**
+ * Verificación fail-closed contra BD para callbacks y comandos de soporte / AGY.
+ * - Exige chat vinculado en telegram_chat_bindings con receive_support_tickets = 1.
+ * - Para acciones AGY (planificar/ejecutar/cambiar modelo), exige además vinculación global (company_id IS NULL).
+ * - Para tickets de empresa específica, valida aislamiento multi-tenant.
+ */
+async function verifyTelegramSupportAccess(chatId, { requireGlobalAgy = false, ticketCompanyId = null } = {}) {
+    if (!chatId) return { allowed: false, reason: '⛔ Chat no identificado.' };
+    try {
+        const [rows] = await pool.query(
+            `SELECT id, chat_id, company_id, branch_id, nombre, username, receive_support_tickets, can_approve_entries
+             FROM telegram_chat_bindings
+             WHERE chat_id = ?
+             LIMIT 1`,
+            [String(chatId)]
+        );
+        if (!rows || rows.length === 0) {
+            return { allowed: false, reason: '⛔ Tu chat de Telegram no está vinculado ni autorizado.' };
+        }
+        const binding = rows[0];
+        if (Number(binding.receive_support_tickets) !== 1) {
+            return { allowed: false, reason: '⛔ No tienes permisos habilitados para gestionar tickets de soporte.' };
+        }
+        const isGlobalTech = binding.company_id === null || binding.company_id === undefined;
+        if (requireGlobalAgy && !isGlobalTech) {
+            return { allowed: false, reason: '⛔ Solo administradores globales de soporte pueden operar Consola AGY.' };
+        }
+        if (ticketCompanyId && !isGlobalTech && Number(binding.company_id) !== Number(ticketCompanyId)) {
+            return { allowed: false, reason: '⛔ No tienes acceso a tickets de otra empresa.' };
+        }
+        return { allowed: true, binding, isGlobalTech };
+    } catch {
+        return { allowed: false, reason: '⛔ No fue posible verificar tus permisos de soporte.' };
+    }
 }
 
 function resolveLocalUploadPath(screenshotUrl) {
@@ -75,6 +100,7 @@ async function sendLocalPhotoToTelegram(chatId, screenshotUrl, caption, replyMar
 
 module.exports = {
     getTechChatsForTicket,
+    verifyTelegramSupportAccess,
     resolveLocalUploadPath,
     sendLocalPhotoToTelegram
 };

@@ -84,9 +84,14 @@ function extractExplicitFilesFromTicketText(ticket, rootDir) {
     const combined = [ticket.ai_notes || '', ticket.agy_plan_markdown || '', ticket.agy_execution_log || '', ticket.description || ''].join('\n');
     const regex = /((?:client|server|frontend|backend|dte-api)\/[A-Za-z0-9_./-]+\.(?:jsx?|tsx?|css|sql))/g;
     const explicit = [];
+    const rootResolved = path.resolve(rootDir);
     for (let m = regex.exec(combined); m; m = regex.exec(combined)) {
-        const rel = m[1].replace(/\\/g, '/');
-        if (!explicit.includes(rel) && fs.existsSync(path.join(rootDir, rel))) explicit.push(rel);
+        const rawRel = m[1].replace(/\\/g, '/');
+        if (rawRel.includes('..')) continue;
+        const abs = path.resolve(rootResolved, rawRel);
+        const rel = path.relative(rootResolved, abs).replace(/\\/g, '/');
+        if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) continue;
+        if (!explicit.includes(rel) && fs.existsSync(abs) && fs.statSync(abs).isFile()) explicit.push(rel);
     }
     return explicit;
 }

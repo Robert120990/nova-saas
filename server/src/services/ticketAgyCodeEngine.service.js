@@ -1,9 +1,35 @@
 const fs = require('fs');
 const path = require('path');
-const { execSync, spawn } = require('child_process');
+const { execSync, execFileSync, spawn } = require('child_process');
 const aiService = require('./ai.service');
 const { setAppVersion } = require('./websocket.service');
 const { isTicketFromAdminProject, resolveProjectForTicket, findSmartRelatedFiles } = require('./ticketAgyRepoDiscovery.service');
+
+const PROTECTED_AGY_PATTERNS = [
+    /(^|\/)\.env(\.|$)/i,
+    /(^|\/)\.git(\/|$)/i,
+    /(^|\/)node_modules(\/|$)/i,
+    /(^|\/)middleware\/auth\.js$/i,
+    /(^|\/)middlewares\/auth\.middleware\.js$/i,
+    /(^|\/)middleware\/bitacora\.js$/i,
+    /(^|\/)ecosystem\.config\.js$/i,
+    /(^|\/)deploy\.sh$/i,
+    /(^|\/)webhook-server\.js$/i,
+    /(^|\/)package(-lock)?\.json$/i,
+    /(^|\/)pnpm-lock\.yaml$/i
+];
+
+function isSafeTargetRelPath(rootDir, candidateRel) {
+    if (!candidateRel || typeof candidateRel !== 'string') return false;
+    const clean = candidateRel.trim().replace(/\\/g, '/');
+    if (!clean || clean.startsWith('/') || clean.includes('\0')) return false;
+    const rootResolved = path.resolve(rootDir);
+    const absPath = path.resolve(rootResolved, clean);
+    const rel = path.relative(rootResolved, absPath).replace(/\\/g, '/');
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return false;
+    if (PROTECTED_AGY_PATTERNS.some((rx) => rx.test(rel))) return false;
+    return true;
+}
 
 function readCandidateSnippets(rootDir, relFiles = [], maxCharsPerFile = 85000, queryHint = '') {
     const snippets = [];
@@ -53,18 +79,18 @@ async function generateAiPlanFromCode(ticket, model, planVersion, proj, relatedF
     } catch { return null; }
 }
 
-function gitExec(cmd, rootDir, timeout = 15000) {
-    return execSync(`git -c safe.directory="*" ${cmd}`, { cwd: rootDir, timeout, stdio: 'pipe' }).toString().trim();
+function gitExecArgs(args, rootDir, timeout = 15000) {
+    return execFileSync('git', ['-c', 'safe.directory=*', ...args], { cwd: rootDir, timeout, stdio: 'pipe' }).toString().trim();
 }
 
 function getGitHeadCommit(rootDir) {
-    try { return gitExec('rev-parse HEAD', rootDir, 5000); } catch { return ''; }
+    try { return gitExecArgs(['rev-parse', 'HEAD'], rootDir, 5000); } catch { return ''; }
 }
 
 function getGitDirtySet(rootDir) {
     const set = new Set();
     try {
-        const gitStatus = gitExec('status --porcelain', rootDir, 8000);
+        const gitStatus = gitExecArgs(['status', '--porcelain'], rootDir, 8000);
         for (const line of gitStatus ? gitStatus.split('\n') : []) {
             const f = line.trim().split(/\s+/).pop();
             if (f) set.add(f.replace(/\\/g, '/'));
@@ -76,12 +102,12 @@ function getGitDirtySet(rootDir) {
 function syncGitPullLatest(rootDir, onLog = () => {}) {
     if (!fs.existsSync(rootDir)) return;
     try {
-        const branch = gitExec('rev-parse --abbrev-ref HEAD', rootDir, 5000) || 'main';
-        const remotes = gitExec('remote', rootDir, 5000).split(/\s+/).filter(Boolean);
-        gitExec('fetch --all --prune', rootDir, 20000);
+        const branch = gitExecArgs(['rev-parse', '--abbrev-ref', 'HEAD'], rootDir, 5000) || 'main';
+        const remotes = gitExecArgs(['remote'], rootDir, 5000).split(/\s+/).filter(Boolean);
+        gitExecArgs(['fetch', '--all', '--prune'], rootDir, 20000);
         for (const rem of ['upstream', 'origin'].filter((r) => remotes.includes(r))) {
             try {
-                gitExec(`pull --rebase --autostash ${rem} ${branch}`, rootDir, 30000);
+                gitExecArgs(['pull', '--rebase', '--autostash', rem, branch], rootDir, 30000);
                 onLog(`[AGY] 🔄 Repositorio sincronizado con últimos cambios de ${rem}/${branch}.\n`);
                 break;
             } catch { /* continue */ }
@@ -134,23 +160,27 @@ function syncGitCommitAndPush(rootDir, ticket, modifiedFiles, proj, onLog = () =
     try {
         const bumpedVer = proj?.isAdmin ? bumpAdminFrontendVersion(rootDir, safeFiles) : null;
         if (safeFiles.length > 0) {
-            const quotedFiles = safeFiles.map((f) => `"${f.replace(/"/g, '')}"`).join(' ');
-            gitExec(`add -- ${quotedFiles}`, rootDir, 15000);
-            const staged = gitExec('diff --cached --name-only', rootDir, 8000);
+            gitExecArgs(['add', '--', ...safeFiles], rootDir, 15000);
+            const staged = gitExecArgs(['diff', '--cached', '--name-only'], rootDir, 8000);
             if (staged) {
-                const cleanSubject = String(ticket.subject || 'ajuste solicitado').replace(/["`$\\]/g, '').slice(0, 72);
-                gitExec(`-c user.name="AGY Server Bot" -c user.email="agy@sipesv.com" commit -m "fix(agy): resolver #${ticket.ticket_code} - ${cleanSubject}"`, rootDir, 15000);
+                const cleanCode = String(ticket.ticket_code || 'TICKET').replace(/[^A-Za-z0-9_-]/g, '');
+                const cleanSubject = String(ticket.subject || 'ajuste solicitado').replace(/["`$\\\r\n]/g, ' ').trim().slice(0, 72);
+                gitExecArgs(
+                    ['-c', 'user.name=AGY Server Bot', '-c', 'user.email=agy@sipesv.com', 'commit', '-m', `fix(agy): resolver #${cleanCode} - ${cleanSubject}`],
+                    rootDir,
+                    15000
+                );
             }
         }
-        const commitHash = gitExec('rev-parse --short HEAD', rootDir, 5000);
-        const branch = gitExec('rev-parse --abbrev-ref HEAD', rootDir, 5000) || 'main';
-        const remotes = gitExec('remote', rootDir, 5000).split(/\s+/).filter(Boolean);
+        const commitHash = gitExecArgs(['rev-parse', '--short', 'HEAD'], rootDir, 5000);
+        const branch = gitExecArgs(['rev-parse', '--abbrev-ref', 'HEAD'], rootDir, 5000) || 'main';
+        const remotes = gitExecArgs(['remote'], rootDir, 5000).split(/\s+/).filter(Boolean);
         const pushedRemotes = [];
-        gitExec('fetch --all --prune', rootDir, 20000);
+        gitExecArgs(['fetch', '--all', '--prune'], rootDir, 20000);
         for (const rem of ['upstream', 'origin'].filter((r) => remotes.includes(r))) {
             try {
-                gitExec(`pull --rebase --autostash ${rem} ${branch}`, rootDir, 30000);
-                gitExec(`push ${rem} ${branch}`, rootDir, 30000);
+                gitExecArgs(['pull', '--rebase', '--autostash', rem, branch], rootDir, 30000);
+                gitExecArgs(['push', rem, branch], rootDir, 30000);
                 pushedRemotes.push(`${rem}/${branch}`);
             } catch (pushErr) {
                 onLog(`[AGY] ⚠️ Aviso push ${rem}/${branch}: ${pushErr.message?.slice(0, 120)}\n`);
@@ -158,7 +188,7 @@ function syncGitCommitAndPush(rootDir, ticket, modifiedFiles, proj, onLog = () =
         }
         let version = bumpedVer;
         if (!proj?.isAdmin) {
-            const count = parseInt(gitExec('rev-list --count HEAD', rootDir, 5000), 10);
+            const count = parseInt(gitExecArgs(['rev-list', '--count', 'HEAD'], rootDir, 5000), 10);
             version = !isNaN(count) && count >= 1000 ? `v2.08.${String(count - 999).padStart(2, '0')}` : `v2.07.${String(count || 0).padStart(2, '0')}`;
             setAppVersion({ version, commit: commitHash });
         }
@@ -185,7 +215,7 @@ async function applyAiCodePatchAndBuild(ticket, proj, relatedFiles, onLog = () =
     const postHeadCommit = getGitHeadCommit(rootDir);
     if (preHeadCommit && postHeadCommit && preHeadCommit !== postHeadCommit) {
         try {
-            const committedDiff = gitExec(`diff --name-only ${preHeadCommit}..${postHeadCommit}`, rootDir, 8000);
+            const committedDiff = gitExecArgs(['diff', '--name-only', `${preHeadCommit}..${postHeadCommit}`], rootDir, 8000);
             for (const f of committedDiff ? committedDiff.split('\n') : []) {
                 const norm = f.trim().replace(/\\/g, '/');
                 if (norm && !modifiedFiles.includes(norm) && !norm.includes('.env')) modifiedFiles.push(norm);
@@ -214,15 +244,14 @@ async function applyAiCodePatchAndBuild(ticket, proj, relatedFiles, onLog = () =
                 const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : rawJson);
                 for (const edit of Array.isArray(parsed?.edits) ? parsed.edits : []) {
                     if (!edit.file || !edit.search || edit.replace === undefined) continue;
-                    const safeRel = path.normalize(edit.file).replace(/^(\.\.(\/|\\|$))+/, '');
-                    if (safeRel.includes('.env') || safeRel.includes('node_modules')) continue;
-                    const absPath = path.resolve(rootDir, safeRel);
-                    if (!absPath.startsWith(path.resolve(rootDir)) || !fs.existsSync(absPath)) continue;
+                    if (!isSafeTargetRelPath(rootDir, String(edit.file))) continue;
+                    const absPath = path.resolve(rootDir, String(edit.file));
+                    const normRel = path.relative(path.resolve(rootDir), absPath).replace(/\\/g, '/');
+                    if (!fs.existsSync(absPath)) continue;
                     const currentContent = fs.readFileSync(absPath, 'utf8');
                     const updatedContent = applyFlexibleEdit(currentContent, String(edit.search), String(edit.replace));
                     if (updatedContent !== currentContent) {
                         fs.writeFileSync(absPath, updatedContent, 'utf8');
-                        const normRel = safeRel.replace(/\\/g, '/');
                         if (!modifiedFiles.includes(normRel)) modifiedFiles.push(normRel);
                     }
                 }
@@ -234,8 +263,8 @@ async function applyAiCodePatchAndBuild(ticket, proj, relatedFiles, onLog = () =
 
     if (modifiedFiles.length === 0) return { modifiedFiles: [], buildSuccess: false, buildLog: '', commitHash: null, gitLog: '' };
 
-    const { commitHash, version, gitLog } = syncGitCommitAndPush(rootDir, ticket, modifiedFiles, proj, onLog);
-    let buildSuccess = false;
+    // 1. Compilar y validar frontend ANTES de hacer commit/push a producción
+    let buildSuccess = true;
     let buildLog = '';
     const frontendRel = proj.frontendDir;
     const frontendFull = path.join(rootDir, frontendRel);
@@ -243,18 +272,29 @@ async function applyAiCodePatchAndBuild(ticket, proj, relatedFiles, onLog = () =
 
     if (fs.existsSync(frontendFull)) {
         try {
-            onLog(`[AGY] Compilando frontend (${frontendRel}) con versión ${version || commitHash || ''}...\n`);
+            onLog(`[AGY] Verificando compilación frontend (${frontendRel}) antes de publicar...\n`);
             const buildCmd = proj.isAdmin
                 ? 'export PATH="/home/sistemas/.local/share/pnpm:/usr/local/bin:$PATH"; pnpm --filter frontend run build || npm --prefix frontend run build'
                 : 'npm --prefix client run build || pnpm --filter client run build';
             execSync(buildCmd, { cwd: rootDir, timeout: 150000, stdio: 'pipe', shell: process.platform === 'win32' ? undefined : '/bin/bash' });
             buildSuccess = true;
-            buildLog = `Frontend (${frontendRel}/dist) recompilado (${version || commitHash}) y desplegado.`;
+            buildLog = `Frontend (${frontendRel}/dist) compilado sin errores.`;
             onLog(`[AGY] ✅ ${buildLog}\n`);
         } catch (bErr) {
-            buildLog = `Aviso al compilar frontend: ${bErr.message?.slice(0, 160)}`;
-            onLog(`[AGY] ⚠️ ${buildLog}\n`);
+            buildSuccess = false;
+            buildLog = `Compilación frontend falló — commit/push cancelado para proteger producción: ${bErr.message?.slice(0, 180)}`;
+            onLog(`[AGY] ❌ ${buildLog}\n`);
+            try {
+                gitExecArgs(['checkout', '--', ...modifiedFiles], rootDir, 10000);
+            } catch { /* ignore rollback */ }
+            return { modifiedFiles: [], buildSuccess: false, buildLog, commitHash: null, version: null, gitLog: '' };
         }
+    }
+
+    // 2. Commit y push únicamente cuando la compilación ha sido validada
+    const { commitHash, version, gitLog } = syncGitCommitAndPush(rootDir, ticket, modifiedFiles, proj, onLog);
+    if (buildSuccess && buildLog) {
+        buildLog = `Frontend (${frontendRel}/dist) recompilado (${version || commitHash || 'ok'}) y desplegado.`;
     }
 
     if (hasBackendChanges && proj.pm2AppName) {
