@@ -81,6 +81,22 @@ function buildAgyPlanApprovalKeyboard(ticketId, planMarkdown = '', modelId = DEF
     return { inline_keyboard: rows };
 }
 
+function buildAgyBranchReviewKeyboard(ticketId, modelId = DEFAULT_AGY_MODEL, compareUrl = null) {
+    const shortModel = getModelShortLabel(modelId);
+    const rows = [
+        [{ text: '🚀 Fusionar a main y Desplegar', callback_data: `agy_merge_branch:${ticketId}` }],
+        [
+            { text: '🗑️ Descartar Rama', callback_data: `agy_discard_branch:${ticketId}` },
+            { text: '✏️ Pedir Ajustes', callback_data: `agy_plan_feedback:${ticketId}` }
+        ],
+        [{ text: `🧠 Cambiar Modelo (${shortModel})`, callback_data: `agy_model_menu:${ticketId}` }]
+    ];
+    if (compareUrl && /^https:\/\/github\.com\//i.test(compareUrl)) {
+        rows.splice(1, 0, [{ text: '🔍 Ver Diff en GitHub', url: compareUrl }]);
+    }
+    return { inline_keyboard: rows };
+}
+
 function buildAgyPostExecutionKeyboard(ticketId, success = true, modelId = DEFAULT_AGY_MODEL) {
     const shortModel = getModelShortLabel(modelId);
     if (!success) {
@@ -271,6 +287,32 @@ async function sendAgyPlanToTelegram(ticket) {
     return true;
 }
 
+async function notifyAgyReviewBranchToTelegram(ticket, reviewInfo = {}, approvedBy = 'SuperAdmin') {
+    if (!ticket) return false;
+    const { getTechChatsForTicket } = require('./ticketTelegram.service');
+    const chats = await getTechChatsForTicket(ticket.company_id, ticket.branch_id);
+    if (!chats || chats.length === 0) return false;
+
+    const settings = await getAgyServerSettings().catch(() => ({ default_model: DEFAULT_AGY_MODEL }));
+    const activeModel = resolveEffectiveAgyModel(ticket, settings);
+    const diffPreview = reviewInfo.diffStat ? `\n\`\`\`\n${String(reviewInfo.diffStat).slice(0, 500)}\n\`\`\`\n` : '\n';
+    const msg =
+        `🔍 *RAMA DE REVISIÓN LISTA — #${escapeMd(ticket.ticket_code)}*\n` +
+        `🌿 *Rama:* \`${escapeMd(reviewInfo.reviewBranch || '')}\` (\`${escapeMd(reviewInfo.commitHash || 'local')}\`)\n` +
+        `🧠 *Modelo:* \`${escapeMd(activeModel)}\` (${escapeMd(getModelShortLabel(activeModel))})\n` +
+        `📌 *Asunto:* ${escapeMd(ticket.subject)}\n` +
+        `👤 *Solicitado por:* ${escapeMd(approvedBy)}\n` +
+        `📦 *Archivos:* \`${escapeMd((reviewInfo.modifiedFiles || []).join(', '))}\`` +
+        diffPreview +
+        `🛡️ _La rama main permanece protegida e intacta. Revisa el diff y pulsa Fusionar cuando estés listo:_`;
+
+    const replyMarkup = buildAgyBranchReviewKeyboard(ticket.id, activeModel, reviewInfo.compareUrl || null);
+    for (const chat of chats) {
+        await safeSendTelegramWithKeyboard(chat.chat_id, msg, replyMarkup);
+    }
+    return true;
+}
+
 async function notifyAgyExecutionResultToTelegram(ticket, summaryText, approvedBy, options = {}) {
     if (!ticket) return false;
     const { getTechChatsForTicket } = require('./ticketTelegram.service');
@@ -315,7 +357,14 @@ async function handleAgyTelegramCallback(cb) {
 
     try {
         const { getTicketById } = require('./ticket.service');
-        const { setTicketAgyModel, startTicketAgyPlanning, executeApprovedTicketAgyPlan, rejectTicketAgyPlan } = require('./ticketAgyWorkflow.service');
+        const {
+            setTicketAgyModel,
+            startTicketAgyPlanning,
+            executeApprovedTicketAgyPlan,
+            mergeTicketAgyReviewBranch,
+            discardTicketAgyReviewBranch,
+            rejectTicketAgyPlan
+        } = require('./ticketAgyWorkflow.service');
         const { buildTicketInlineKeyboard } = require('./ticketTelegram.service');
 
         // Cambio de modelo global desde /modelo (sin ticket asociado)
@@ -351,9 +400,11 @@ async function handleAgyTelegramCallback(cb) {
         const model = resolveEffectiveAgyModel(ticket, settings);
         const shortModel = getModelShortLabel(model);
         const getCardMarkup = (t, m) => (
-            t.agy_status === 'esperando_aprobacion'
-                ? buildAgyPlanApprovalKeyboard(t.id, t.agy_plan_markdown || '', m)
-                : buildTicketInlineKeyboard(t.id, t.status, m)
+            t.agy_status === 'esperando_fusion'
+                ? buildAgyBranchReviewKeyboard(t.id, m)
+                : (t.agy_status === 'esperando_aprobacion'
+                    ? buildAgyPlanApprovalKeyboard(t.id, t.agy_plan_markdown || '', m)
+                    : buildTicketInlineKeyboard(t.id, t.status, m))
         );
 
         if (action === 'agy_model_menu') {
@@ -472,6 +523,61 @@ async function handleAgyTelegramCallback(cb) {
             return true;
         }
 
+        if (action === 'agy_merge_branch') {
+            telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: '🚀 Fusionando rama de revisión a main y desplegando...' }).catch(() => {});
+            if (chatId && messageId) {
+                telegramService.apiCall('editMessageReplyMarkup', {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    reply_markup: { inline_keyboard: [[{ text: '🚀 Fusionando y compilando main...', callback_data: 'agy_noop' }]] }
+                }).catch(() => {});
+            }
+            setImmediate(async () => {
+                try {
+                    const mRes = await mergeTicketAgyReviewBranch(ticketId, {
+                        approvedBy: `${techName} (Telegram)`,
+                        telegramContext: { sourceChatId: chatId, sourceMessageId: messageId }
+                    });
+                    if (!mRes.success) {
+                        if (chatId && messageId) {
+                            telegramService.apiCall('editMessageReplyMarkup', { chat_id: chatId, message_id: messageId, reply_markup: buildAgyBranchReviewKeyboard(ticketId, model) }).catch(() => {});
+                        }
+                        await safeSendTelegramWithKeyboard(chatId, mRes.summary, buildAgyBranchReviewKeyboard(ticketId, model));
+                        return;
+                    }
+                    await safeSendTelegramWithKeyboard(
+                        chatId,
+                        `🚀 *FUSIÓN COMPLETADA Y DESPLEGADA — #${escapeMd(ticket.ticket_code)}*\n` +
+                        `🌿 *Rama:* \`${escapeMd(mRes.reviewBranch)}\` → \`${escapeMd(mRes.baseBranch)}\`\n` +
+                        `🏷️ *Commit:* \`${escapeMd(mRes.commitHash || '')}\`${mRes.version ? ` · *${escapeMd(mRes.version)}*` : ''}\n` +
+                        `✅ _Ticket marcado como Resuelto y rama temporal eliminada._`,
+                        null
+                    );
+                } catch (err) {
+                    await safeSendTelegramWithKeyboard(chatId, `⚠️ Error fusionando rama: ${err.message}`, buildAgyBranchReviewKeyboard(ticketId, model));
+                }
+            });
+            return true;
+        }
+
+        if (action === 'agy_discard_branch') {
+            telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: '🗑️ Descartando rama de revisión...' }).catch(() => {});
+            const dRes = await discardTicketAgyReviewBranch(ticketId, { rejectedBy: `${techName} (Telegram)` });
+            if (chatId && messageId) {
+                telegramService.apiCall('editMessageReplyMarkup', {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    reply_markup: buildTicketInlineKeyboard(ticketId, ticket.status, model)
+                }).catch(() => {});
+            }
+            await safeSendTelegramWithKeyboard(
+                chatId,
+                `${dRes.summary}\n📌 *Ticket #${escapeMd(ticket.ticket_code)}* permanece abierto para re-planificar.`,
+                buildTicketInlineKeyboard(ticketId, ticket.status, model)
+            );
+            return true;
+        }
+
         if (action === 'agy_plan_feedback') {
             telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id }).catch(() => {});
             pendingAgyFeedbackMap.set(chatId, { ticketId, ticketCode: ticket.ticket_code, techName, expiresAt: Date.now() + 15 * 60 * 1000 });
@@ -503,7 +609,7 @@ async function handleAgyTelegramText(chatId, text, from) {
         return true;
     }
 
-    const isAgyCmd = /^\/(?:ejecutar|reintentar|agy|modelo|modelos)\b/i.test(trimmed);
+    const isAgyCmd = /^\/(?:ejecutar|reintentar|agy|modelo|modelos|fusionar|descartar)\b/i.test(trimmed);
     const pending = pendingAgyFeedbackMap.get(chatId);
     if (!isAgyCmd && !pending) return false;
 
@@ -588,6 +694,41 @@ async function handleAgyTelegramText(chatId, text, from) {
         return true;
     }
 
+    const mergeCmdMatch = trimmed.match(/^\/fusionar\s+([A-Za-z0-9#-]+)$/i);
+    if (mergeCmdMatch) {
+        const { getTicketByCodeOrId } = require('./ticket.service');
+        const { mergeTicketAgyReviewBranch } = require('./ticketAgyWorkflow.service');
+        const ticket = await getTicketByCodeOrId(mergeCmdMatch[1]);
+        if (!ticket) {
+            await telegramService.sendMessage(chatId, `⚠️ No se encontró el ticket "${mergeCmdMatch[1]}".`);
+            return true;
+        }
+        await telegramService.sendMessage(chatId, `🚀 Fusionando rama de revisión de #${ticket.ticket_code} en main...`);
+        setImmediate(async () => {
+            try {
+                const mRes = await mergeTicketAgyReviewBranch(ticket.id, { approvedBy: `${techName} (Telegram)`, telegramContext: { sourceChatId: chatId } });
+                await safeSendTelegramWithKeyboard(chatId, mRes.summary, null);
+            } catch (err) {
+                await telegramService.sendMessage(chatId, `⚠️ Error fusionando rama: ${err.message}`);
+            }
+        });
+        return true;
+    }
+
+    const discardCmdMatch = trimmed.match(/^\/descartar\s+([A-Za-z0-9#-]+)$/i);
+    if (discardCmdMatch) {
+        const { getTicketByCodeOrId } = require('./ticket.service');
+        const { discardTicketAgyReviewBranch } = require('./ticketAgyWorkflow.service');
+        const ticket = await getTicketByCodeOrId(discardCmdMatch[1]);
+        if (!ticket) {
+            await telegramService.sendMessage(chatId, `⚠️ No se encontró el ticket "${discardCmdMatch[1]}".`);
+            return true;
+        }
+        const dRes = await discardTicketAgyReviewBranch(ticket.id, { rejectedBy: `${techName} (Telegram)` });
+        await safeSendTelegramWithKeyboard(chatId, dRes.summary, null);
+        return true;
+    }
+
     const execCmdMatch = trimmed.match(/^\/(?:ejecutar|reintentar)\s+([A-Za-z0-9#-]+)$/i);
     if (execCmdMatch) {
         const { getTicketByCodeOrId } = require('./ticket.service');
@@ -633,8 +774,10 @@ async function handleAgyTelegramText(chatId, text, from) {
 module.exports = {
     buildAgyModelPickerKeyboard,
     buildAgyPlanApprovalKeyboard,
+    buildAgyBranchReviewKeyboard,
     createTelegramLiveProgress,
     sendAgyPlanToTelegram,
+    notifyAgyReviewBranchToTelegram,
     notifyAgyExecutionResultToTelegram,
     handleAgyTelegramCallback,
     handleAgyTelegramText

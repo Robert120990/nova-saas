@@ -10,6 +10,7 @@ const {
 } = require('./ticketAgyConsole.service');
 const {
     generateAiPlanFromCode, applyAiCodePatchAndBuild,
+    mergeAgyReviewBranch, discardAgyReviewBranch,
     syncGitPullLatest, getGitDirtySet, getGitHeadCommit
 } = require('./ticketAgyCodeEngine.service');
 
@@ -328,12 +329,31 @@ async function executeApprovedTicketAgyPlan(ticketId, { approvedBy = 'SuperAdmin
             const touchedList = patchResult.modifiedFiles;
             const finalSummary = sanitizeConsoleText(
                 [
-                    execOutput ? execOutput : `✅ Plan v${runningTicket.agy_plan_version || 1} ejecutado en ${proj.projectLabel} (${chosenModel}).`,
+                    execOutput ? execOutput : `✅ Plan v${runningTicket.agy_plan_version || 1} preparado en ${proj.projectLabel} (${chosenModel}).`,
                     `• Archivos actualizados: ${touchedList.join(', ')}`,
-                    patchResult.buildLog ? `• Compilación / Despliegue: ${patchResult.buildLog}` : null,
-                    patchResult.gitLog ? `• Git Sync: ${patchResult.gitLog}` : null
+                    patchResult.buildLog ? `• Compilación: ${patchResult.buildLog}` : null,
+                    patchResult.gitLog ? `• Git: ${patchResult.gitLog}` : null
                 ].filter(Boolean).join('\n')
             );
+
+            if (patchResult.awaitingMerge && patchResult.reviewBranch) {
+                const { notifyAgyReviewBranchToTelegram } = require('./ticketAgyTelegram.service');
+                await pool.query(
+                    `UPDATE support_tickets
+                     SET agy_status = 'esperando_fusion',
+                         agy_execution_log = CONCAT(COALESCE(agy_execution_log, ''), '\n=== RAMA DE REVISIÓN LISTA ===\n', ?),
+                         agy_updated_at = NOW()
+                     WHERE id = ?`,
+                    [finalSummary.slice(-20000), ticketId]
+                );
+                if (liveProgress) {
+                    await liveProgress.complete(`Rama ${patchResult.reviewBranch} lista para tu revisión antes de fusionar a main.`, { success: true });
+                }
+                const reviewTicket = await ticketService.getTicketById(ticketId);
+                notifyFrontendAgyUpdate(reviewTicket);
+                await notifyAgyReviewBranchToTelegram(reviewTicket, patchResult, approvedBy);
+                return;
+            }
 
             await pool.query(
                 `UPDATE support_tickets SET agy_status = 'completado', include_in_ai_prompt = 0, agy_execution_log = CONCAT(COALESCE(agy_execution_log, ''), '\n=== RESULTADO EJECUCIÓN ===\n', ?), agy_updated_at = NOW() WHERE id = ?`,
@@ -400,4 +420,73 @@ async function rejectTicketAgyPlan(ticketId, { rejectedBy = 'SuperAdmin', reason
     return updated;
 }
 
-module.exports = { ensureAgyFlowSchema, setTicketAgyModel, startTicketAgyPlanning, executeApprovedTicketAgyPlan, rejectTicketAgyPlan };
+async function mergeTicketAgyReviewBranch(ticketId, { approvedBy = 'SuperAdmin', telegramContext = null } = {}) {
+    await ensureAgyFlowSchema();
+    const ticket = await ticketService.getTicketById(ticketId);
+    if (!ticket) throw new Error('Ticket no encontrado');
+    const settings = await getAgyServerSettings();
+    const proj = resolveProjectForTicket(ticket, settings);
+    const chosenModel = ticket.agy_model ? String(ticket.agy_model).trim() : (settings.default_model || DEFAULT_AGY_MODEL);
+
+    const mRes = mergeAgyReviewBranch(proj.projectPath, ticket, proj);
+    if (!mRes.success) {
+        await pool.query(
+            `UPDATE support_tickets SET agy_execution_log = CONCAT(COALESCE(agy_execution_log, ''), '\n', ?), agy_updated_at = NOW() WHERE id = ?`,
+            [sanitizeConsoleText(mRes.summary), ticketId]
+        ).catch(() => {});
+        return mRes;
+    }
+
+    await pool.query(
+        `UPDATE support_tickets
+         SET agy_status = 'completado',
+             include_in_ai_prompt = 0,
+             agy_approved_by = ?,
+             agy_execution_log = CONCAT(COALESCE(agy_execution_log, ''), '\n=== FUSIÓN APROBADA ===\n', ?),
+             agy_updated_at = NOW()
+         WHERE id = ?`,
+        [approvedBy, sanitizeConsoleText(mRes.summary), ticketId]
+    );
+
+    await ticketService.updateTicketStatus(ticketId, {
+        status: 'resuelto',
+        resolvedByName: `${approvedBy} (AGY)`,
+        resolutionNotes: `Solución aprobada y fusionada (${mRes.reviewBranch} → ${mRes.baseBranch}, ${chosenModel}).`,
+        updatedByType: 'tech'
+    });
+
+    try {
+        const { syncTicketToAiTask } = require('./ticketAiTaskBridge.service');
+        await syncTicketToAiTask(ticketId, { forceSync: true });
+    } catch { /* ignore */ }
+
+    try {
+        const { removeTicketTelegramButtons } = require('./ticketTelegram.service');
+        await removeTicketTelegramButtons(ticketId, telegramContext ? { chatId: telegramContext.sourceChatId, messageId: telegramContext.sourceMessageId } : null);
+    } catch { /* ignore */ }
+
+    const doneTicket = await ticketService.getTicketById(ticketId);
+    notifyFrontendAgyUpdate(doneTicket);
+    return { ...mRes, ticket: doneTicket, chosenModel };
+}
+
+async function discardTicketAgyReviewBranch(ticketId, { rejectedBy = 'SuperAdmin' } = {}) {
+    await ensureAgyFlowSchema();
+    const ticket = await ticketService.getTicketById(ticketId);
+    if (!ticket) throw new Error('Ticket no encontrado');
+    const settings = await getAgyServerSettings();
+    const proj = resolveProjectForTicket(ticket, settings);
+    const dRes = discardAgyReviewBranch(proj.projectPath, ticket);
+    await rejectTicketAgyPlan(ticketId, { rejectedBy, reason: `Rama ${dRes.reviewBranch} descartada` });
+    return dRes;
+}
+
+module.exports = {
+    ensureAgyFlowSchema,
+    setTicketAgyModel,
+    startTicketAgyPlanning,
+    executeApprovedTicketAgyPlan,
+    mergeTicketAgyReviewBranch,
+    discardTicketAgyReviewBranch,
+    rejectTicketAgyPlan
+};

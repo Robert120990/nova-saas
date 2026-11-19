@@ -10,6 +10,7 @@ const AGY_STATUS_META = {
     planificando: { label: 'Planificando con AGY...', cls: 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse' },
     esperando_aprobacion: { label: 'Plan Enviado a Telegram (Esperando Aprobación)', cls: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40' },
     ejecutando: { label: 'Ejecutando Plan en Consola AGY...', cls: 'bg-sky-500/20 text-sky-300 border-sky-500/40 animate-pulse' },
+    esperando_fusion: { label: 'Rama de Revisión Lista (Esperando Fusión)', cls: 'bg-purple-500/20 text-purple-300 border-purple-500/40' },
     completado: { label: 'Solución Ejecutada (Resuelto)', cls: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' },
     reiterado: { label: 'Error Reiterado (Listo para Re-planificar)', cls: 'bg-amber-500/20 text-amber-300 border-amber-500/40' },
     denegado: { label: 'Plan Denegado', cls: 'bg-rose-500/20 text-rose-300 border-rose-500/40' },
