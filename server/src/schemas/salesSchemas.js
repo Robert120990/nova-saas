@@ -46,6 +46,7 @@ const saleCreateSchema = z.object({
     header: z.object({
         customer_id: z.coerce.number().int().positive().nullable().optional(),
         customer_branch_id: z.coerce.number().int().positive().nullable().optional(),
+        customer_fleet_id: emptyToNullId,
         seller_id: z.coerce.number().int().positive().nullable().optional(),
         pos_id: z.coerce.number().int().positive().nullable().optional(),
         shift_id: z.coerce.number().int().positive().nullable().optional(),

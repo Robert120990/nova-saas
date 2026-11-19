@@ -32,6 +32,7 @@ import { useAuth } from '../context/AuthContext';
 import Money, { MoneyInput } from '../components/ui/Money';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
 import { validateDocumentNumber, isValidDocumentNumber, formatNRC } from '../utils/svfeValidators';
+import { unwrapList } from '../utils/apiUtils';
 
 import ItemDiscountDialog from '../components/pos/ItemDiscountDialog';
 import GeneralDiscountDialog from '../components/pos/GeneralDiscountDialog';
@@ -117,6 +118,10 @@ const SalesTerminal = () => {
     const [customerBranchId, setCustomerBranchId] = useState(() => {
         const draft = getValidStoredDraft();
         return draft?.customerBranchId || '';
+    });
+    const [customerFleetId, setCustomerFleetId] = useState(() => {
+        const draft = getValidStoredDraft();
+        return draft?.customerFleetId || '';
     });
     const [customerExemptOverride, setCustomerExemptOverride] = useState(null);
     const [sellerId, setSellerId] = useState(() => {
@@ -285,6 +290,7 @@ const SalesTerminal = () => {
                     cart,
                     customerId,
                     customerBranchId,
+                    customerFleetId,
                     manualCustomerName,
                     sellerId,
                     tipoDte,
@@ -307,7 +313,7 @@ const SalesTerminal = () => {
             // Si el carrito está vacío, no existe borrador a retener
             localStorage.removeItem(DRAFT_KEY);
         }
-    }, [cart, customerId, customerBranchId, manualCustomerName, sellerId, tipoDte, condicionPago, linkedDocs, referencingSale, fexData, nrData, generalDiscount, generalDiscountPercentage, payments, entregado, DRAFT_KEY, user?.id, user?.company_id]);
+    }, [cart, customerId, customerBranchId, customerFleetId, manualCustomerName, sellerId, tipoDte, condicionPago, linkedDocs, referencingSale, fexData, nrData, generalDiscount, generalDiscountPercentage, payments, entregado, DRAFT_KEY, user?.id, user?.company_id]);
 
     // Notificar al montar si se recuperó un borrador previo válido
     useEffect(() => {
@@ -962,6 +968,33 @@ const SalesTerminal = () => {
         return customerBranches.find(b => String(b.id) === String(customerBranchId)) || null;
     }, [customerBranchId, customerBranches]);
 
+    // Fetch fleets for selected customer
+    const { data: customerFleets = [] } = useQuery({
+        queryKey: ['customer-fleets', customerId, 'active'],
+        queryFn: async () => unwrapList(await axios.get('/api/customer-fleets', { params: { customer_id: customerId, only_active: '1' } })),
+        enabled: !!customerId
+    });
+
+    // Helper: Find selected fleet data if any
+    const selectedFleetData = useMemo(() => {
+        if (!customerFleetId || !Array.isArray(customerFleets) || !customerFleets.length) return null;
+        return customerFleets.find(f => String(f.id) === String(customerFleetId)) || null;
+    }, [customerFleetId, customerFleets]);
+
+    const handleFleetChange = (newFleetId) => {
+        setCustomerFleetId(newFleetId);
+        if (tipoDte === '04' && newFleetId) {
+            const fleetObj = (Array.isArray(customerFleets) ? customerFleets : []).find(f => String(f.id) === String(newFleetId));
+            if (fleetObj) {
+                setNrData(prev => ({
+                    ...prev,
+                    transporterName: fleetObj.motorista || prev.transporterName,
+                    vehiclePlate: fleetObj.placa || prev.vehiclePlate
+                }));
+            }
+        }
+    };
+
     // Active customer address info (resolving branch address when selected)
     const activeAddressInfo = useMemo(() => {
         if (!selectedCustomerData) return null;
@@ -1021,8 +1054,13 @@ const SalesTerminal = () => {
         }
     };
 
+    const prevCustomerIdRef = useRef(customerId);
     useEffect(() => {
-        setCustomerBranchId('');
+        if (prevCustomerIdRef.current !== customerId) {
+            setCustomerBranchId('');
+            setCustomerFleetId('');
+            prevCustomerIdRef.current = customerId;
+        }
     }, [customerId]);
     
     // Búsqueda optimizada (F3) para evitar lentitud con miles de ítems
@@ -1555,6 +1593,9 @@ const SalesTerminal = () => {
                     branch_address: selectedBranchData?.direccion || null,
                     active_address: activeAddressInfo?.direccion || selectedCustomerData.direccion
                 } : { nombre: manualCustomerName || 'Consumidor Final' },
+                fleet: selectedFleetData || null,
+                vehicle_plate: selectedFleetData?.placa || (tipoDte === '04' ? nrData.vehiclePlate : null),
+                transporter_name: selectedFleetData?.motorista || (tipoDte === '04' ? nrData.transporterName : null),
                 tipoDteName: tipoDte === '01' ? 'Factura' : tipoDte === '03' ? 'Crédito Fiscal' : tipoDte === '04' ? 'Nota Remisión' : tipoDte === '05' ? 'Nota Crédito' : tipoDte === '07' ? 'Comprobante Retención' : tipoDte === '11' ? 'Factura Exportación' : 'Documento',
                 seller: sellerSession?.seller_name,
                 contingency: Boolean(data?.dte?.contingency || activeContingency)
@@ -1597,6 +1638,7 @@ const SalesTerminal = () => {
         setGeneralDiscountPercentage(null);
         setCustomerId('');
         setCustomerBranchId('');
+        setCustomerFleetId('');
         setCustomerExemptOverride(null);
         setManualCustomerName('');
         setLinkedDocs([]);
@@ -1617,6 +1659,7 @@ const SalesTerminal = () => {
         setGeneralDiscountPercentage(null);
         setCustomerId('');
         setCustomerBranchId('');
+        setCustomerFleetId('');
         setCustomerExemptOverride(null);
         setManualCustomerName('');
         setLinkedDocs([]);
@@ -1710,6 +1753,8 @@ const SalesTerminal = () => {
                     <div><span class="bold">CLIENTE:</span> ${sale.customer?.nombre || 'CONSUMIDOR FINAL'}</div>
                     ${sale.customer?.nit ? `<div><span class="bold">NIT:</span> ${sale.customer.nit}</div>` : ''}
                     ${sale.customer?.nrc ? `<div><span class="bold">NRC:</span> ${sale.customer.nrc}</div>` : ''}
+                    ${(sale.vehicle_plate || sale.fleet?.placa) ? `<div><span class="bold">PLACA:</span> ${sale.vehicle_plate || sale.fleet?.placa}</div>` : ''}
+                    ${(sale.transporter_name || sale.fleet?.motorista) ? `<div><span class="bold">MOTORISTA:</span> ${sale.transporter_name || sale.fleet?.motorista}</div>` : ''}
                     <div class="dashed"></div>
 
                     <div class="flex-between bold">
@@ -1913,6 +1958,7 @@ const SalesTerminal = () => {
             header: {
                 customer_id: customerId || null,
                 customer_branch_id: customerBranchId || null,
+                customer_fleet_id: customerFleetId || null,
                 seller_id: sellerId || null,
                 pos_id: sellerSession?.pos_id || null,
                 shift_id: currentShift?.id || null,
@@ -1937,8 +1983,8 @@ const SalesTerminal = () => {
                 export_regime: tipoDte === '11' ? 'EX-1' : null,
                 dest_country_code: tipoDte === '11' ? fexData.country : null,
                 remission_type: tipoDte === '04' ? nrData.type : null,
-                transporter_name: tipoDte === '04' ? nrData.transporterName : null,
-                vehicle_plate: tipoDte === '04' ? nrData.vehiclePlate : null,
+                transporter_name: (tipoDte === '04' ? nrData.transporterName : null) || selectedFleetData?.motorista?.slice(0, 100) || null,
+                vehicle_plate: (tipoDte === '04' ? nrData.vehiclePlate : null) || selectedFleetData?.placa?.slice(0, 20) || null,
                 cliente_nombre: !customerId ? manualCustomerName : null,
             },
             items: tipoDte === '07' ? linkedDocs.map((doc, idx) => ({
@@ -2465,6 +2511,7 @@ const SalesTerminal = () => {
         setGeneralDiscountPercentage(null);
         setCustomerId('');
         setCustomerBranchId('');
+        setCustomerFleetId('');
         setManualCustomerName('');
         setLinkedDocs([]);
         setPayments([]);
@@ -3079,6 +3126,49 @@ const SalesTerminal = () => {
                                             </option>
                                         ))}
                                     </select>
+                                </div>
+                            )}
+                            {selectedCustomerData && Array.isArray(customerFleets) && customerFleets.length > 0 && (
+                                <div className="p-2 bg-sky-50/60 rounded-xl border border-sky-100 space-y-1.5">
+                                    <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2">
+                                        <label className="text-[10px] font-black text-sky-700 uppercase whitespace-nowrap flex items-center gap-1">
+                                            <Truck size={12} />
+                                            Flota
+                                        </label>
+                                        <select
+                                            value={customerFleetId}
+                                            onChange={(e) => handleFleetChange(e.target.value)}
+                                            className="flex-1 min-w-0 px-2 py-1.5 bg-white border border-sky-200 rounded-lg text-[11px] font-medium text-slate-700 outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-400 transition-all"
+                                        >
+                                            <option value="">Sin flota seleccionada</option>
+                                            {customerFleets.map((f) => {
+                                                const vehicleInfo = [f.marca, f.modelo].filter(Boolean).join(' ');
+                                                const labelParts = [
+                                                    f.placa,
+                                                    f.codigo_interno ? `[${f.codigo_interno}]` : '',
+                                                    f.motorista ? `- ${f.motorista}` : '',
+                                                    vehicleInfo ? `(${vehicleInfo})` : ''
+                                                ].filter(Boolean);
+                                                return (
+                                                    <option key={f.id} value={f.id}>
+                                                        {labelParts.join(' ')}
+                                                    </option>
+                                                );
+                                            })}
+                                        </select>
+                                    </div>
+                                    {selectedFleetData && (
+                                        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-1 text-[10px] font-semibold text-sky-800">
+                                            <span>Placa: <span className="font-mono font-bold">{selectedFleetData.placa}</span></span>
+                                            {selectedFleetData.motorista && <span>Motorista: {selectedFleetData.motorista}</span>}
+                                            {selectedFleetData.telefono_motorista && <span>Tel: {selectedFleetData.telefono_motorista}</span>}
+                                            {(selectedFleetData.marca || selectedFleetData.modelo || selectedFleetData.tipo_vehiculo) && (
+                                                <span>
+                                                    Unidad: {[selectedFleetData.tipo_vehiculo, selectedFleetData.marca, selectedFleetData.modelo, selectedFleetData.anio].filter(Boolean).join(' ')}
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>

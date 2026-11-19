@@ -98,6 +98,13 @@ REGLAS DE MULTI-TENENCIA:
 - departamento, municipio, direccion, telefono
 - created_at
 
+### customer_fleets (Flotas / vehículos de clientes)
+- id, customer_id, company_id, placa
+- motorista, documento_motorista, telefono_motorista, codigo_interno
+- tipo_vehiculo, marca, modelo, anio, color, tipo_combustible
+- observaciones, activo TINYINT(1) DEFAULT 1
+- created_at, updated_at
+
 ### customer_payments (Pagos de Clientes / CXC)
 - id BIGINT, company_id, branch_id, customer_id
 - monto DECIMAL, fecha_pago DATE
@@ -213,7 +220,7 @@ REGLAS DE MULTI-TENENCIA:
 - fovial, cotrans, descuento_general, iva_percibido, iva_retenido DECIMAL
 - total_pagar DECIMAL (monto total de la venta)
 - cliente_nombre (nombre manual), observaciones, sello_recepcion
-- customer_branch_id, dte_email_sent, dte_email_error
+- customer_branch_id, customer_fleet_id, dte_email_sent, dte_email_error
 - created_at TIMESTAMP
 
 ### sales_items (Ítems / Líneas de Venta)

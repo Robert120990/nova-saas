@@ -61,6 +61,23 @@ const createSale = async (req, res) => {
             customerRow = custRows[0] || null;
         }
 
+        let fleetRow = null;
+        if (header.customer_fleet_id) {
+            if (!header.customer_id) {
+                await connection.rollback();
+                return res.status(400).json({ message: 'Debe seleccionar un cliente para asignar una flota', success: false });
+            }
+            const [fleetRows] = await connection.query(
+                'SELECT id, placa, motorista, activo FROM customer_fleets WHERE id = ? AND customer_id = ? AND company_id = ?',
+                [header.customer_fleet_id, header.customer_id, req.company_id]
+            );
+            if (!fleetRows.length) {
+                await connection.rollback();
+                return res.status(400).json({ message: 'El vehículo de flota seleccionado no pertenece al cliente', success: false });
+            }
+            fleetRow = fleetRows[0];
+        }
+
         // 0a. Limpieza silenciosa de documentos ficticios (ceros) en clientes para Facturas < $200
         if (header.dte_type === '01' && customerRow && parseFloat(header.total_pagar || header.total || 0) < 200) {
             const rawDoc = customerRow.numero_documento || customerRow.nit;
@@ -320,6 +337,7 @@ const createSale = async (req, res) => {
             branch_id: req.user.branch_id,
             customer_id: header.customer_id,
             customer_branch_id: header.customer_branch_id || null,
+            customer_fleet_id: fleetRow ? fleetRow.id : null,
             seller_id: header.seller_id,
             pos_id: header.pos_id,
             shift_id: header.shift_id || null,
@@ -348,8 +366,12 @@ const createSale = async (req, res) => {
             export_regime: header.export_regime || null,
             dest_country_code: header.dest_country_code || null,
             remission_type: header.remission_type || null,
-            transporter_name: header.transporter_name || null,
-            vehicle_plate: header.vehicle_plate || null,
+            transporter_name: (header.transporter_name || fleetRow?.motorista || null)
+                ? String(header.transporter_name || fleetRow?.motorista).trim().slice(0, 100)
+                : null,
+            vehicle_plate: (header.vehicle_plate || fleetRow?.placa || null)
+                ? String(header.vehicle_plate || fleetRow?.placa).trim().slice(0, 20)
+                : null,
             cliente_nombre: header.cliente_nombre || null,
             created_at: new Date()
         }]);
@@ -670,8 +692,8 @@ const getSales = async (req, res) => {
 
         if (search && search.trim()) {
             const searchPattern = `%${search.trim()}%`;
-            whereClause += ' AND (c.nombre LIKE ? OR h.cliente_nombre LIKE ? OR h.numero_control LIKE ? OR h.codigo_generacion LIKE ? OR c.nit LIKE ? OR c.numero_documento LIKE ? OR h.observaciones LIKE ?)';
-            whereParams.push(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern);
+            whereClause += ' AND (c.nombre LIKE ? OR h.cliente_nombre LIKE ? OR h.numero_control LIKE ? OR h.codigo_generacion LIKE ? OR c.nit LIKE ? OR c.numero_documento LIKE ? OR h.observaciones LIKE ? OR h.vehicle_plate LIKE ? OR cf.placa LIKE ? OR cf.motorista LIKE ?)';
+            whereParams.push(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern);
         }
 
         const docType = tipo_documento || dte_type;
@@ -766,6 +788,7 @@ const getSales = async (req, res) => {
         const sql = `
             SELECT h.*, s.nombre as seller_name, p.nombre as pos_name, b.nombre as branch_name, c.correo as customer_email,
             c.nit as customer_nit, c.nrc as customer_nrc, c.numero_documento as customer_dui,
+            cf.placa as customer_fleet_placa, cf.motorista as customer_fleet_motorista, cf.codigo_interno as customer_fleet_codigo, cf.marca as customer_fleet_marca, cf.modelo as customer_fleet_modelo,
             COALESCE(c.nombre, h.cliente_nombre, 'Consumidor Final') as customer_name,
             CASE WHEN h.estado IN ('anulado', 'invalidado') THEN 'INVALIDADO' ELSE COALESCE(d_c.status, d_v.status) END as dte_status, COALESCE(d_c.numero_control, d_v.numero_control) as dte_control, COALESCE(d_c.ambiente, d_v.ambiente, '00') as dte_ambiente, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as dte_error,
             comp.nit as company_nit,
@@ -781,6 +804,7 @@ const getSales = async (req, res) => {
             FROM sales_headers h
             LEFT JOIN sellers s ON h.seller_id = s.id
             LEFT JOIN customers c ON h.customer_id = c.id
+            LEFT JOIN customer_fleets cf ON h.customer_fleet_id = cf.id
             LEFT JOIN points_of_sale p ON h.pos_id = p.id
             LEFT JOIN branches b ON h.branch_id = b.id
             LEFT JOIN companies comp ON h.company_id = comp.id
@@ -796,6 +820,7 @@ const getSales = async (req, res) => {
             SELECT COUNT(*) as total 
             FROM sales_headers h 
             LEFT JOIN customers c ON h.customer_id = c.id
+            LEFT JOIN customer_fleets cf ON h.customer_fleet_id = cf.id
             LEFT JOIN dtes d_c ON d_c.codigo_generacion = h.codigo_generacion AND d_c.company_id = h.company_id
             LEFT JOIN dtes d_v ON (h.codigo_generacion IS NULL OR h.codigo_generacion = '') AND d_v.venta_id = h.id AND d_v.company_id = h.company_id
             ${whereClause}
@@ -831,6 +856,17 @@ const getSaleById = async (req, res) => {
             COALESCE(c.nombre, h.cliente_nombre, 'Consumidor Final') as customer_name, 
             COALESCE(NULLIF(TRIM(cb.direccion), ''), c.direccion) as customer_address,
             cb.nombre as customer_branch_name,
+            cf.placa as customer_fleet_placa,
+            cf.motorista as customer_fleet_motorista,
+            cf.documento_motorista as customer_fleet_documento_motorista,
+            cf.telefono_motorista as customer_fleet_telefono_motorista,
+            cf.codigo_interno as customer_fleet_codigo,
+            cf.tipo_vehiculo as customer_fleet_tipo_vehiculo,
+            cf.marca as customer_fleet_marca,
+            cf.modelo as customer_fleet_modelo,
+            cf.anio as customer_fleet_anio,
+            cf.color as customer_fleet_color,
+            cf.tipo_combustible as customer_fleet_tipo_combustible,
             COALESCE(NULLIF(TRIM(cb.departamento), ''), c.departamento) as customer_departamento,
             COALESCE(NULLIF(TRIM(cb.municipio), ''), c.municipio) as customer_municipio,
             COALESCE(NULLIF(TRIM(cb.distrito), ''), c.distrito) as customer_distrito,
@@ -852,6 +888,7 @@ const getSaleById = async (req, res) => {
             FROM sales_headers h
             LEFT JOIN customers c ON h.customer_id = c.id
             LEFT JOIN customer_branches cb ON h.customer_branch_id = cb.id
+            LEFT JOIN customer_fleets cf ON h.customer_fleet_id = cf.id
             LEFT JOIN sellers s ON h.seller_id = s.id
             LEFT JOIN branches b ON h.branch_id = b.id
             LEFT JOIN companies comp ON h.company_id = comp.id

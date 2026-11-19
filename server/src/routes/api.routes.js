@@ -19,6 +19,10 @@ const {
     providerUpdateSchema
 } = require('../schemas/catalogSchemas');
 const {
+    customerFleetCreateSchema,
+    customerFleetUpdateSchema
+} = require('../schemas/customerFleetSchemas');
+const {
     companyCreateSchema,
     companyUpdateSchema,
     branchCreateSchema,
@@ -221,6 +225,7 @@ const vatBooksController = require('../controllers/vatBooks.controller');
 const vatDeclarationsController = require('../controllers/vatDeclarations.controller');
 const customerDiscountController = require('../controllers/customerDiscount.controller');
 const customerBranchController = require('../controllers/customerBranch.controller');
+const customerFleetController = require('../controllers/customerFleet.controller');
 const discountRulesController = require('../controllers/discountRules.controller');
 const promotionController = require('../controllers/promotion.controller');
 const accountingController = require('../controllers/accounting.controller');
@@ -443,6 +448,12 @@ router.get('/customer-branches', customerBranchController.getBranches);
 router.post('/customer-branches', customerBranchController.createBranch);
 router.put('/customer-branches/:id', customerBranchController.updateBranch);
 router.delete('/customer-branches/:id', customerBranchController.deleteBranch);
+
+// Customer Fleets (Control de Flotas)
+router.get('/customer-fleets', customerFleetController.getFleets);
+router.post('/customer-fleets', validate(customerFleetCreateSchema), customerFleetController.createFleet);
+router.put('/customer-fleets/:id', validate(customerFleetUpdateSchema), customerFleetController.updateFleet);
+router.delete('/customer-fleets/:id', customerFleetController.deleteFleet);
 
 // Providers
 router.get('/providers', providerController.getProviders);

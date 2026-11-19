@@ -10,7 +10,7 @@ import {
     Search, FileText, Eye, Printer, Trash2,
     Mail, Terminal, Code, CheckCircle2, XCircle, AlertCircle, Info, Clock, Send, Ban, RefreshCcw,
     BarChart3, Filter, RotateCcw, X, Sparkles, User, MoreVertical, ShieldCheck,
-    ArrowUpDown, ArrowUp, ArrowDown
+    ArrowUpDown, ArrowUp, ArrowDown, Truck
 } from 'lucide-react';
 import Money from '../components/ui/Money';
 import { formatDateTime } from '../utils/dateUtils';
@@ -670,6 +670,8 @@ const SalesHistory = () => {
                         <div><span class="bold">CLIENTE:</span> ${detail.customer_name || 'CONSUMIDOR FINAL'}</div>
                         ${detail.customer_nit ? `<div><span class="bold">NIT:</span> ${detail.customer_nit}</div>` : ''}
                         ${detail.customer_nrc ? `<div><span class="bold">NRC:</span> ${detail.customer_nrc}</div>` : ''}
+                        ${(detail.customer_fleet_placa || detail.vehicle_plate) ? `<div><span class="bold">PLACA:</span> ${detail.customer_fleet_placa || detail.vehicle_plate}</div>` : ''}
+                        ${(detail.customer_fleet_motorista || detail.transporter_name) ? `<div><span class="bold">MOTORISTA:</span> ${detail.customer_fleet_motorista || detail.transporter_name}</div>` : ''}
                         <div class="dashed"></div>
                         <div class="flex-between bold">
                             <div style="width: 50%;">DESCRIPCION</div>
@@ -1101,13 +1103,27 @@ const SalesHistory = () => {
                             <td className="px-4 py-1">
                                  <div className="flex flex-col leading-tight">
                                      <span className="font-bold text-slate-700 text-[9px] truncate max-w-[300px]" title={sale.customer_name}>{sale.customer_name || 'Consumidor Final'}</span>
-                                    <span className={`text-[8px] px-1 rounded w-fit font-black uppercase tracking-widest ${
-                                        sale.condicion_operacion == 1 ? 'bg-emerald-50 text-emerald-600'
-                                        : sale.condicion_operacion == 2 ? 'bg-amber-50 text-amber-600'
-                                        : 'bg-sky-50 text-sky-600'
-                                    }`}>
-                                        {sale.condicion_operacion == 1 ? 'Contado' : sale.condicion_operacion == 2 ? 'Crédito' : 'Otro'}
-                                    </span>
+                                    <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                                        <span className={`text-[8px] px-1 rounded w-fit font-black uppercase tracking-widest ${
+                                            sale.condicion_operacion == 1 ? 'bg-emerald-50 text-emerald-600'
+                                            : sale.condicion_operacion == 2 ? 'bg-amber-50 text-amber-600'
+                                            : 'bg-sky-50 text-sky-600'
+                                        }`}>
+                                            {sale.condicion_operacion == 1 ? 'Contado' : sale.condicion_operacion == 2 ? 'Crédito' : 'Otro'}
+                                        </span>
+                                        {(sale.customer_fleet_placa || sale.vehicle_plate) && (
+                                            <span
+                                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200/70 text-[8px] font-bold"
+                                                title={[
+                                                    sale.customer_fleet_motorista || sale.transporter_name,
+                                                    [sale.customer_fleet_marca, sale.customer_fleet_modelo].filter(Boolean).join(' ')
+                                                ].filter(Boolean).join(' • ') || 'Unidad de flota'}
+                                            >
+                                                <Truck size={9} />
+                                                <span className="font-mono">{sale.customer_fleet_placa || sale.vehicle_plate}</span>
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                             </td>
                             <td className="px-4 py-1">

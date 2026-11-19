@@ -95,7 +95,8 @@ const getCustomers = async (req, res) => {
                    m.description AS municipio_nombre,
                    dist.description AS distrito_nombre,
                    a.description AS actividad_nombre,
-                   tp.description AS tipo_persona_nombre
+                   tp.description AS tipo_persona_nombre,
+                   (SELECT COUNT(*) FROM customer_fleets cf WHERE cf.customer_id = c.id AND cf.company_id = c.company_id AND cf.activo = 1) AS fleet_count
             FROM customers c
             LEFT JOIN cat_012_departamento d ON c.departamento = d.code
             LEFT JOIN cat_013_municipio m ON c.municipio = m.code AND c.departamento = m.dep_code
@@ -300,7 +301,8 @@ const updateCustomer = async (req, res) => {
                    m.description AS municipio_nombre,
                    dist.description AS distrito_nombre,
                    a.description AS actividad_nombre,
-                   tp.description AS tipo_persona_nombre
+                   tp.description AS tipo_persona_nombre,
+                   (SELECT COUNT(*) FROM customer_fleets cf WHERE cf.customer_id = c.id AND cf.company_id = c.company_id AND cf.activo = 1) AS fleet_count
             FROM customers c
             LEFT JOIN cat_012_departamento d ON c.departamento = d.code
             LEFT JOIN cat_013_municipio m ON c.municipio = m.code AND c.departamento = m.dep_code
@@ -352,7 +354,8 @@ const getCustomerById = async (req, res) => {
                    m.description AS municipio_nombre,
                    dist.description AS distrito_nombre,
                    a.description AS actividad_nombre,
-                   tp.description AS tipo_persona_nombre
+                   tp.description AS tipo_persona_nombre,
+                   (SELECT COUNT(*) FROM customer_fleets cf WHERE cf.customer_id = c.id AND cf.company_id = c.company_id AND cf.activo = 1) AS fleet_count
             FROM customers c
             LEFT JOIN cat_012_departamento d ON c.departamento = d.code
             LEFT JOIN cat_013_municipio m ON c.municipio = m.code AND c.departamento = m.dep_code
@@ -412,7 +415,8 @@ const getCustomersReportPDF = async (req, res) => {
                    m.description AS municipio_nombre,
                    dist.description AS distrito_nombre,
                    a.description AS actividad_nombre,
-                   tp.description AS tipo_persona_nombre
+                   tp.description AS tipo_persona_nombre,
+                   (SELECT COUNT(*) FROM customer_fleets cf WHERE cf.customer_id = c.id AND cf.company_id = c.company_id AND cf.activo = 1) AS fleet_count
             FROM customers c
             LEFT JOIN cat_012_departamento d ON c.departamento = d.code
             LEFT JOIN cat_013_municipio m ON c.municipio = m.code AND c.departamento = m.dep_code

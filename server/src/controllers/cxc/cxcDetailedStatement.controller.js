@@ -74,13 +74,14 @@ const exportDetailedStatementPDF = async (req, res) => {
                 END as tipo,
                 i.descripcion as producto,
                 CAST(COALESCE(i.cantidad, 0) AS DECIMAL(12,4)) as cantidad,
-                COALESCE(NULLIF(h.vehicle_plate, ''), '—') as placas,
+                COALESCE(NULLIF(h.vehicle_plate, ''), NULLIF(cf.placa, ''), '—') as placas,
                 '0.00' as odometro,
                 ROUND(COALESCE(i.cantidad * i.precio_unitario, i.venta_gravada + i.venta_exenta), 2) as valor,
                 0 as abono,
                 COALESCE((SELECT SUM(p.monto) FROM customer_payments p WHERE p.sale_id = h.id), 0) as sale_total_abono
             FROM sales_headers h
             JOIN sales_items i ON h.id = i.sale_id
+            LEFT JOIN customer_fleets cf ON h.customer_fleet_id = cf.id
             LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
             WHERE h.company_id = ? AND h.branch_id = ? AND h.customer_id = ? 
               AND (h.payment_condition = 2 OR h.condicion_operacion = 2)

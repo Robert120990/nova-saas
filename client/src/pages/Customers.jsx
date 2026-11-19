@@ -3,7 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
-import { Plus, Edit, Trash2, Search, Building2, Info, UserCheck, FileSpreadsheet, FileText as FilePdf, Loader2 } from 'lucide-react';
+import { CustomerFleetsModal } from '../components/customers';
+import { Plus, Edit, Trash2, Search, Building2, Truck, Info, UserCheck, FileSpreadsheet, FileText as FilePdf, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 import { useAuth } from '../context/AuthContext';
@@ -43,6 +44,7 @@ const Customers = () => {
     const [branchDistrito, setBranchDistrito] = useState('');
     const [branchTab, setBranchTab] = useState('form');
     const [branchSearch, setBranchSearch] = useState('');
+    const [fleetCustomer, setFleetCustomer] = useState(null);
 
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
@@ -677,9 +679,21 @@ const Customers = () => {
                                 </div>
                             </td>
                             <td className="px-3 py-1 flex gap-1">
-                                <button onClick={() => handleEdit(c)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15}/></button>
+                                <button onClick={() => handleEdit(c)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Editar"><Edit size={15}/></button>
                                 <button onClick={() => handleOpenBranches(c)} className="p-1 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Sucursales"><Building2 size={15}/></button>
-                                <button onClick={() => handleDeleteCustomer(c.id)} className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15}/></button>
+                                <button
+                                    onClick={() => setFleetCustomer(c)}
+                                    className="relative p-1 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                                    title="Control de Flotas"
+                                >
+                                    <Truck size={15}/>
+                                    {Number(c.fleet_count) > 0 && (
+                                        <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-amber-500 text-white text-[9px] font-black leading-[14px] text-center">
+                                            {c.fleet_count}
+                                        </span>
+                                    )}
+                                </button>
+                                <button onClick={() => handleDeleteCustomer(c.id)} className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar"><Trash2 size={15}/></button>
                             </td>
                         </tr>
                     )}
@@ -721,7 +735,7 @@ const Customers = () => {
                                 </div>
                             </div>
 
-                            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                            <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-100">
                                 <button 
                                     onClick={() => handleEdit(c)} 
                                     className="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-indigo-100"
@@ -733,6 +747,12 @@ const Customers = () => {
                                     className="px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-emerald-100"
                                 >
                                     <Building2 size={14}/> Sucursales
+                                </button>
+                                <button 
+                                    onClick={() => setFleetCustomer(c)} 
+                                    className="px-3 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-amber-100"
+                                >
+                                    <Truck size={14}/> Flotas{Number(c.fleet_count) > 0 ? ` (${c.fleet_count})` : ''}
                                 </button>
                                 <button 
                                     onClick={() => handleDeleteCustomer(c.id)} 
@@ -1218,6 +1238,12 @@ const Customers = () => {
                     </div>
                 </div>
             </Modal>
+
+            <CustomerFleetsModal
+                isOpen={Boolean(fleetCustomer)}
+                onClose={() => setFleetCustomer(null)}
+                customer={fleetCustomer}
+            />
 
             {/* Modal de Visualización Interactiva de Catálogo PDF */}
             <PdfViewerModal

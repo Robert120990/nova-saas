@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import Modal from '../ui/Modal';
 import Money from '../ui/Money';
-import { FileText, User, Tag, MapPin, ShoppingCart, CreditCard, Banknote, Code, Info, Terminal, Download, Copy, Check } from 'lucide-react';
+import { FileText, User, Tag, MapPin, Building2, Truck, ShoppingCart, CreditCard, Banknote, Code, Info, Terminal, Download, Copy, Check } from 'lucide-react';
 import { toast } from 'sonner';
 
 const SaleDetailModal = ({ saleId, isOpen, onClose, initialView = 'detalle' }) => {
@@ -187,6 +187,12 @@ const SaleDetailModal = ({ saleId, isOpen, onClose, initialView = 'detalle' }) =
                                             <span>NIT: {saleDetail.customer_nit}</span>
                                         </div>
                                     )}
+                                    {saleDetail.customer_branch_name && (
+                                        <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
+                                            <Building2 size={14} className="text-slate-300" />
+                                            <span>Sucursal: {saleDetail.customer_branch_name}</span>
+                                        </div>
+                                    )}
                                     {saleDetail.customer_address && (
                                         <div className="flex items-start gap-2 text-xs font-bold text-slate-500">
                                             <MapPin size={14} className="text-slate-300 mt-0.5" />
@@ -194,6 +200,52 @@ const SaleDetailModal = ({ saleId, isOpen, onClose, initialView = 'detalle' }) =
                                         </div>
                                     )}
                                 </div>
+                                {(saleDetail.customer_fleet_placa || saleDetail.vehicle_plate || saleDetail.customer_fleet_motorista || saleDetail.transporter_name) && (
+                                    <div className="bg-sky-50/70 border border-sky-100 rounded-2xl p-3 mb-4 space-y-1.5">
+                                        <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wider text-sky-700">
+                                            <Truck size={14} className="text-sky-600 shrink-0" />
+                                            <span>Control de Flota / Unidad</span>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs text-slate-700">
+                                            {(saleDetail.customer_fleet_placa || saleDetail.vehicle_plate) && (
+                                                <div>
+                                                    <span className="font-bold text-slate-500">Placa: </span>
+                                                    <span className="font-mono font-black text-slate-800">{saleDetail.customer_fleet_placa || saleDetail.vehicle_plate}</span>
+                                                    {saleDetail.customer_fleet_codigo && (
+                                                        <span className="ml-1.5 px-1.5 py-0.5 bg-white border border-sky-200 rounded text-[10px] font-bold text-sky-700">
+                                                            {saleDetail.customer_fleet_codigo}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {(saleDetail.customer_fleet_motorista || saleDetail.transporter_name) && (
+                                                <div>
+                                                    <span className="font-bold text-slate-500">Motorista: </span>
+                                                    <span className="font-semibold text-slate-800">{saleDetail.customer_fleet_motorista || saleDetail.transporter_name}</span>
+                                                </div>
+                                            )}
+                                            {(saleDetail.customer_fleet_documento_motorista || saleDetail.customer_fleet_telefono_motorista) && (
+                                                <div className="sm:col-span-2 text-[11px] text-slate-600 flex flex-wrap gap-x-3">
+                                                    {saleDetail.customer_fleet_documento_motorista && <span>Doc. Motorista: {saleDetail.customer_fleet_documento_motorista}</span>}
+                                                    {saleDetail.customer_fleet_telefono_motorista && <span>Tel. Motorista: {saleDetail.customer_fleet_telefono_motorista}</span>}
+                                                </div>
+                                            )}
+                                            {(saleDetail.customer_fleet_tipo_vehiculo || saleDetail.customer_fleet_marca || saleDetail.customer_fleet_modelo || saleDetail.customer_fleet_anio || saleDetail.customer_fleet_color || saleDetail.customer_fleet_tipo_combustible) && (
+                                                <div className="sm:col-span-2 text-[11px] text-slate-600">
+                                                    <span className="font-bold text-slate-500">Vehículo: </span>
+                                                    {[
+                                                        saleDetail.customer_fleet_tipo_vehiculo,
+                                                        saleDetail.customer_fleet_marca,
+                                                        saleDetail.customer_fleet_modelo,
+                                                        saleDetail.customer_fleet_anio,
+                                                        saleDetail.customer_fleet_color,
+                                                        saleDetail.customer_fleet_tipo_combustible
+                                                    ].filter(Boolean).join(' • ')}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
