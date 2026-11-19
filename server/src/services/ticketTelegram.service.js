@@ -2,9 +2,15 @@ const pool = require('../config/db');
 const telegramService = require('./telegram.service');
 const {
     getTechChatsForTicket,
+    verifyTelegramSupportAccess,
     resolveLocalUploadPath,
     sendLocalPhotoToTelegram
 } = require('./ticketTelegramMedia.service');
+const {
+    DEFAULT_AGY_MODEL,
+    getModelShortLabel,
+    getAgyServerSettings
+} = require('./ticketAgyConsole.service');
 
 // chat_id -> { action: 'resolve_note' | 'comment', ticketId, ticketCode, techName, messageId, expiresAt }
 const pendingTechActions = new Map();
@@ -66,13 +72,15 @@ async function removeTicketTelegramButtons(ticketId, directContext = null) {
     }
 }
 
-function buildTicketInlineKeyboard(ticketId, status = 'abierto') {
+function buildTicketInlineKeyboard(ticketId, status = 'abierto', modelId = DEFAULT_AGY_MODEL) {
     if (status === 'resuelto' || status === 'cerrado') {
         return { inline_keyboard: [] };
     }
+    const shortModel = getModelShortLabel(modelId);
     return {
         inline_keyboard: [
-            [{ text: '🤖 Aprobar y Planificar AGY', callback_data: `agy_start_plan:${ticketId}` }],
+            [{ text: `🤖 Planificar AGY (${shortModel})`, callback_data: `agy_start_plan:${ticketId}` }],
+            [{ text: `🧠 Cambiar Modelo (${shortModel})`, callback_data: `agy_model_menu:${ticketId}` }],
             [{ text: '🛠️ En Proceso', callback_data: `ticket_take:${ticketId}` }, { text: '✅ Marcar Resuelto', callback_data: `ticket_resolve:${ticketId}` }],
             [{ text: '✍️ Resolver con Nota', callback_data: `ticket_resolve_note:${ticketId}` }, { text: '💬 Comentar al Usuario', callback_data: `ticket_comment:${ticketId}` }]
         ]
@@ -103,9 +111,13 @@ async function notifyNewTicketToTelegram(ticket) {
     const isFromAdmin = String(ticket.source_system || '').toLowerCase().includes('admin.sipesv.com') || String(ticket.ticket_code || '').toUpperCase().startsWith('ADM-');
     const projectBadge = isFromAdmin ? '🌐 *Proyecto:* `admin.sipesv.com` (SIPE Admin)' : '🖥️ *Proyecto:* `sys.sipesv.com` (SIPE SaaS)';
 
+    const settings = await getAgyServerSettings().catch(() => ({ default_model: DEFAULT_AGY_MODEL }));
+    const activeModel = ticket.agy_model || settings.default_model || DEFAULT_AGY_MODEL;
+
     const text =
         `🎫 *NUEVO TICKET DE SOPORTE — #${escapeMd(ticket.ticket_code)}*\n` +
-        `${projectBadge}\n\n` +
+        `${projectBadge}\n` +
+        `🧠 *Modelo AGY:* \`${escapeMd(activeModel)}\` (${escapeMd(getModelShortLabel(activeModel))})\n\n` +
         `📌 *Asunto:* ${escapeMd(ticket.subject)}\n` +
         `🏷️ *Tipo:* ${typeText}  |  *Prioridad:* ${prioText}\n` +
         `🏢 *Empresa:* ${escapeMd(ticket.company_name || (isFromAdmin ? 'SIPE Admin' : 'Empresa'))} (${escapeMd(ticket.branch_name || 'Global')})\n` +
@@ -114,9 +126,9 @@ async function notifyNewTicketToTelegram(ticket) {
         `\n📝 *Descripción:*\n${escapeMd(ticket.description)}\n` +
         firstCaption +
         diagLine +
-        `\n_Selecciona una acción o usa /resolver ${escapeMd(ticket.ticket_code)} <nota>_`;
+        `\n_Selecciona una acción o usa /modelo ${escapeMd(ticket.ticket_code)}, /agy ${escapeMd(ticket.ticket_code)} o /resolver ${escapeMd(ticket.ticket_code)} <nota>_`;
 
-    const replyMarkup = buildTicketInlineKeyboard(ticket.id, ticket.status);
+    const replyMarkup = buildTicketInlineKeyboard(ticket.id, ticket.status, activeModel);
     let sentCount = 0;
     const sentTelegramMessages = [];
 
@@ -162,7 +174,9 @@ async function notifyTicketCommentToTelegram(ticket, senderName, commentText, at
     if (chats.length === 0) return;
 
     const msg = `💬 *Nuevo comentario en Ticket #${escapeMd(ticket.ticket_code)}*\n📌 *Asunto:* ${escapeMd(ticket.subject)}\n👤 *Usuario:* ${escapeMd(senderName)}\n\n"${escapeMd(commentText)}"`;
-    const replyMarkup = buildTicketInlineKeyboard(ticket.id, ticket.status);
+    const settings = await getAgyServerSettings().catch(() => ({ default_model: DEFAULT_AGY_MODEL }));
+    const activeModel = ticket.agy_model || settings.default_model || DEFAULT_AGY_MODEL;
+    const replyMarkup = buildTicketInlineKeyboard(ticket.id, ticket.status, activeModel);
     for (const chat of chats) {
         let sentPhoto = false;
         if (attachmentUrl) {
@@ -200,22 +214,34 @@ async function handleTicketTelegramCallback(cb) {
     const messageId = cb.message?.message_id;
     const techName = cb.from?.first_name || cb.from?.username || 'Soporte Técnico';
     const { getTicketById, updateTicketStatus } = require('./ticket.service');
-    telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id }).catch(() => {});
     const [action, rawId] = data.split(':');
     const ticketId = parseInt(rawId, 10);
     if (isNaN(ticketId)) return true;
 
     const ticket = await getTicketById(ticketId);
     if (!ticket) {
-        await telegramService.sendMessage(chatId, '⚠️ Ticket no encontrado.').catch(() => {});
+        telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: '⚠️ Ticket no encontrado.' }).catch(() => {});
         return true;
     }
 
+    // Verificación fail-closed contra BD + aislamiento multi-tenant
+    const auth = await verifyTelegramSupportAccess(chatId, { requireGlobalAgy: false, ticketCompanyId: ticket.company_id });
+    if (!auth.allowed) {
+        telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: auth.reason, show_alert: true }).catch(() => {});
+        return true;
+    }
+
+    telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id }).catch(() => {});
+
     if (action === 'ticket_take') {
         await updateTicketStatus(ticketId, { status: 'en_proceso', assignedName: `${techName} (Telegram)`, updatedByType: 'telegram' });
+        const settings = await getAgyServerSettings().catch(() => ({ default_model: DEFAULT_AGY_MODEL }));
+        const activeModel = ticket.agy_model || settings.default_model || DEFAULT_AGY_MODEL;
+        const shortModel = getModelShortLabel(activeModel);
         const updatedMarkup = {
             inline_keyboard: [
-                [{ text: '🤖 Aprobar y Planificar AGY', callback_data: `agy_start_plan:${ticketId}` }],
+                [{ text: `🤖 Planificar AGY (${shortModel})`, callback_data: `agy_start_plan:${ticketId}` }],
+                [{ text: `🧠 Cambiar Modelo (${shortModel})`, callback_data: `agy_model_menu:${ticketId}` }],
                 [{ text: '✅ Marcar Resuelto', callback_data: `ticket_resolve:${ticketId}` }],
                 [{ text: '✍️ Resolver con Nota', callback_data: `ticket_resolve_note:${ticketId}` }, { text: '💬 Comentar al Usuario', callback_data: `ticket_comment:${ticketId}` }]
             ]
@@ -264,7 +290,7 @@ async function handleTicketTelegramText(chatId, text, from) {
 
     const trimmed = (text || '').trim();
     const techName = from?.first_name || from?.username || 'Soporte Técnico';
-    const { getTicketByCodeOrId, updateTicketStatus, addTicketMessage } = require('./ticket.service');
+    const { getTicketByCodeOrId, getTicketById, updateTicketStatus, addTicketMessage } = require('./ticket.service');
 
     if (/^\/cancelar$/i.test(trimmed) && pendingTechActions.has(chatId)) {
         pendingTechActions.delete(chatId);
@@ -273,16 +299,33 @@ async function handleTicketTelegramText(chatId, text, from) {
     }
 
     if (/^\/tickets\b/i.test(trimmed)) {
-        const [rows] = await pool.query(`SELECT id, ticket_code, subject, priority, status, user_name FROM support_tickets WHERE status IN ('abierto', 'en_proceso') ORDER BY FIELD(priority, 'urgente', 'alta', 'media', 'baja'), created_at DESC LIMIT 10`);
+        const auth = await verifyTelegramSupportAccess(chatId, { requireGlobalAgy: false });
+        if (!auth.allowed) {
+            await telegramService.sendMessage(chatId, auth.reason);
+            return true;
+        }
+        const whereTenant = auth.isGlobalTech ? '' : 'AND company_id = ?';
+        const params = auth.isGlobalTech ? [] : [auth.binding.company_id];
+        const [rows] = await pool.query(
+            `SELECT id, ticket_code, subject, priority, status, user_name, agy_model
+             FROM support_tickets
+             WHERE status IN ('abierto', 'en_proceso') ${whereTenant}
+             ORDER BY FIELD(priority, 'urgente', 'alta', 'media', 'baja'), created_at DESC
+             LIMIT 10`,
+            params
+        );
         if (rows.length === 0) {
             await telegramService.sendMessage(chatId, '🎉 No hay tickets pendientes o en proceso en este momento.');
             return true;
         }
-        let listMsg = `🎫 *Tickets Activos (${rows.length}):*\n\n`;
+        const settings = await getAgyServerSettings().catch(() => ({ default_model: DEFAULT_AGY_MODEL }));
+        const currentDefault = settings.default_model || DEFAULT_AGY_MODEL;
+        let listMsg = `🎫 *Tickets Activos (${rows.length}):*\n🧠 *Modelo AGY:* \`${escapeMd(currentDefault)}\` (${escapeMd(getModelShortLabel(currentDefault))})\n\n`;
         for (const r of rows) {
-            listMsg += `${r.status === 'en_proceso' ? '🛠️' : '🆕'} *#${escapeMd(r.ticket_code)}* (${r.priority.toUpperCase()}) — ${escapeMd(r.subject)} _(${escapeMd(r.user_name)})_\n`;
+            const mShort = getModelShortLabel(r.agy_model || currentDefault);
+            listMsg += `${r.status === 'en_proceso' ? '🛠️' : '🆕'} *#${escapeMd(r.ticket_code)}* (${r.priority.toUpperCase()}) — ${escapeMd(r.subject)} _(${escapeMd(r.user_name)})_ [\`${escapeMd(mShort)}\`]\n`;
         }
-        listMsg += `\n_Comandos:_ \`/agy TKT-0001\` _(planificar con AGY)_ | \`/resolver TKT-0001 Solución\``;
+        listMsg += `\n_Comandos:_ \`/modelo\` | \`/agy TKT-0001\` | \`/resolver TKT-0001 Solución\``;
         await telegramService.sendMessage(chatId, listMsg, { parse_mode: 'Markdown' });
         return true;
     }
@@ -292,6 +335,11 @@ async function handleTicketTelegramText(chatId, text, from) {
         const ticket = await getTicketByCodeOrId(resolveMatch[1]);
         if (!ticket) {
             await telegramService.sendMessage(chatId, `⚠️ No se encontró el ticket "${resolveMatch[1]}".`);
+            return true;
+        }
+        const auth = await verifyTelegramSupportAccess(chatId, { requireGlobalAgy: false, ticketCompanyId: ticket.company_id });
+        if (!auth.allowed) {
+            await telegramService.sendMessage(chatId, auth.reason);
             return true;
         }
         await removeTicketTelegramButtons(ticket.id);
@@ -305,6 +353,13 @@ async function handleTicketTelegramText(chatId, text, from) {
     if (pending) {
         pendingTechActions.delete(chatId);
         if (Date.now() > pending.expiresAt || trimmed.startsWith('/')) return false;
+        const targetTicket = await getTicketById(pending.ticketId);
+        if (!targetTicket) return true;
+        const auth = await verifyTelegramSupportAccess(chatId, { requireGlobalAgy: false, ticketCompanyId: targetTicket.company_id });
+        if (!auth.allowed) {
+            await telegramService.sendMessage(chatId, auth.reason);
+            return true;
+        }
         if (pending.action === 'resolve_note') {
             await removeTicketTelegramButtons(pending.ticketId, { chatId, messageId: pending.messageId });
             const updated = await updateTicketStatus(pending.ticketId, { status: 'resuelto', resolvedByName: `${techName} (Telegram)`, resolutionNotes: trimmed, updatedByType: 'telegram' });
@@ -323,6 +378,7 @@ async function handleTicketTelegramText(chatId, text, from) {
 module.exports = {
     getTechChatsForTicket,
     resolveLocalUploadPath,
+    buildTicketInlineKeyboard,
     notifyNewTicketToTelegram,
     notifyTicketCommentToTelegram,
     notifyTicketStatusToTelegram,

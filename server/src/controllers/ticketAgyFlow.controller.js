@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const ticketService = require('../services/ticket.service');
 const {
+    DEFAULT_AGY_MODEL,
     AVAILABLE_AGY_MODELS,
     getAgyServerSettings,
     saveAgyServerSettings,
@@ -14,28 +15,9 @@ const {
 } = require('../services/ticketAgyWorkflow.service');
 const { sendAgyPlanToTelegram } = require('../services/ticketAgyTelegram.service');
 
+// La Consola AGY opera sobre el servidor global, SSH, repositorio y git push: restringida estrictamente a SuperAdmin
 async function checkIsTechManager(req) {
-    if (req.user?.role === 'SuperAdmin') return true;
-    const roleLower = (req.user?.role || '').toLowerCase();
-    if (roleLower.includes('admin') || roleLower.includes('soporte') || roleLower.includes('tecnic') || roleLower.includes('técnic') || roleLower.includes('sistemas')) {
-        return true;
-    }
-    try {
-        const companyId = req.companyId || req.company_id;
-        const [rows] = await pool.query(
-            `SELECT r.permissions FROM usuario_empresa ue
-             JOIN roles r ON r.id = ue.role_id
-             WHERE ue.usuario_id = ? AND ue.empresa_id = ? AND ue.has_access = 1 LIMIT 1`,
-            [req.user.id, companyId]
-        );
-        if (rows.length > 0 && rows[0].permissions) {
-            const perms = typeof rows[0].permissions === 'string' ? JSON.parse(rows[0].permissions) : rows[0].permissions;
-            if (Array.isArray(perms) && (perms.includes('manage_support_tickets') || perms.includes('manage_system'))) {
-                return true;
-            }
-        }
-    } catch { /* Ignore */ }
-    return false;
+    return req.user?.role === 'SuperAdmin';
 }
 
 async function getActorName(userId, fallback = 'SuperAdmin') {
@@ -103,7 +85,7 @@ const approveTicketAndStartAgyPlan = async (req, res) => {
         const actorName = await getActorName(req.user?.id, req.user?.nombre || 'SuperAdmin');
 
         const updated = await startTicketAgyPlanning(id, {
-            model: model || 'gemini-4-carbon-high',
+            model: model || DEFAULT_AGY_MODEL,
             aiNotes: ai_notes,
             approvedBy: actorName,
             additionalFeedback: feedback_comment || null

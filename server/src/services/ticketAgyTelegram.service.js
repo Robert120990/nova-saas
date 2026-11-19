@@ -1,9 +1,24 @@
 const telegramService = require('./telegram.service');
-const { getAgyServerSettings, extractAgyQuestionsAndOptions, sanitizeConsoleText } = require('./ticketAgyConsole.service');
+const {
+    DEFAULT_AGY_MODEL,
+    AVAILABLE_AGY_MODELS,
+    getModelShortLabel,
+    resolveAgyModelId,
+    getAgyServerSettings,
+    extractAgyQuestionsAndOptions,
+    sanitizeConsoleText
+} = require('./ticketAgyConsole.service');
 const { humanizeAndFormatAgyPlan, formatAgyExecutionResultForTelegram } = require('./ticketAgyFormatters');
+const { verifyTelegramSupportAccess } = require('./ticketTelegramMedia.service');
 
 // chat_id -> { ticketId, ticketCode, techName, expiresAt }
 const pendingAgyFeedbackMap = new Map();
+
+function resolveEffectiveAgyModel(ticket = {}, settings = {}) {
+    if (ticket?.agy_model) return String(ticket.agy_model).trim();
+    if (settings?.default_model) return String(settings.default_model).trim();
+    return DEFAULT_AGY_MODEL;
+}
 
 function escapeMd(str) {
     if (!str) return '';
@@ -16,8 +31,38 @@ function renderProgressBar(percent) {
     return `${'▓'.repeat(filled)}${'░'.repeat(10 - filled)} ${clamped}%`;
 }
 
-function buildAgyPlanApprovalKeyboard(ticketId, planMarkdown = '') {
+function buildAgyModelPickerKeyboard(ticketId = 0, currentModel = DEFAULT_AGY_MODEL, { scope = 'ticket' } = {}) {
+    const isGlobal = scope === 'global' || !ticketId;
+    const prefix = isGlobal ? 'agy_sdm' : 'agy_sm';
+    const tid = Number(ticketId) || 0;
+    const rows = [];
+
+    for (let i = 0; i < AVAILABLE_AGY_MODELS.length; i += 2) {
+        const pair = AVAILABLE_AGY_MODELS.slice(i, i + 2).map((m) => ({
+            text: `${m.id === currentModel ? '✅ ' : '🧠 '}${m.short}`,
+            callback_data: `${prefix}:${tid}:${m.id}`
+        }));
+        rows.push(pair);
+    }
+
+    if (isGlobal && tid > 0) {
+        rows.push([
+            { text: '🎫 Solo este Ticket', callback_data: `agy_model_menu:${tid}` },
+            { text: '⬅️ Volver', callback_data: `agy_back:${tid}` }
+        ]);
+    } else if (!isGlobal && tid > 0) {
+        rows.push([
+            { text: '🌐 Cambiar Default Global', callback_data: `agy_def_menu:${tid}` },
+            { text: '⬅️ Volver', callback_data: `agy_back:${tid}` }
+        ]);
+    }
+
+    return { inline_keyboard: rows };
+}
+
+function buildAgyPlanApprovalKeyboard(ticketId, planMarkdown = '', modelId = DEFAULT_AGY_MODEL) {
     const { requiresDecision, options } = extractAgyQuestionsAndOptions(planMarkdown);
+    const shortModel = getModelShortLabel(modelId);
     const rows = [];
     const numIcons = ['1️⃣', '2️⃣', '3️⃣', '4️⃣'];
 
@@ -27,7 +72,8 @@ function buildAgyPlanApprovalKeyboard(ticketId, planMarkdown = '') {
         rows.push([{ text: `${icon} Elegir: ${shortLabel}`, callback_data: `agy_pick_opt:${ticketId}:${opt.index}` }]);
     }
 
-    rows.push([{ text: '✅ Aprobar y Ejecutar Plan', callback_data: `agy_plan_approve:${ticketId}` }]);
+    rows.push([{ text: `✅ Aprobar y Ejecutar (${shortModel})`, callback_data: `agy_plan_approve:${ticketId}` }]);
+    rows.push([{ text: `🧠 Cambiar Modelo (${shortModel})`, callback_data: `agy_model_menu:${ticketId}` }]);
     rows.push([
         { text: requiresDecision ? '✍️ Responder Duda / Otra Opción' : '✏️ Ampliar / Re-planificar', callback_data: `agy_plan_feedback:${ticketId}` },
         { text: '❌ Denegar Plan', callback_data: `agy_plan_reject:${ticketId}` }
@@ -35,11 +81,13 @@ function buildAgyPlanApprovalKeyboard(ticketId, planMarkdown = '') {
     return { inline_keyboard: rows };
 }
 
-function buildAgyPostExecutionKeyboard(ticketId, success = true) {
+function buildAgyPostExecutionKeyboard(ticketId, success = true, modelId = DEFAULT_AGY_MODEL) {
+    const shortModel = getModelShortLabel(modelId);
     if (!success) {
         return {
             inline_keyboard: [
-                [{ text: '🔄 Reintentar Ejecución AGY', callback_data: `agy_plan_approve:${ticketId}` }],
+                [{ text: `🔄 Reintentar AGY (${shortModel})`, callback_data: `agy_plan_approve:${ticketId}` }],
+                [{ text: `🧠 Cambiar Modelo (${shortModel})`, callback_data: `agy_model_menu:${ticketId}` }],
                 [
                     { text: '✏️ Ampliar Directriz y Re-planificar', callback_data: `agy_plan_feedback:${ticketId}` },
                     { text: '✅ Marcar Resuelto', callback_data: `ticket_resolve:${ticketId}` }
@@ -86,7 +134,7 @@ async function safeEditTelegramMessage(chatId, messageId, text) {
     }
 }
 
-async function createTelegramLiveProgress(ticket, { mode = 'execute', model = 'gemini-4-carbon-high', actorName = 'SuperAdmin', sourceChatId = null, sourceMessageId = null } = {}) {
+async function createTelegramLiveProgress(ticket, { mode = 'execute', model = DEFAULT_AGY_MODEL, actorName = 'SuperAdmin', sourceChatId = null, sourceMessageId = null } = {}) {
     const { getTechChatsForTicket } = require('./ticketTelegram.service');
     const chats = await getTechChatsForTicket(ticket.company_id, ticket.branch_id).catch(() => []);
     const targetChatIds = Array.from(new Set([
@@ -169,7 +217,9 @@ async function createTelegramLiveProgress(ticket, { mode = 'execute', model = 'g
                 await safeEditTelegramMessage(item.chatId, item.messageId, formatProgressText(finalPct, cleanFinal, isSuccess, !isSuccess));
             }
             if (sourceChatId && sourceMessageId && mode === 'execute') {
-                const nextMarkup = isSuccess ? { inline_keyboard: [] } : buildAgyPlanApprovalKeyboard(ticket.id, ticket.agy_plan_markdown || '');
+                const nextMarkup = isSuccess
+                    ? { inline_keyboard: [] }
+                    : buildAgyPlanApprovalKeyboard(ticket.id, ticket.agy_plan_markdown || '', model || ticket.agy_model || DEFAULT_AGY_MODEL);
                 telegramService.apiCall('editMessageReplyMarkup', {
                     chat_id: sourceChatId,
                     message_id: sourceMessageId,
@@ -200,10 +250,13 @@ async function sendAgyPlanToTelegram(ticket) {
 
     const isFromAdmin = String(ticket.source_system || '').toLowerCase().includes('admin.sipesv.com') || String(ticket.ticket_code || '').toUpperCase().startsWith('ADM-');
     const projectTag = isFromAdmin ? 'admin.sipesv.com (SIPE Admin)' : 'sys.sipesv.com (SIPE SaaS)';
+    const settings = await getAgyServerSettings().catch(() => ({ default_model: DEFAULT_AGY_MODEL }));
+    const activeModel = resolveEffectiveAgyModel(ticket, settings);
 
     const msg =
         `${headerTitle}\n\n` +
         `📌 *Asunto:* ${escapeMd(ticket.subject)}\n` +
+        `🧠 *Modelo:* \`${escapeMd(activeModel)}\` (${escapeMd(getModelShortLabel(activeModel))})\n` +
         `🏢 *Módulo:* ${escapeMd(ticket.module_name || 'General')} (\`${escapeMd(projectTag)}\`)\n` +
         (ticket.ai_notes ? `🎯 *Directriz:* ${escapeMd(ticket.ai_notes)}\n` : '') +
         `\n━━━━━━━━━━━━━━━━━━━━\n` +
@@ -211,7 +264,7 @@ async function sendAgyPlanToTelegram(ticket) {
         `━━━━━━━━━━━━━━━━━━━━\n\n` +
         `${footerHint}`;
 
-    const replyMarkup = buildAgyPlanApprovalKeyboard(ticket.id, ticket.agy_plan_markdown || '');
+    const replyMarkup = buildAgyPlanApprovalKeyboard(ticket.id, ticket.agy_plan_markdown || '', activeModel);
     for (const chat of chats) {
         await safeSendTelegramWithKeyboard(chat.chat_id, msg, replyMarkup);
     }
@@ -226,7 +279,9 @@ async function notifyAgyExecutionResultToTelegram(ticket, summaryText, approvedB
 
     const isSuccess = options.success !== undefined ? Boolean(options.success) : !String(summaryText || '').trim().startsWith('⚠️');
     const msg = formatAgyExecutionResultForTelegram(ticket, summaryText, approvedBy, { success: isSuccess });
-    const replyMarkup = buildAgyPostExecutionKeyboard(ticket.id, isSuccess);
+    const settings = await getAgyServerSettings().catch(() => ({ default_model: DEFAULT_AGY_MODEL }));
+    const activeModel = resolveEffectiveAgyModel(ticket, settings);
+    const replyMarkup = buildAgyPostExecutionKeyboard(ticket.id, isSuccess, activeModel);
     for (const chat of chats) {
         await safeSendTelegramWithKeyboard(chat.chat_id, msg, replyMarkup);
     }
@@ -245,14 +300,47 @@ async function handleAgyTelegramCallback(cb) {
     const chatId = cb.message?.chat?.id;
     const messageId = cb.message?.message_id;
     const techName = cb.from?.first_name || cb.from?.username || 'SuperAdmin';
+
+    // Verificación fail-closed contra BD: solo administradores globales de soporte pueden operar Consola AGY
+    const auth = await verifyTelegramSupportAccess(chatId, { requireGlobalAgy: true });
+    if (!auth.allowed) {
+        telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: auth.reason, show_alert: true }).catch(() => {});
+        return true;
+    }
+
     const parts = data.split(':');
     const action = parts[0];
-    const ticketId = parseInt(parts[1], 10);
-    if (isNaN(ticketId)) return true;
+    const rawId = parts[1];
+    const extraArg = parts.slice(2).join(':');
 
     try {
         const { getTicketById } = require('./ticket.service');
-        const { startTicketAgyPlanning, executeApprovedTicketAgyPlan, rejectTicketAgyPlan } = require('./ticketAgyWorkflow.service');
+        const { setTicketAgyModel, startTicketAgyPlanning, executeApprovedTicketAgyPlan, rejectTicketAgyPlan } = require('./ticketAgyWorkflow.service');
+        const { buildTicketInlineKeyboard } = require('./ticketTelegram.service');
+
+        // Cambio de modelo global desde /modelo (sin ticket asociado)
+        if (action === 'agy_set_def_model' || (action === 'agy_sdm' && (rawId === '0' || !rawId))) {
+            const reqModel = action === 'agy_set_def_model' ? rawId : extraArg;
+            const res = await setTicketAgyModel(null, reqModel, { setAsDefault: true });
+            telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: `✅ Modelo global: ${res.shortLabel}` }).catch(() => {});
+            if (chatId && messageId) {
+                telegramService.apiCall('editMessageReplyMarkup', {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    reply_markup: buildAgyModelPickerKeyboard(0, res.model, { scope: 'global' })
+                }).catch(() => {});
+            }
+            await safeSendTelegramWithKeyboard(
+                chatId,
+                `🌐 *Modelo AGY predeterminado actualizado*\n🧠 *Nuevo default global:* \`${escapeMd(res.model)}\` (${escapeMd(res.shortLabel)})\n👤 *Por:* ${escapeMd(techName)}`,
+                null
+            );
+            return true;
+        }
+
+        const ticketId = parseInt(rawId, 10);
+        if (isNaN(ticketId)) return true;
+
         const ticket = await getTicketById(ticketId);
         if (!ticket) {
             telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: '⚠️ Ticket no encontrado' }).catch(() => {});
@@ -260,16 +348,94 @@ async function handleAgyTelegramCallback(cb) {
         }
 
         const settings = await getAgyServerSettings();
-        const model = (!ticket.agy_model || ticket.agy_model === 'gemini-4-argon-high')
-            ? (settings.default_model || 'gemini-4-carbon-high')
-            : ticket.agy_model;
+        const model = resolveEffectiveAgyModel(ticket, settings);
+        const shortModel = getModelShortLabel(model);
+        const getCardMarkup = (t, m) => (
+            t.agy_status === 'esperando_aprobacion'
+                ? buildAgyPlanApprovalKeyboard(t.id, t.agy_plan_markdown || '', m)
+                : buildTicketInlineKeyboard(t.id, t.status, m)
+        );
+
+        if (action === 'agy_model_menu') {
+            telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: `🧠 Elige el modelo AGY para #${ticket.ticket_code}` }).catch(() => {});
+            const pickerKb = buildAgyModelPickerKeyboard(ticketId, model, { scope: 'ticket' });
+            if (chatId && messageId) {
+                telegramService.apiCall('editMessageReplyMarkup', { chat_id: chatId, message_id: messageId, reply_markup: pickerKb }).catch(() => {});
+            } else {
+                await safeSendTelegramWithKeyboard(chatId, `🧠 *Selecciona el modelo AGY para #${escapeMd(ticket.ticket_code)}*\nActual: \`${escapeMd(model)}\``, pickerKb);
+            }
+            return true;
+        }
+
+        if (action === 'agy_def_menu' || action === 'agy_def_model_menu') {
+            const globalDefault = settings.default_model || DEFAULT_AGY_MODEL;
+            telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: '🌐 Selecciona el nuevo modelo default global' }).catch(() => {});
+            if (chatId && messageId) {
+                telegramService.apiCall('editMessageReplyMarkup', {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    reply_markup: buildAgyModelPickerKeyboard(ticketId, globalDefault, { scope: 'global' })
+                }).catch(() => {});
+            }
+            return true;
+        }
+
+        if (action === 'agy_sm' || action === 'agy_set_model') {
+            const res = await setTicketAgyModel(ticketId, extraArg, { setAsDefault: false });
+            telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: `✅ Modelo de #${ticket.ticket_code}: ${res.shortLabel}` }).catch(() => {});
+            const updatedTicket = res.ticket || { ...ticket, agy_model: res.model };
+            if (chatId && messageId) {
+                telegramService.apiCall('editMessageReplyMarkup', {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    reply_markup: getCardMarkup(updatedTicket, res.model)
+                }).catch(() => {});
+            }
+            await safeSendTelegramWithKeyboard(
+                chatId,
+                `🧠 *Modelo AGY actualizado en #${escapeMd(ticket.ticket_code)}*\n✨ *Modelo:* \`${escapeMd(res.model)}\` (${escapeMd(res.shortLabel)})\n_Usa los botones del ticket para planificar o ejecutar con este motor._`,
+                null
+            );
+            return true;
+        }
+
+        if (action === 'agy_sdm') {
+            const res = await setTicketAgyModel(ticketId, extraArg, { setAsDefault: true });
+            telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: `🌐 Default global y #${ticket.ticket_code}: ${res.shortLabel}` }).catch(() => {});
+            const updatedTicket = res.ticket || { ...ticket, agy_model: res.model };
+            if (chatId && messageId) {
+                telegramService.apiCall('editMessageReplyMarkup', {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    reply_markup: getCardMarkup(updatedTicket, res.model)
+                }).catch(() => {});
+            }
+            await safeSendTelegramWithKeyboard(
+                chatId,
+                `🌐 *Modelo AGY global actualizado*\n🧠 *Nuevo modelo:* \`${escapeMd(res.model)}\` (${escapeMd(res.shortLabel)})\n🎫 También aplicado a *#${escapeMd(ticket.ticket_code)}*.`,
+                null
+            );
+            return true;
+        }
+
+        if (action === 'agy_back') {
+            telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: '⬅️ Volviendo al ticket' }).catch(() => {});
+            if (chatId && messageId) {
+                telegramService.apiCall('editMessageReplyMarkup', {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    reply_markup: getCardMarkup(ticket, model)
+                }).catch(() => {});
+            }
+            return true;
+        }
 
         if (action === 'agy_pick_opt') {
             const optIdx = parseInt(parts[2], 10) || 1;
             const { options } = extractAgyQuestionsAndOptions(ticket.agy_plan_markdown || '');
             const picked = options.find((o) => o.index === optIdx);
             const chosenText = picked ? picked.label : `Opción ${optIdx}`;
-            telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: `🎯 Opción ${optIdx} seleccionada. Re-planificando...` }).catch(() => {});
+            telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: `🎯 Opción ${optIdx} seleccionada. Re-planificando (${shortModel})...` }).catch(() => {});
             await startTicketAgyPlanning(ticketId, {
                 model, approvedBy: `${techName} (Telegram)`,
                 additionalFeedback: `DECISIÓN SELECCIONADA POR EL ADMINISTRADOR: Opción ${optIdx} (${chosenText}). Elabora el plan final aplicando esta opción.`,
@@ -279,13 +445,13 @@ async function handleAgyTelegramCallback(cb) {
         }
 
         if (action === 'agy_start_plan') {
-            telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: '🤖 AGY iniciando análisis y plan de ejecución...' }).catch(() => {});
+            telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: `🤖 AGY (${shortModel}) iniciando análisis y plan...` }).catch(() => {});
             await startTicketAgyPlanning(ticketId, { model, approvedBy: `${techName} (Telegram)`, telegramContext: { sourceChatId: chatId, sourceMessageId: messageId } });
             return true;
         }
 
         if (action === 'agy_plan_approve') {
-            telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: '⚙️ ¡Plan aprobado! AGY está ejecutando la solución...' }).catch(() => {});
+            telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id, text: `⚙️ ¡Plan aprobado! AGY (${shortModel}) ejecutando...` }).catch(() => {});
             await executeApprovedTicketAgyPlan(ticketId, { approvedBy: `${techName} (Telegram)`, telegramContext: { sourceChatId: chatId, sourceMessageId: messageId } });
             return true;
         }
@@ -295,8 +461,13 @@ async function handleAgyTelegramCallback(cb) {
             await rejectTicketAgyPlan(ticketId, { rejectedBy: `${techName} (Telegram)`, reason: 'Denegado desde Telegram' });
             await safeSendTelegramWithKeyboard(
                 chatId,
-                `❌ *Plan v${ticket.agy_plan_version || 1} DENEGADO* en Ticket *#${escapeMd(ticket.ticket_code)}* por *${escapeMd(techName)}*.\n_No se aplicaron cambios. Puedes ampliar comentarios si deseas generar un nuevo plan:_`,
-                { inline_keyboard: [[{ text: '✏️ Ampliar Comentarios y Re-planificar', callback_data: `agy_plan_feedback:${ticketId}` }]] }
+                `❌ *Plan v${ticket.agy_plan_version || 1} DENEGADO* en Ticket *#${escapeMd(ticket.ticket_code)}* por *${escapeMd(techName)}*.\n_No se aplicaron cambios. Puedes ampliar comentarios o cambiar el modelo:_`,
+                {
+                    inline_keyboard: [
+                        [{ text: '✏️ Ampliar Comentarios y Re-planificar', callback_data: `agy_plan_feedback:${ticketId}` }],
+                        [{ text: `🧠 Cambiar Modelo (${shortModel})`, callback_data: `agy_model_menu:${ticketId}` }]
+                    ]
+                }
             );
             return true;
         }
@@ -329,6 +500,91 @@ async function handleAgyTelegramText(chatId, text, from) {
     if (/^\/cancelar$/i.test(trimmed) && pendingAgyFeedbackMap.has(chatId)) {
         pendingAgyFeedbackMap.delete(chatId);
         await telegramService.sendMessage(chatId, '❎ Ampliación de plan AGY cancelada.');
+        return true;
+    }
+
+    const isAgyCmd = /^\/(?:ejecutar|reintentar|agy|modelo|modelos)\b/i.test(trimmed);
+    const pending = pendingAgyFeedbackMap.get(chatId);
+    if (!isAgyCmd && !pending) return false;
+
+    // Verificación fail-closed contra BD para todos los comandos AGY
+    const auth = await verifyTelegramSupportAccess(chatId, { requireGlobalAgy: true });
+    if (!auth.allowed) {
+        if (pending) pendingAgyFeedbackMap.delete(chatId);
+        if (isAgyCmd) {
+            await telegramService.sendMessage(chatId, auth.reason);
+            return true;
+        }
+        return false;
+    }
+
+    // /modelo [TICKET|alias_modelo] [alias_modelo]
+    const modelCmdMatch = trimmed.match(/^\/modelos?(?:\s+(\S+))?(?:\s+(\S+))?$/i);
+    if (modelCmdMatch) {
+        const arg1 = (modelCmdMatch[1] || '').trim();
+        const arg2 = (modelCmdMatch[2] || '').trim();
+        const settings = await getAgyServerSettings();
+        const currentDefault = settings.default_model || DEFAULT_AGY_MODEL;
+        const { getTicketByCodeOrId } = require('./ticket.service');
+        const { setTicketAgyModel } = require('./ticketAgyWorkflow.service');
+        const { buildTicketInlineKeyboard } = require('./ticketTelegram.service');
+
+        if (!arg1) {
+            const listStr = AVAILABLE_AGY_MODELS
+                .map((m) => `${m.id === currentDefault ? '✅' : '•'} \`${m.id}\` — ${m.short}`)
+                .join('\n');
+            await safeSendTelegramWithKeyboard(
+                chatId,
+                `🧠 *Selector de Modelo AGY*\n🌐 *Default actual:* \`${escapeMd(currentDefault)}\` (${escapeMd(getModelShortLabel(currentDefault))})\n\n${listStr}\n\n_Toca un botón abajo para cambiar el modelo global, o usa:_\n• \`/modelo neon-high\`\n• \`/modelo TKT-0034\`\n• \`/modelo TKT-0034 opus\``,
+                buildAgyModelPickerKeyboard(0, currentDefault, { scope: 'global' })
+            );
+            return true;
+        }
+
+        if (/^(?:#?(?:ADM|TKT)-?\d+|#?\d+)$/i.test(arg1)) {
+            const ticket = await getTicketByCodeOrId(arg1);
+            if (!ticket) {
+                await telegramService.sendMessage(chatId, `⚠️ No se encontró el ticket "${arg1}".`);
+                return true;
+            }
+            const tModel = resolveEffectiveAgyModel(ticket, settings);
+            if (!arg2) {
+                await safeSendTelegramWithKeyboard(
+                    chatId,
+                    `🧠 *Cambiar Modelo AGY — Ticket #${escapeMd(ticket.ticket_code)}*\n📌 *Asunto:* ${escapeMd(ticket.subject)}\n✨ *Modelo actual:* \`${escapeMd(tModel)}\` (${escapeMd(getModelShortLabel(tModel))})`,
+                    buildAgyModelPickerKeyboard(ticket.id, tModel, { scope: 'ticket' })
+                );
+                return true;
+            }
+            const resolved = resolveAgyModelId(arg2);
+            if (!resolved) {
+                await telegramService.sendMessage(chatId, `⚠️ Modelo no reconocido: "${arg2}". Usa /modelo para ver las opciones.`);
+                return true;
+            }
+            const res = await setTicketAgyModel(ticket.id, resolved, { setAsDefault: false });
+            const updatedTicket = res.ticket || { ...ticket, agy_model: res.model };
+            const kb = updatedTicket.agy_status === 'esperando_aprobacion'
+                ? buildAgyPlanApprovalKeyboard(updatedTicket.id, updatedTicket.agy_plan_markdown || '', res.model)
+                : buildTicketInlineKeyboard(updatedTicket.id, updatedTicket.status, res.model);
+            await safeSendTelegramWithKeyboard(
+                chatId,
+                `✅ *Modelo actualizado en #${escapeMd(ticket.ticket_code)}*\n🧠 *Nuevo modelo:* \`${escapeMd(res.model)}\` (${escapeMd(res.shortLabel)})`,
+                kb
+            );
+            return true;
+        }
+
+        const resolvedGlobal = resolveAgyModelId(arg1);
+        if (!resolvedGlobal) {
+            await telegramService.sendMessage(chatId, `⚠️ Modelo o ticket no reconocido: "${arg1}". Usa /modelo para abrir el selector.`);
+            return true;
+        }
+        const res = await setTicketAgyModel(null, resolvedGlobal, { setAsDefault: true });
+        await safeSendTelegramWithKeyboard(
+            chatId,
+            `🌐 *Modelo AGY global actualizado*\n🧠 *Nuevo default:* \`${escapeMd(res.model)}\` (${escapeMd(res.shortLabel)})`,
+            buildAgyModelPickerKeyboard(0, res.model, { scope: 'global' })
+        );
         return true;
     }
 
@@ -365,7 +621,6 @@ async function handleAgyTelegramText(chatId, text, from) {
         return true;
     }
 
-    const pending = pendingAgyFeedbackMap.get(chatId);
     if (!pending) return false;
     pendingAgyFeedbackMap.delete(chatId);
     if (Date.now() > pending.expiresAt || trimmed.startsWith('/')) return false;
@@ -375,4 +630,12 @@ async function handleAgyTelegramText(chatId, text, from) {
     return true;
 }
 
-module.exports = { createTelegramLiveProgress, sendAgyPlanToTelegram, notifyAgyExecutionResultToTelegram, handleAgyTelegramCallback, handleAgyTelegramText };
+module.exports = {
+    buildAgyModelPickerKeyboard,
+    buildAgyPlanApprovalKeyboard,
+    createTelegramLiveProgress,
+    sendAgyPlanToTelegram,
+    notifyAgyExecutionResultToTelegram,
+    handleAgyTelegramCallback,
+    handleAgyTelegramText
+};

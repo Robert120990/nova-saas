@@ -20,6 +20,8 @@ function detectDefaultProjectRoot() {
     return parentDir || cwd;
 }
 
+const DEFAULT_AGY_MODEL = 'gemini-4-neon-high';
+
 const DEFAULT_SETTINGS = {
     ssh_host: process.env.AGY_SSH_HOST || 'localhost',
     ssh_port: Number(process.env.AGY_SSH_PORT || 22),
@@ -28,16 +30,57 @@ const DEFAULT_SETTINGS = {
     ssh_private_key_path: process.env.AGY_SSH_PRIVATE_KEY_PATH || '',
     project_path: process.env.AGY_PROJECT_PATH || detectDefaultProjectRoot(),
     agy_command: process.env.AGY_COMMAND || 'agy',
-    default_model: process.env.AGY_DEFAULT_MODEL || 'gemini-4-carbon-high',
+    default_model: process.env.AGY_DEFAULT_MODEL || DEFAULT_AGY_MODEL,
     execution_mode: process.env.AGY_EXECUTION_MODE || 'auto'
 };
 
 const AVAILABLE_AGY_MODELS = [
-    { id: 'gemini-4-carbon-high', label: 'gemini-4-carbon-high (Recomendado · Carbon High)', badge: 'Recomendado' },
-    { id: 'gemini-4-argon-high', label: 'gemini-4-argon-high (Argon High)', badge: 'Argon' },
-    { id: 'gemini-3.1-pro', label: 'gemini-3.1-pro (Razonamiento Profundo)', badge: 'Pro' },
-    { id: 'gemini-3-flash', label: 'gemini-3-flash (Ultra Rápido)', badge: 'Flash' }
+    { id: 'gemini-4-neon-high', short: 'Neon High', label: 'gemini-4-neon-high (Recomendado · Neon High)', badge: 'Recomendado' },
+    { id: 'gemini-4-neon-xhigh', short: 'Neon XHigh', label: 'gemini-4-neon-xhigh (Neon XHigh · Máxima Profundidad)', badge: 'XHigh' },
+    { id: 'gemini-4-carbon-high', short: 'Carbon High', label: 'gemini-4-carbon-high (Carbon High)', badge: 'Carbon' },
+    { id: 'gemini-4-argon-high', short: 'Argon High', label: 'gemini-4-argon-high (Argon High)', badge: 'Argon' },
+    { id: 'claude-opus-5-5-high', short: 'Opus 5.5', label: 'claude-opus-5-5-high (Claude Opus 5.5 High)', badge: 'Opus' },
+    { id: 'claude-sonnet-5-5-high', short: 'Sonnet 5.5', label: 'claude-sonnet-5-5-high (Claude Sonnet 5.5 High)', badge: 'Sonnet' },
+    { id: 'gemini-3.8-flash-high', short: 'Flash High', label: 'gemini-3.8-flash-high (Gemini 3.8 Flash · Rápido)', badge: 'Flash' }
 ];
+
+const AGY_MODEL_ALIASES = {
+    neon: 'gemini-4-neon-high',
+    'neon-high': 'gemini-4-neon-high',
+    neonhigh: 'gemini-4-neon-high',
+    'neon-xhigh': 'gemini-4-neon-xhigh',
+    neonxhigh: 'gemini-4-neon-xhigh',
+    xhigh: 'gemini-4-neon-xhigh',
+    carbon: 'gemini-4-carbon-high',
+    'carbon-high': 'gemini-4-carbon-high',
+    carbonhigh: 'gemini-4-carbon-high',
+    argon: 'gemini-4-argon-high',
+    'argon-high': 'gemini-4-argon-high',
+    opus: 'claude-opus-5-5-high',
+    'opus-5.5': 'claude-opus-5-5-high',
+    'claude-opus': 'claude-opus-5-5-high',
+    sonnet: 'claude-sonnet-5-5-high',
+    'sonnet-5.5': 'claude-sonnet-5-5-high',
+    'claude-sonnet': 'claude-sonnet-5-5-high',
+    flash: 'gemini-3.8-flash-high',
+    'flash-high': 'gemini-3.8-flash-high'
+};
+
+function getModelShortLabel(modelId = DEFAULT_AGY_MODEL) {
+    const clean = String(modelId || DEFAULT_AGY_MODEL).trim();
+    const found = AVAILABLE_AGY_MODELS.find((m) => m.id === clean);
+    return found ? found.short : clean;
+}
+
+function resolveAgyModelId(rawModel = '') {
+    const clean = String(rawModel || '').trim().toLowerCase();
+    if (!clean) return null;
+    if (AGY_MODEL_ALIASES[clean]) return AGY_MODEL_ALIASES[clean];
+    const exact = AVAILABLE_AGY_MODELS.find((m) => m.id.toLowerCase() === clean);
+    if (exact) return exact.id;
+    if (/^[a-z0-9][a-z0-9._-]{2,79}$/i.test(clean)) return clean;
+    return null;
+}
 
 function sanitizeConsoleText(str = '') {
     if (!str) return '';
@@ -66,9 +109,9 @@ async function getAgyServerSettings() {
             const safeHost = /^\d+\.\d+\.\d+\.\d+$/.test(rawHost)
                 ? (process.env.AGY_SSH_HOST || 'localhost')
                 : (rawHost || DEFAULT_SETTINGS.ssh_host);
-            const normalizedDefaultModel = (!rows[0].default_model || rows[0].default_model === 'gemini-4-argon-high')
-                ? 'gemini-4-carbon-high'
-                : rows[0].default_model;
+            const normalizedDefaultModel = rows[0].default_model
+                ? String(rows[0].default_model).trim()
+                : DEFAULT_AGY_MODEL;
             return {
                 ...DEFAULT_SETTINGS,
                 ...rows[0],
@@ -87,6 +130,10 @@ async function getAgyServerSettings() {
 
 async function saveAgyServerSettings(payload = {}) {
     const current = await getAgyServerSettings();
+    const rawCmd = String(payload.agy_command || current.agy_command || 'agy').trim();
+    const safeAgyCmd = /^[a-zA-Z0-9._/-]+$/.test(rawCmd) ? rawCmd : 'agy';
+    const rawModel = String(payload.default_model || current.default_model || DEFAULT_AGY_MODEL).trim();
+    const validModel = resolveAgyModelId(rawModel) || DEFAULT_AGY_MODEL;
     const next = {
         ssh_host: String(payload.ssh_host || current.ssh_host || 'localhost').trim(),
         ssh_port: Number(payload.ssh_port || current.ssh_port || 22),
@@ -98,8 +145,8 @@ async function saveAgyServerSettings(payload = {}) {
             ? String(payload.ssh_private_key_path || '').trim()
             : (current.ssh_private_key_path || ''),
         project_path: String(payload.project_path || current.project_path || detectDefaultProjectRoot()).trim(),
-        agy_command: String(payload.agy_command || current.agy_command || 'agy').trim(),
-        default_model: String(payload.default_model || current.default_model || 'gemini-4-carbon-high').trim(),
+        agy_command: safeAgyCmd,
+        default_model: validModel,
         execution_mode: ['auto', 'ssh', 'local'].includes(payload.execution_mode) ? payload.execution_mode : current.execution_mode
     };
 
@@ -252,9 +299,11 @@ function extractCleanAgyResult(rawTranscript, endMarker) {
 
 function buildRemoteShellScript({ projectPath, agyCommand, model, promptText, isPlanPhase, endMarker }) {
     const b64Prompt = Buffer.from(promptText, 'utf8').toString('base64');
-    const safeModel = String(model || 'gemini-4-carbon-high').replace(/[^a-zA-Z0-9._-]/g, '');
-    const safeCmd = String(agyCommand || 'agy').trim();
-    const safePath = String(projectPath || '/opt/nova-saas').replace(/"/g, '');
+    const safeModel = String(model || DEFAULT_AGY_MODEL).replace(/[^a-zA-Z0-9._-]/g, '');
+    const rawCmd = String(agyCommand || 'agy').trim();
+    const safeCmd = /^[a-zA-Z0-9._/-]+$/.test(rawCmd) ? rawCmd : 'agy';
+    const rawPath = String(projectPath || '/opt/nova-saas').trim();
+    const safePath = /^[a-zA-Z0-9._/ -]+$/.test(rawPath) ? rawPath : '/opt/nova-saas';
     const maxLoops = isPlanPhase ? 30 : 55;
 
     return `
@@ -275,9 +324,9 @@ PROMPT_FILE="/tmp/agy_ticket_$TS_ID.txt"
 OUT_LOG="/tmp/agy_out_$TS_ID.log"
 FIFO_IN="/tmp/agy_in_$TS_ID.fifo"
 echo "${b64Prompt}" | base64 -d > "$PROMPT_FILE"
-FLAT_PROMPT=$(tr '\\n' ' ' < "$PROMPT_FILE")
+FLAT_PROMPT=$(tr '\\r\\n' '  ' < "$PROMPT_FILE")
 echo "=== CONSOLA AGY | Directorio: $(pwd) | Comando: ${safeCmd} | Modelo: ${safeModel} ==="
-AGY_BIN=$(type -P ${safeCmd} 2>/dev/null || find /root /home /usr/local /opt -name "${safeCmd}" \\( -type f -o -type l \\) -executable 2>/dev/null | head -n 1)
+AGY_BIN=$(type -P "${safeCmd}" 2>/dev/null || find /root /home /usr/local /opt -name "${safeCmd}" \\( -type f -o -type l \\) -executable 2>/dev/null | head -n 1)
 if [ -n "$AGY_BIN" ]; then
   mkfifo "$FIFO_IN" 2>/dev/null || true
   if [ -p "$FIFO_IN" ] && command -v script >/dev/null 2>&1; then
@@ -373,7 +422,8 @@ function runLocalInteractiveSession(settings, scriptContent, onChunk, timeoutMs 
 }
 
 module.exports = {
-    AVAILABLE_AGY_MODELS, getAgyServerSettings, saveAgyServerSettings, isRunningOnTargetServer,
+    DEFAULT_AGY_MODEL, AVAILABLE_AGY_MODELS, getModelShortLabel, resolveAgyModelId,
+    getAgyServerSettings, saveAgyServerSettings, isRunningOnTargetServer,
     stripAnsiCodes, sanitizeConsoleText, parseFeedbackHistory, findRelatedRepoFiles, resolveProjectForTicket,
     buildAgyPlanningPrompt, extractAgyQuestionsAndOptions, buildAgyExecutionPrompt,
     extractCleanAgyResult, buildRemoteShellScript, runSshInteractiveSession, runLocalInteractiveSession

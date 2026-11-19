@@ -17,10 +17,13 @@ const AGY_STATUS_META = {
 };
 
 const DEFAULT_MODELS = [
-    { id: 'gemini-4-carbon-high', label: 'gemini-4-carbon-high (Recomendado · Carbon High)' },
+    { id: 'gemini-4-neon-high', label: 'gemini-4-neon-high (Recomendado · Neon High)' },
+    { id: 'gemini-4-neon-xhigh', label: 'gemini-4-neon-xhigh (Neon XHigh · Máxima Profundidad)' },
+    { id: 'gemini-4-carbon-high', label: 'gemini-4-carbon-high (Carbon High)' },
     { id: 'gemini-4-argon-high', label: 'gemini-4-argon-high (Argon High)' },
-    { id: 'gemini-3.1-pro', label: 'gemini-3.1-pro (Razonamiento Profundo)' },
-    { id: 'gemini-3-flash', label: 'gemini-3-flash (Ultra Rápido)' }
+    { id: 'claude-opus-5-5-high', label: 'claude-opus-5-5-high (Claude Opus 5.5 High)' },
+    { id: 'claude-sonnet-5-5-high', label: 'claude-sonnet-5-5-high (Claude Sonnet 5.5 High)' },
+    { id: 'gemini-3.8-flash-high', label: 'gemini-3.8-flash-high (Gemini 3.8 Flash · Rápido)' }
 ];
 
 const maskIpInText = (text = '') => String(text || '')
@@ -30,7 +33,7 @@ const maskIpInText = (text = '') => String(text || '')
 
 const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
     const queryClient = useQueryClient();
-    const [selectedModel, setSelectedModel] = useState('gemini-4-carbon-high');
+    const [selectedModel, setSelectedModel] = useState('gemini-4-neon-high');
     const [customModel, setCustomModel] = useState('');
     const [aiNotes, setAiNotes] = useState('');
     const [feedbackComment, setFeedbackComment] = useState('');
@@ -39,7 +42,7 @@ const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
     const [reiterateMode, setReiterateMode] = useState(false);
     const [cfgForm, setCfgForm] = useState({
         ssh_host: 'localhost', ssh_port: 22, ssh_user: 'root', ssh_password: '',
-        project_path: '/opt/nova-saas', agy_command: 'agy', default_model: 'gemini-4-carbon-high', execution_mode: 'auto'
+        project_path: '/opt/nova-saas', agy_command: 'agy', default_model: 'gemini-4-neon-high', execution_mode: 'auto'
     });
 
     const { data: ticket, isLoading } = useQuery({
@@ -67,13 +70,13 @@ const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
         if (agyConfig) {
             setCfgForm((prev) => ({
                 ...prev,
-                ssh_host: maskIpInText(agyConfig.ssh_host || 'localhost'),
+                ssh_host: agyConfig.ssh_host || 'localhost',
                 ssh_port: agyConfig.ssh_port || 22,
                 ssh_user: agyConfig.ssh_user || 'root',
                 ssh_password: agyConfig.ssh_password || '',
                 project_path: agyConfig.project_path || '/opt/nova-saas',
                 agy_command: agyConfig.agy_command || 'agy',
-                default_model: agyConfig.default_model || 'gemini-4-carbon-high',
+                default_model: agyConfig.default_model || 'gemini-4-neon-high',
                 execution_mode: agyConfig.execution_mode || 'auto'
             }));
         }
@@ -117,7 +120,7 @@ const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
 
     if (!open || !ticketId) return null;
 
-    const effectiveModel = selectedModel === '__custom__' ? (customModel.trim() || 'gemini-4-carbon-high') : selectedModel;
+    const effectiveModel = selectedModel === '__custom__' ? (customModel.trim() || 'gemini-4-neon-high') : selectedModel;
     const agyStatus = ticket?.agy_status || 'idle';
     const isCompletedAndResolved = (agyStatus === 'completado' || ticket?.status === 'resuelto') && agyStatus !== 'reiterado';
     const statusBadge = AGY_STATUS_META[agyStatus] || AGY_STATUS_META.idle;
@@ -184,7 +187,7 @@ const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
                                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
                                     <div>
                                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Host / Destino</label>
-                                        <input type="password" value={cfgForm.ssh_host} onChange={(e) => setCfgForm({ ...cfgForm, ssh_host: e.target.value })} placeholder="localhost" className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono" />
+                                        <input type="text" value={cfgForm.ssh_host} onChange={(e) => setCfgForm({ ...cfgForm, ssh_host: e.target.value })} placeholder="localhost" className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono" />
                                     </div>
                                     <div>
                                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Usuario SSH</label>
@@ -241,7 +244,7 @@ const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
                                             <option value="__custom__">Otro modelo personalizado...</option>
                                         </select>
                                         {selectedModel === '__custom__' && (
-                                            <input type="text" value={customModel} onChange={(e) => setCustomModel(e.target.value)} placeholder="Ej. gemini-4-carbon-high" className="mt-2 w-full bg-white border border-indigo-300 rounded-xl px-3 py-1.5 text-xs font-mono" />
+                                            <input type="text" value={customModel} onChange={(e) => setCustomModel(e.target.value)} placeholder="Ej. gemini-4-neon-high" className="mt-2 w-full bg-white border border-indigo-300 rounded-xl px-3 py-1.5 text-xs font-mono" />
                                         )}
                                     </div>
                                     <div className="md:col-span-7">
