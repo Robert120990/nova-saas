@@ -34,7 +34,7 @@ function isSafeTargetRelPath(rootDir, candidateRel) {
 function readCandidateSnippets(rootDir, relFiles = [], maxCharsPerFile = 85000, queryHint = '') {
     const snippets = [];
     const hintTerms = String(queryHint || '').toLowerCase().split(/[^a-z0-9_]+/).filter((w) => w.length >= 4);
-    for (const rel of relFiles.slice(0, 5)) {
+    for (const rel of relFiles.slice(0, 8)) {
         const abs = path.join(rootDir, rel);
         if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) continue;
         try {
@@ -333,7 +333,7 @@ function mergeAgyReviewBranch(rootDir, ticket, proj, onLog = () => {}) {
             onLog(`[AGY] Compilando frontend (${frontendRel}) tras fusión en ${baseBranch}...\n`);
             const buildCmd = proj?.isAdmin
                 ? 'export PATH="/home/sistemas/.local/share/pnpm:/usr/local/bin:$PATH"; pnpm --filter frontend run build || npm --prefix frontend run build'
-                : 'npm --prefix client run build || pnpm --filter client run build';
+                : 'export PATH="/home/sistemas/.local/share/pnpm:/usr/local/bin:$PATH"; npm --prefix client run build || pnpm --filter client run build';
             execSync(buildCmd, { cwd: rootDir, timeout: 150000, stdio: 'pipe', shell: process.platform === 'win32' ? undefined : '/bin/bash' });
         }
 
@@ -358,10 +358,10 @@ function mergeAgyReviewBranch(rootDir, ticket, proj, onLog = () => {}) {
 
         const hasBackendChanges = touchedFiles.some((f) => f.startsWith(`${proj?.backendDir || 'server'}/`));
         if (hasBackendChanges) {
-            const pm2Target = proj?.isAdmin ? 'sipeadmin-backend' : 'server';
+            const pm2Target = proj?.isAdmin ? 'sipeadmin-backend' : (proj?.pm2AppName || 'nova-saas-api');
             setTimeout(() => {
                 try {
-                    const pm2Cmd = `export PATH="/home/sistemas/.local/share/pnpm:/usr/local/bin:$PATH"; pm2 reload ${pm2Target} --update-env || pm2 reload sipewebgas-server --update-env || true`;
+                    const pm2Cmd = `export PATH="/home/sistemas/.local/share/pnpm:/usr/local/bin:$PATH"; pm2 reload ${pm2Target} --update-env || pm2 reload server --update-env || pm2 reload sipewebgas-server --update-env || sudo -n -u sistemas /home/sistemas/.local/share/pnpm/pm2 reload ${pm2Target} --update-env || true`;
                     const child = spawn('sh', ['-c', pm2Cmd], { cwd: rootDir, detached: true, stdio: 'ignore' });
                     child.unref();
                 } catch { /* ignore */ }
@@ -410,41 +410,54 @@ async function applyAiCodePatchAndBuild(ticket, proj, relatedFiles, onLog = () =
         } catch { /* ignore */ }
     }
 
-    if (modifiedFiles.length === 0) {
-        const hint = `${ticket.subject || ''} ${ticket.description || ''} ${ticket.ai_notes || ''}`;
-        const snippets = readCandidateSnippets(rootDir, relatedFiles, 85000, hint);
-        if (snippets.length > 0) {
-            onLog(`[AGY] Aplicando motor quirúrgico de código en ${snippets.map((s) => s.file).join(', ')}...\n`);
-            const systemPrompt = `Eres el motor de edición quirúrgica de código de AGY para ${proj.projectLabel}. Devuelve ÚNICAMENTE un objeto JSON válido con la estructura exacta: {"edits":[{"file":"ruta/relativa.jsx","search":"fragmento exacto actual en el archivo","replace":"fragmento nuevo con la mejora implementada"}],"summary":"resumen claro en español"}. Reglas: "search" debe existir literalmente en el archivo suministrado (incluye 3 a 8 líneas de contexto únicas); nunca edites .env ni credenciales.`;
-            const userPrompt = [
-                `Ticket #${ticket.ticket_code} (${proj.projectLabel}) | Ruta: ${ticket.page_url || 'N/A'} | Módulo: ${ticket.module_name || 'General'}`,
-                `Asunto: ${ticket.subject}\nDescripción: ${ticket.description}`,
-                ticket.ai_notes ? `Directriz Técnica del Administrador: ${ticket.ai_notes}` : '',
-                `Plan de Ejecución Aprobado:\n${ticket.agy_plan_markdown || ''}`,
-                ...snippets.map((s) => `=== FILE: ${s.file} ===\n${s.content}`)
-            ].filter(Boolean).join('\n\n');
+    const effectiveFiles = Array.from(new Set([
+        ...findSmartRelatedFiles(ticket, { project_path: rootDir }),
+        ...(Array.isArray(relatedFiles) ? relatedFiles : [])
+    ])).slice(0, 8);
 
-            try {
-                const resp = await aiService.generateCodeResponse({ systemPrompt, userPrompt, jsonMode: true });
-                const rawJson = String(resp?.content || '').replace(/```json/gi, '').replace(/```/g, '').trim();
-                const jsonMatch = rawJson.match(/\{[\s\S]*\}/);
-                const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : rawJson);
-                for (const edit of Array.isArray(parsed?.edits) ? parsed.edits : []) {
-                    if (!edit.file || !edit.search || edit.replace === undefined) continue;
-                    if (!isSafeTargetRelPath(rootDir, String(edit.file))) continue;
-                    const absPath = path.resolve(rootDir, String(edit.file));
-                    const normRel = path.relative(path.resolve(rootDir), absPath).replace(/\\/g, '/');
-                    if (!fs.existsSync(absPath)) continue;
-                    const currentContent = fs.readFileSync(absPath, 'utf8');
-                    const updatedContent = applyFlexibleEdit(currentContent, String(edit.search), String(edit.replace));
-                    if (updatedContent !== currentContent) {
-                        fs.writeFileSync(absPath, updatedContent, 'utf8');
-                        if (!modifiedFiles.includes(normRel)) modifiedFiles.push(normRel);
-                    }
+    const runSurgicalAiEdits = async (extraInstruction = '') => {
+        const hint = `${ticket.subject || ''} ${ticket.description || ''} ${ticket.ai_notes || ''} ${ticket.agy_plan_markdown || ''}`;
+        const snippets = readCandidateSnippets(rootDir, effectiveFiles, 85000, hint);
+        if (snippets.length === 0) return;
+        onLog(`[AGY] Aplicando motor quirúrgico de código en ${snippets.map((s) => s.file).join(', ')}...\n`);
+        const systemPrompt = `Eres el motor de edición quirúrgica de código de AGY para ${proj.projectLabel}. Devuelve ÚNICAMENTE un objeto JSON válido con la estructura exacta: {"edits":[{"file":"ruta/relativa.jsx","search":"fragmento exacto actual en el archivo","replace":"fragmento nuevo con la mejora implementada"}],"summary":"resumen claro en español"}. Reglas críticas: 1) "search" DEBE ser una copia literal exacta de 3 a 8 líneas consecutivas del archivo suministrado; 2) Implementa la solución completa al 100% sin placeholders; 3) Nunca edites .env ni credenciales.`;
+        const userPrompt = [
+            `Ticket #${ticket.ticket_code} (${proj.projectLabel}) | Ruta: ${ticket.page_url || 'N/A'} | Módulo: ${ticket.module_name || 'General'}`,
+            `Asunto: ${ticket.subject}\nDescripción: ${ticket.description}`,
+            ticket.ai_notes ? `Directriz Técnica del Administrador: ${ticket.ai_notes}` : '',
+            `Plan de Ejecución Aprobado:\n${ticket.agy_plan_markdown || ''}`,
+            extraInstruction || '',
+            ...snippets.map((s) => `=== FILE: ${s.file} ===\n${s.content}`)
+        ].filter(Boolean).join('\n\n');
+
+        try {
+            const resp = await aiService.generateCodeResponse({ systemPrompt, userPrompt, jsonMode: true });
+            const rawJson = String(resp?.content || '').replace(/```json/gi, '').replace(/```/g, '').trim();
+            const jsonMatch = rawJson.match(/\{[\s\S]*\}/);
+            const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : rawJson);
+            for (const edit of Array.isArray(parsed?.edits) ? parsed.edits : []) {
+                if (!edit.file || !edit.search || edit.replace === undefined) continue;
+                if (!isSafeTargetRelPath(rootDir, String(edit.file))) continue;
+                const absPath = path.resolve(rootDir, String(edit.file));
+                const normRel = path.relative(path.resolve(rootDir), absPath).replace(/\\/g, '/');
+                if (!fs.existsSync(absPath)) continue;
+                const currentContent = fs.readFileSync(absPath, 'utf8');
+                const updatedContent = applyFlexibleEdit(currentContent, String(edit.search), String(edit.replace));
+                if (updatedContent !== currentContent) {
+                    fs.writeFileSync(absPath, updatedContent, 'utf8');
+                    if (!modifiedFiles.includes(normRel)) modifiedFiles.push(normRel);
                 }
-            } catch (err) {
-                onLog(`[AGY] Aviso motor quirúrgico IA: ${err.message}\n`);
             }
+        } catch (err) {
+            onLog(`[AGY] Aviso motor quirúrgico IA: ${err.message}\n`);
+        }
+    };
+
+    if (modifiedFiles.length === 0) {
+        await runSurgicalAiEdits();
+        if (modifiedFiles.length === 0) {
+            onLog(`[AGY] Reintentando anclaje quirúrgico exacto (2ª pasada)...\n`);
+            await runSurgicalAiEdits('ATENCIÓN: En el intento anterior el bloque "search" no coincidió exactamente. Copia literalmente entre 3 y 6 líneas consecutivas tal como aparecen en === FILE: ... === para que el reemplazo se aplique al 100%.');
         }
     }
 
@@ -458,23 +471,32 @@ async function applyAiCodePatchAndBuild(ticket, proj, relatedFiles, onLog = () =
     const hasBackendChanges = modifiedFiles.some((f) => f.startsWith(`${proj.backendDir}/`));
 
     if (fs.existsSync(frontendFull)) {
+        const buildCmd = proj.isAdmin
+            ? 'export PATH="/home/sistemas/.local/share/pnpm:/usr/local/bin:$PATH"; pnpm --filter frontend run build || npm --prefix frontend run build'
+            : 'export PATH="/home/sistemas/.local/share/pnpm:/usr/local/bin:$PATH"; npm --prefix client run build || pnpm --filter client run build';
         try {
             onLog(`[AGY] Verificando compilación frontend (${frontendRel}) antes de publicar...\n`);
-            const buildCmd = proj.isAdmin
-                ? 'export PATH="/home/sistemas/.local/share/pnpm:/usr/local/bin:$PATH"; pnpm --filter frontend run build || npm --prefix frontend run build'
-                : 'npm --prefix client run build || pnpm --filter client run build';
             execSync(buildCmd, { cwd: rootDir, timeout: 150000, stdio: 'pipe', shell: process.platform === 'win32' ? undefined : '/bin/bash' });
             buildSuccess = true;
             buildLog = `Frontend (${frontendRel}/dist) compilado sin errores.`;
             onLog(`[AGY] ✅ ${buildLog}\n`);
         } catch (bErr) {
-            buildSuccess = false;
-            buildLog = `Compilación frontend falló — commit/push cancelado para proteger producción: ${bErr.message?.slice(0, 180)}`;
-            onLog(`[AGY] ❌ ${buildLog}\n`);
+            onLog(`[AGY] ⚠️ Ajustando error de compilación automáticamente (auto-heal)...\n`);
+            await runSurgicalAiEdits(`ERROR DE COMPILACIÓN DETECTADO:\n${bErr.message?.slice(0, 600)}\nCorrige inmediatamente el error de sintaxis o importación en los archivos editados (${modifiedFiles.join(', ')}).`);
             try {
-                gitExecArgs(['checkout', '--', ...modifiedFiles], rootDir, 10000);
-            } catch { /* ignore rollback */ }
-            return { modifiedFiles: [], buildSuccess: false, buildLog, commitHash: null, version: null, gitLog: '' };
+                execSync(buildCmd, { cwd: rootDir, timeout: 150000, stdio: 'pipe', shell: process.platform === 'win32' ? undefined : '/bin/bash' });
+                buildSuccess = true;
+                buildLog = `Frontend (${frontendRel}/dist) auto-corregido y compilado sin errores.`;
+                onLog(`[AGY] ✅ ${buildLog}\n`);
+            } catch (bErr2) {
+                buildSuccess = false;
+                buildLog = `Compilación frontend falló — commit/push cancelado para proteger producción: ${bErr2.message?.slice(0, 180)}`;
+                onLog(`[AGY] ❌ ${buildLog}\n`);
+                try {
+                    gitExecArgs(['checkout', '--', ...modifiedFiles], rootDir, 10000);
+                } catch { /* ignore rollback */ }
+                return { modifiedFiles: [], buildSuccess: false, buildLog, commitHash: null, version: null, gitLog: '' };
+            }
         }
     }
 

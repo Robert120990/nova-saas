@@ -11,7 +11,7 @@ const ADMIN_CANDIDATE_PATHS = [
 ].filter(Boolean);
 
 const SAAS_CANDIDATE_PATHS = [
-    process.env.AGY_PROJECT_PATH, path.resolve(process.cwd(), '..'),
+    process.env.AGY_PROJECT_PATH, path.resolve(__dirname, '../../..'), process.cwd(), path.resolve(process.cwd(), '..'),
     '/home/rsboosted/SIPEWEBgas', '/opt/nova-saas', '/var/www/SIPEWEBgas', '/home/sistemas/SIPEWEBgas', 'c:/Proyects local/SIPEWEBgas'
 ].filter(Boolean);
 
@@ -20,7 +20,10 @@ function isTicketFromAdminProject(ticket = {}) {
     const source = String(ticket.source_system || '').toLowerCase();
     const mod = String(ticket.module_name || '').toLowerCase();
     const url = String(ticket.page_url || '').toLowerCase();
-    return code.startsWith('ADM-') || source.includes('admin.sipesv.com') || mod.includes('sipe admin') || mod.includes('(admin)') || url.startsWith('/dashboard');
+    if (source.includes('sys.sipesv.com') || code.startsWith('TKT-')) {
+        return false;
+    }
+    return code.startsWith('ADM-') || source.includes('admin.sipesv.com') || mod.includes('sipe admin') || mod.includes('(admin)') || url.startsWith('/dashboard/');
 }
 
 function resolveProjectForTicket(ticket = {}, settings = {}) {
@@ -46,11 +49,15 @@ function resolveProjectForTicket(ticket = {}, settings = {}) {
 }
 
 const KNOWN_SAAS_ROUTE_FILES = {
+    '/dashboard': ['client/src/components/energy/EnergyFlowDiagram.jsx', 'client/src/components/energy/EnergyBatteryStatus.jsx', 'client/src/components/energy/EnergySummaryCards.jsx', 'client/src/pages/energy/SistemaEnergetico.jsx', 'server/src/services/energySystem.service.js', 'client/src/pages/Dashboard.jsx'],
+    '/energia': ['client/src/pages/energy/SistemaEnergetico.jsx', 'client/src/components/energy/EnergyFlowDiagram.jsx', 'client/src/components/energy/EnergyBatteryStatus.jsx', 'client/src/components/energy/EnergySummaryCards.jsx', 'client/src/components/energy/EnergyInvertersTable.jsx', 'server/src/services/energySystem.service.js'],
     '/branches': ['server/src/controllers/branch.controller.js', 'server/src/schemas/companySchemas.js', 'client/src/pages/Branches.jsx', 'client/src/components/branches/BranchModal.jsx'],
     '/ventas': ['server/src/schemas/salesSchemas.js', 'server/src/controllers/sales/salesEditDteItems.controller.js', 'server/src/controllers/sales/salesDte.controller.js', 'client/src/pages/SalesHistory.jsx', 'client/src/pages/SalesTerminal.jsx'],
+    '/ventas/nueva': ['client/src/pages/SalesTerminal.jsx', 'server/src/controllers/sales/salesCore.controller.js', 'server/src/schemas/salesSchemas.js'],
     '/industrial/empaque': ['client/src/components/egg/packaging/EggNewPackagingModal.jsx', 'client/src/components/egg/packaging/PackagingItemsSection.jsx', 'client/src/components/egg/packaging/EggEditPackagingModal.jsx', 'client/src/constants/eggIndustrialCatalogs.js', 'client/src/pages/EggIndustrial/Packaging.jsx'],
-    '/industrial/produccion': ['client/src/components/egg/production/ProductionIsNewBatchModalOpenModal.jsx', 'client/src/constants/eggIndustrialCatalogs.js', 'client/src/pages/EggIndustrial/Production.jsx'],
-    '/industrial/calendario': ['client/src/components/egg/productionCalendar/eggCalendarConstants.js', 'client/src/components/egg/productionCalendar/useProductionCalendarModel.jsx', 'client/src/pages/EggIndustrial/ProductionCalendar.jsx'],
+    '/industrial/produccion': ['client/src/components/egg/production/ProductionIsNewBatchModalOpenModal.jsx', 'client/src/constants/eggIndustrialCatalogs.js', 'client/src/pages/EggIndustrial/Production.jsx', 'server/src/controllers/eggIndustrial/eggBatches/eggBatchesCore.controller.js'],
+    '/industrial/calendario': ['client/src/components/egg/EggCustomerOrderModal.jsx', 'client/src/components/egg/productionCalendar/eggCalendarConstants.js', 'client/src/components/egg/productionCalendar/useProductionCalendarModel.jsx', 'client/src/pages/EggIndustrial/ProductionCalendar.jsx', 'server/src/controllers/eggIndustrial/eggPlanning/eggPlanningOperations5.controller.js'],
+    '/industrial/despachos': ['client/src/components/egg/EggCustomerOrderModal.jsx', 'client/src/components/egg/RouteAutoInvoicingModal.jsx', 'client/src/components/egg/eggDispatch/tabs/EggDispatchCalendarioTab.jsx', 'client/src/components/egg/eggDispatch/tabs/EggDispatchRutasTab.jsx', 'client/src/pages/EggIndustrial/EggDispatch.jsx'],
     '/ventas/descuentos': ['client/src/pages/CustomerDiscounts.jsx', 'client/src/components/sales/CustomerDiscountModal.jsx', 'server/src/controllers/customerDiscount.controller.js', 'server/src/schemas/promoSchemas.js'],
     '/inventario/movimientos': ['client/src/pages/InventoryAdjustments.jsx', 'client/src/components/inventory/tabs/NewAdjustmentTab.jsx', 'server/src/controllers/inventoryAdjustment/inventoryAdjustmentCore.controller.js']
 };
@@ -147,26 +154,81 @@ function findRouteMappedFiles(rootDir, pageUrl, isAdmin) {
     return matched;
 }
 
+const DOMAIN_SYNONYMS = {
+    bateria: ['battery', 'energy', 'gess'], baterias: ['battery', 'energy', 'gess'],
+    solar: ['energy', 'growatt', 'solar'], paneles: ['energy', 'growatt'], energia: ['energy'],
+    huevo: ['egg'], produccion: ['production', 'eggbatch'], lote: ['batch', 'production'],
+    empaque: ['packaging'], calendario: ['productioncalendar', 'eggplanning'],
+    pedido: ['order', 'eggcustomerorder'], pedidos: ['order', 'eggcustomerorder'],
+    despacho: ['dispatch', 'route'], ruta: ['route', 'dispatch'],
+    venta: ['sales', 'sale'], factura: ['sales', 'dte', 'invoice'],
+    compra: ['purchase'], inventario: ['inventory', 'kardex'],
+    cliente: ['customer'], proveedor: ['provider', 'supplier'],
+    sucursal: ['branch'], usuario: ['user'], rol: ['role'],
+    planilla: ['payroll', 'planilla'], empleado: ['employee', 'empleado']
+};
+
+function expandLocalImports(rootDir, seedFiles = []) {
+    const discovered = [];
+    const rootResolved = path.resolve(rootDir);
+    const tryResolve = (baseDir, relSpec) => {
+        const candidates = [relSpec, `${relSpec}.jsx`, `${relSpec}.js`, `${relSpec}/index.js`, `${relSpec}/index.jsx`];
+        for (const c of candidates) {
+            const abs = path.resolve(baseDir, c);
+            const rel = path.relative(rootResolved, abs).replace(/\\/g, '/');
+            if (!rel.startsWith('..') && fs.existsSync(abs) && fs.statSync(abs).isFile()) return { abs, rel };
+        }
+        return null;
+    };
+    const queue = seedFiles.map((f) => ({ rel: f, depth: 0 }));
+    const visited = new Set(seedFiles);
+    while (queue.length > 0 && discovered.length < 18) {
+        const { rel, depth } = queue.shift();
+        if (depth >= 2) continue;
+        const abs = path.join(rootResolved, rel);
+        if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) continue;
+        try {
+            const content = fs.readFileSync(abs, 'utf8');
+            const rx = /(?:from|import)\s+['"](\.[^'"]+)['"]/g;
+            for (let m = rx.exec(content); m; m = rx.exec(content)) {
+                const hit = tryResolve(path.dirname(abs), m[1]);
+                if (hit && !visited.has(hit.rel) && !hit.rel.includes('/ui/')) {
+                    visited.add(hit.rel);
+                    if (!hit.rel.endsWith('/index.js')) discovered.push(hit.rel);
+                    queue.push({ rel: hit.rel, depth: depth + 1 });
+                }
+            }
+        } catch { /* ignore */ }
+    }
+    return discovered;
+}
+
 function findSmartRelatedFiles(ticket, settings = {}) {
     const proj = resolveProjectForTicket(ticket, settings);
     const rootDir = proj.projectPath;
     if (!fs.existsSync(rootDir)) return proj.isAdmin ? ['frontend/src/pages/DashboardLayout.jsx'] : ['client/src/pages/SupportTickets.jsx'];
-    const queryText = [ticket.subject, ticket.description, ticket.module_name, ticket.page_url, ticket.ai_notes].filter(Boolean).join(' ');
+    const queryText = [ticket.subject, ticket.description, ticket.module_name, ticket.page_url, ticket.ai_notes, ticket.agy_plan_markdown].filter(Boolean).join(' ');
+    const explicitFiles = extractExplicitFilesFromTicketText(ticket, rootDir);
+    const routeFiles = findRouteMappedFiles(rootDir, ticket.page_url, proj.isAdmin);
+    const stopWords = new Set(['dashboard', 'soporte', 'reporte', 'reportes', 'general', 'modulo', 'sistema', 'error', 'problema', 'quitar', 'poner', 'agregar']);
+    const rawKeywords = queryText.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .split(/[^a-z0-9]+/).filter((k) => k.length >= 3 && !stopWords.has(k));
+    const keywords = Array.from(new Set(rawKeywords.flatMap((k) => [k, ...(DOMAIN_SYNONYMS[k] || [])]))).filter((k) => k.length >= 4);
+
+    const importedFiles = expandLocalImports(rootDir, [...explicitFiles, ...routeFiles]);
     const found = new Set([
-        ...extractExplicitFilesFromTicketText(ticket, rootDir),
-        ...findRouteMappedFiles(rootDir, ticket.page_url, proj.isAdmin),
+        ...explicitFiles,
+        ...routeFiles,
+        ...importedFiles,
         ...(proj.isAdmin ? findGraphifyAdminFiles(rootDir, queryText) : [])
     ]);
-    const stopWords = new Set(['dashboard', 'soporte', 'reporte', 'reportes', 'general', 'modulo', 'sistema', 'error', 'problema', 'quitar', 'poner', 'agregar']);
-    const keywords = queryText.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .split(/[^a-z0-9]+/).filter((k) => k.length >= 4 && !stopWords.has(k));
     const dirsToScan = proj.isAdmin ? ['frontend/src/pages', 'frontend/src/components', 'backend/routes', 'backend/services'] : ['client/src/pages', 'client/src/components', 'server/src/controllers', 'server/src/services', 'server/src/schemas'];
 
     const walk = (dir, depth = 0) => {
-        if (depth > 2 || !fs.existsSync(dir) || found.size >= 6) return;
+        if (depth > 3 || !fs.existsSync(dir) || found.size >= 16) return;
         try {
             for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-                if (found.size >= 6) break;
+                if (found.size >= 16) break;
                 const full = path.join(dir, entry.name);
                 if (entry.isDirectory()) walk(full, depth + 1);
                 else if (/\.(jsx?|tsx?)$/.test(entry.name) && keywords.some((kw) => entry.name.toLowerCase().includes(kw))) {
@@ -177,7 +239,18 @@ function findSmartRelatedFiles(ticket, settings = {}) {
     };
     dirsToScan.forEach((d) => walk(path.join(rootDir, d), 0));
     if (found.size === 0) found.add(proj.isAdmin ? 'frontend/src/pages/Dashboard.jsx' : 'client/src/pages/SupportTickets.jsx');
-    return Array.from(found).slice(0, 6);
+
+    const explicitSet = new Set(explicitFiles);
+    const ranked = Array.from(found).map((rel, idx) => {
+        let score = explicitSet.has(rel) ? 100 : Math.max(0, 20 - idx);
+        const lowerRel = rel.toLowerCase();
+        for (const kw of keywords) {
+            if (lowerRel.includes(kw)) score += 15;
+        }
+        return { rel, score };
+    }).sort((a, b) => b.score - a.score);
+
+    return ranked.slice(0, 8).map((r) => r.rel);
 }
 
 module.exports = { isTicketFromAdminProject, resolveProjectForTicket, findSmartRelatedFiles };
