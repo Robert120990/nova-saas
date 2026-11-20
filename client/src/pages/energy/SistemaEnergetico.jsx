@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { 
@@ -10,7 +10,8 @@ import {
     History,
     Radio,
     Building2,
-    Sun
+    Sun,
+    AlertTriangle
 } from 'lucide-react';
 import { 
     EnergySummaryCards, 
@@ -43,6 +44,7 @@ export default function SistemaEnergetico() {
     const canManageConfig = user?.role === 'SuperAdmin' || (Array.isArray(user?.permissions) ? user.permissions : []).includes('manage_energy_config');
     const [startDate, setStartDate] = useState(getTodayString());
     const [endDate, setEndDate] = useState(getTodayString());
+    const lastAlertToastRef = useRef('');
 
     const companyHeaders = { 'x-company-id': String(selectedCompanyId) };
 
@@ -68,7 +70,18 @@ export default function SistemaEnergetico() {
         try {
             const res = await axios.get('/api/energy/live', { headers: companyHeaders });
             if (res.data?.data) {
-                setLiveData(res.data.data);
+                const data = res.data.data;
+                setLiveData(data);
+                const critical = (data.communicationAlerts || []).filter(a => a.severity === 'error');
+                if (critical.length > 0) {
+                    const sig = `${selectedCompanyId}:${critical.map(c => `${c.source}:${c.message}`).join('|')}`;
+                    if (lastAlertToastRef.current !== sig) {
+                        lastAlertToastRef.current = sig;
+                        toast.error(critical.map(c => `${c.title}: ${c.message}`).join(' • '), { duration: 7000 });
+                    }
+                } else {
+                    lastAlertToastRef.current = '';
+                }
                 if (showToast) toast.success('Telemetría en vivo actualizada');
             }
         } catch (err) {
@@ -147,11 +160,32 @@ export default function SistemaEnergetico() {
                             <Zap className="w-6 h-6" />
                         </div>
                         <div>
-                            <h1 className="text-xl font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                            <h1 className="text-xl font-black text-slate-800 dark:text-slate-100 flex flex-wrap items-center gap-2">
                                 Sistema Energético
-                                <span className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                                    <Radio className="w-3 h-3 animate-pulse text-emerald-500" /> EN VIVO
-                                </span>
+                                {(() => {
+                                    const alerts = liveData?.communicationAlerts || [];
+                                    const hasCritical = alerts.some(a => a.severity === 'error');
+                                    const hasWarning = alerts.some(a => a.severity === 'warning');
+                                    if (hasCritical) {
+                                        return (
+                                            <span className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300">
+                                                <AlertTriangle className="w-3 h-3" /> SIN COMUNICACIÓN
+                                            </span>
+                                        );
+                                    }
+                                    if (hasWarning) {
+                                        return (
+                                            <span className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                                                <AlertTriangle className="w-3 h-3" /> ALERTA DE EQUIPOS
+                                            </span>
+                                        );
+                                    }
+                                    return (
+                                        <span className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                                            <Radio className="w-3 h-3 animate-pulse text-emerald-500" /> EN VIVO
+                                        </span>
+                                    );
+                                })()}
                             </h1>
                             <p className="text-xs text-slate-500 mt-0.5">
                                 Evaluación y análisis de Inversores (Growatt) y Banco de Baterías (GESS SolarWeb)
@@ -245,6 +279,33 @@ export default function SistemaEnergetico() {
                             );
                         })}
                     </div>
+                </div>
+            )}
+
+            {/* Alertas de Comunicación / Equipos Desconectados */}
+            {Array.isArray(liveData?.communicationAlerts) && liveData.communicationAlerts.length > 0 && (
+                <div className="space-y-2">
+                    {liveData.communicationAlerts.map((alert, idx) => {
+                        const isError = alert.severity === 'error';
+                        return (
+                            <div
+                                key={`${alert.source}-${idx}`}
+                                className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-4 py-3 rounded-2xl border text-xs ${
+                                    isError
+                                        ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900/60 text-rose-800 dark:text-rose-200'
+                                        : 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900/60 text-amber-800 dark:text-amber-200'
+                                }`}
+                            >
+                                <div className="flex items-start sm:items-center gap-2.5">
+                                    <AlertTriangle className={`w-4 h-4 shrink-0 mt-0.5 sm:mt-0 ${isError ? 'text-rose-600' : 'text-amber-600'}`} />
+                                    <div>
+                                        <span className="font-black">{alert.title}: </span>
+                                        <span className="font-medium">{alert.message}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
             )}
 

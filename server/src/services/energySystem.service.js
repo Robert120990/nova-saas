@@ -1,6 +1,11 @@
 const crypto = require('crypto');
 const { encrypt, decrypt } = require('../utils/crypto');
 const pool = require('../config/db');
+const notificationService = require('./notification.service');
+
+// Throttling de alertas de comunicación energética (companyId:key -> timestamp)
+const commAlertCooldowns = new Map();
+const COMM_ALERT_COOLDOWN_MS = 4 * 60 * 60 * 1000;
 
 function safeDecrypt(val, fallback = '1234567') {
     if (!val || typeof val !== 'string') return fallback;
@@ -51,6 +56,42 @@ function getElSalvadorDateTimeParts(date = new Date()) {
         hour: parseInt(hh, 10),
         minute: parseInt(min, 10)
     };
+}
+
+/**
+ * Obtiene el listado individual de inversores de una planta Growatt paginando getDevicesByPlantList
+ */
+async function fetchGrowattPlantInverters(post, plantId, plantCookies) {
+    const devices = [];
+    let currPage = 1;
+    let totalPages = 1;
+
+    do {
+        const res = await post('/panel/getDevicesByPlantList', { plantId, currPage: String(currPage) }, plantCookies);
+        const obj = res?.obj;
+        if (!obj || !Array.isArray(obj.datas)) break;
+
+        for (const d of obj.datas) {
+            devices.push({
+                sn: d.sn || '',
+                alias: d.alias || d.sn || 'Inversor',
+                model: d.deviceModel || d.deviceTypeName || 'Growatt',
+                status: String(d.status) === '1' ? 'online' : 'offline',
+                nominalKw: parseFloat(((parseFloat(d.nominalPower) || 0) / 1000).toFixed(1)),
+                pacKw: parseFloat(((parseFloat(d.pac) || 0) / 1000).toFixed(2)),
+                eTodayKwh: parseFloat((parseFloat(d.eToday) || 0).toFixed(1)),
+                eMonthKwh: parseFloat((parseFloat(d.eMonth) || 0).toFixed(1)),
+                eTotalKwh: parseFloat((parseFloat(d.eTotal) || 0).toFixed(1)),
+                lastUpdateTime: d.lastUpdateTime || null,
+                datalogSn: d.datalogSn || null
+            });
+        }
+
+        totalPages = Math.min(parseInt(obj.pages, 10) || 1, 5);
+        currPage++;
+    } while (currPage <= totalPages);
+
+    return devices;
 }
 
 /**
@@ -190,14 +231,18 @@ async function fetchGrowatt(creds) {
             const plantId = String(item.id);
             let invTotal = null;
             let dayChart = null;
+            let inverters = [];
 
             try {
                 const plantCookies = `selectedPlantId=${plantId}; b2SelectedPlantId=${plantId}`;
-                const tRes = await post('/indexbC/inv/getInvTotalData', { plantId }, plantCookies);
+                const [tRes, cRes, devList] = await Promise.all([
+                    post('/indexbC/inv/getInvTotalData', { plantId }, plantCookies),
+                    post('/indexbC/inv/getInvEnergyDayChart', { plantId, date: dateStr }, plantCookies),
+                    fetchGrowattPlantInverters(post, plantId, plantCookies).catch(() => [])
+                ]);
                 invTotal = tRes?.obj || null;
-
-                const cRes = await post('/indexbC/inv/getInvEnergyDayChart', { plantId, date: dateStr }, plantCookies);
                 dayChart = cRes?.obj?.pac || null;
+                inverters = Array.isArray(devList) ? devList : [];
             } catch (err) {
                 // Silencioso por planta
             }
@@ -206,12 +251,17 @@ async function fetchGrowatt(creds) {
             const eToday = invTotal?.epvToday ? parseFloat(invTotal.epvToday) : (parseFloat(item.eToday) || 0);
             const eTotal = invTotal?.epvTotal ? parseFloat(invTotal.epvTotal) : 0;
             const nominal = plantId === '2604519' ? 140 : (plantId === '2410077' ? 200 : (parseFloat(item.nominalPower) || 150));
+            const realOnlineCount = inverters.length > 0
+                ? inverters.filter(inv => inv.status === 'online').length
+                : (parseInt(item.onlineNum, 10) || 0);
 
             plants.push({
                 id: plantId,
                 name: item.plantName,
                 accountName: item.accountName,
-                onlineNum: parseInt(item.onlineNum, 10) || 0,
+                onlineNum: realOnlineCount,
+                totalInverters: inverters.length > 0 ? inverters.length : realOnlineCount,
+                inverters,
                 nominalPower: nominal,
                 currentPacKw: currentPac,
                 eTodayKwh: eToday,
@@ -260,7 +310,7 @@ async function fetchGess(creds) {
 
     try {
         const user = creds.gess_username;
-        const pass = creds.gess_password_decrypted || safeDecrypt(creds.gess_password);
+        const pass = creds.gess_password_decrypted || safeDecrypt(creds.gess_password, '123456');
         const pwdSha1 = crypto.createHash('sha1').update(pass).digest('hex');
         const account = encodeURI(encodeURI(user));
         const baseUrl = creds.gess_url.replace(/\/+$/, '') + '/';
@@ -384,8 +434,8 @@ async function getCredentials(companyId) {
 
     return {
         ...creds,
-        growatt_password_decrypted: safeDecrypt(creds.growatt_password),
-        gess_password_decrypted: safeDecrypt(creds.gess_password)
+        growatt_password_decrypted: safeDecrypt(creds.growatt_password, '1234567'),
+        gess_password_decrypted: safeDecrypt(creds.gess_password, '123456')
     };
 }
 
@@ -501,6 +551,48 @@ async function getLiveTelemetry(companyId) {
     const savingsFromSolar = solarToday * solarRate;
     const totalEstimatedSavings = parseFloat((savingsFromBatteryPeak + savingsFromSolar).toFixed(2));
 
+    const communicationAlerts = [];
+    if (creds.growatt_enabled && !growatt.success) {
+        communicationAlerts.push({
+            source: 'growatt',
+            severity: 'error',
+            title: 'Sin comunicación con Growatt',
+            message: growatt.error || 'No se pudo obtener telemetría de los inversores Growatt.'
+        });
+    }
+    if (creds.gess_enabled && !gess.success) {
+        communicationAlerts.push({
+            source: 'gess',
+            severity: 'error',
+            title: 'Sin comunicación con GESS SolarWeb',
+            message: gess.error || 'No se pudo conectar con el sistema de baterías GESS SolarWeb.'
+        });
+    }
+    if (growatt.success && Array.isArray(growatt.plants)) {
+        for (const pl of growatt.plants) {
+            const offlineInvs = (pl.inverters || []).filter(inv => inv.status !== 'online');
+            if (offlineInvs.length > 0) {
+                communicationAlerts.push({
+                    source: 'growatt_inverter',
+                    severity: 'warning',
+                    title: `${offlineInvs.length} inversor(es) desconectado(s) en ${pl.name}`,
+                    message: offlineInvs.map(i => `${i.alias} (${i.sn})`).join(', ')
+                });
+            }
+        }
+    }
+    if (gess.success && Array.isArray(gess.devices)) {
+        const offlineDevs = gess.devices.filter(d => d.status !== 'online');
+        if (offlineDevs.length > 0) {
+            communicationAlerts.push({
+                source: 'gess_device',
+                severity: 'warning',
+                title: `${offlineDevs.length} equipo(s) GESS desconectado(s)`,
+                message: offlineDevs.map(d => `${d.name} (${d.model})`).join(', ')
+            });
+        }
+    }
+
     return {
         company: {
             id: companyId,
@@ -512,6 +604,7 @@ async function getLiveTelemetry(companyId) {
         localTime: timeStr,
         isPeakHour,
         hasBatteries,
+        communicationAlerts,
         config: {
             growattPlantId: creds.growatt_plant_id,
             plantName: creds.plant_name,
@@ -616,6 +709,24 @@ async function recordReading(companyId, source = 'auto') {
         'UPDATE energy_credentials SET last_sync_at = ? WHERE company_id = ?',
         [dateTimeStr, companyId]
     );
+
+    // Emitir alerta en cola de notificaciones si hay pérdida de comunicación con Growatt o GESS
+    const criticalAlerts = (live.communicationAlerts || []).filter(a => a.severity === 'error');
+    for (const alert of criticalAlerts) {
+        const cooldownKey = `${companyId}:${alert.source}`;
+        const lastSent = commAlertCooldowns.get(cooldownKey) || 0;
+        if (Date.now() - lastSent >= COMM_ALERT_COOLDOWN_MS) {
+            commAlertCooldowns.set(cooldownKey, Date.now());
+            notificationService.notify('energy_communication_alert', companyId, null, {
+                empresa: live.company?.name || `Empresa #${companyId}`,
+                planta: live.company?.plantName || '',
+                origen: alert.source,
+                titulo: alert.title,
+                detalle: alert.message,
+                fecha: dateTimeStr
+            }).catch(() => {});
+        }
+    }
 
     // Upsert en resumen diario
     const peakSavings = live.summary.savingsFromBatteryPeakUsd;
