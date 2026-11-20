@@ -1,4 +1,4 @@
-import { BatteryCharging, Cpu, CheckCircle2 } from 'lucide-react';
+import { BatteryCharging, Cpu, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 
 export default function EnergyBatteryStatus({ gessData }) {
     const nominalCap = gessData?.nominalCap || 513.6;
@@ -12,6 +12,47 @@ export default function EnergyBatteryStatus({ gessData }) {
     const totalCharged = gessData?.totalChargedKwh || 0;
     const totalDischarged = gessData?.totalDischargedKwh || 0;
     const devices = gessData?.devices || [];
+
+    if (gessData?.enabled && gessData?.success === false) {
+        return (
+            <div className="bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900/60 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-rose-100 dark:border-rose-900/40">
+                    <div className="flex items-center gap-2.5">
+                        <div className="p-2 rounded-xl bg-rose-500/10 text-rose-500 border border-rose-500/20">
+                            <BatteryCharging className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                                Banco de Baterías y Sistema EMS (GESS SolarWeb)
+                            </h3>
+                            <p className="text-xs text-rose-600 dark:text-rose-400 font-semibold">
+                                Sin comunicación con GESS SolarWeb
+                            </p>
+                        </div>
+                    </div>
+
+                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 flex items-center gap-1 w-fit">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        Sin Comunicación
+                    </span>
+                </div>
+
+                <div className="my-6 p-5 rounded-2xl bg-rose-50/70 dark:bg-rose-950/20 border border-rose-200/70 dark:border-rose-900/40 text-center space-y-2">
+                    <AlertTriangle className="w-8 h-8 text-rose-500 mx-auto" />
+                    <h4 className="text-sm font-bold text-rose-800 dark:text-rose-200">
+                        No se pudo conectar con GESS SolarWeb
+                    </h4>
+                    <p className="text-xs text-rose-700 dark:text-rose-300 max-w-md mx-auto">
+                        {gessData?.error || 'Verifique las credenciales de GESS SolarWeb o la conectividad del servidor.'}
+                    </p>
+                </div>
+
+                <div className="text-[11px] text-slate-500 bg-slate-50 dark:bg-slate-800/30 px-4 py-2.5 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                    Revise la configuración en el botón de engranaje (Configuración) si el problema persiste.
+                </div>
+            </div>
+        );
+    }
 
     if (gessData?.enabled === false || gessData?.hasBatteries === false) {
         return (
@@ -197,25 +238,35 @@ export default function EnergyBatteryStatus({ gessData }) {
                 </h4>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                    {devices.map((dev) => (
-                        <div 
-                            key={dev.id} 
-                            className="p-2.5 rounded-lg border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between text-xs"
-                        >
-                            <div>
-                                <strong className="font-semibold text-slate-800 dark:text-slate-200 block text-[11px]">
-                                    {dev.name}
-                                </strong>
-                                <span className="text-[10px] text-slate-400">
-                                    Mod: {dev.model}
-                                </span>
+                    {devices.map((dev) => {
+                        const isOnline = dev.status === 'online';
+                        return (
+                            <div 
+                                key={dev.id} 
+                                className="p-2.5 rounded-lg border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between text-xs"
+                            >
+                                <div>
+                                    <strong className="font-semibold text-slate-800 dark:text-slate-200 block text-[11px]">
+                                        {dev.name}
+                                    </strong>
+                                    <span className="text-[10px] text-slate-400">
+                                        Mod: {dev.model}
+                                    </span>
+                                </div>
+                                {isOnline ? (
+                                    <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
+                                        <CheckCircle2 className="w-3 h-3" />
+                                        En línea
+                                    </span>
+                                ) : (
+                                    <span className="flex items-center gap-1 text-[10px] font-bold text-rose-600 bg-rose-50 dark:bg-rose-950 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-800">
+                                        <XCircle className="w-3 h-3" />
+                                        Desconectado
+                                    </span>
+                                )}
                             </div>
-                            <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
-                                <CheckCircle2 className="w-3 h-3" />
-                                {dev.status}
-                            </span>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             </div>
         </div>
