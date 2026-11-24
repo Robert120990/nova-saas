@@ -244,7 +244,7 @@ const downloadConfig = async (req, res) => {
             deviceId: dev.id,
             deviceName: dev.nombre,
             agentKey: dev.agent_key,
-            deviceIp: dev.ip_address || '192.168.3.201',
+            deviceIp: dev.ip_address || '',
             devicePort: dev.port || 4370,
             commKey: dev.comm_key || 0,
             protocol: dev.protocol || 'tcp',

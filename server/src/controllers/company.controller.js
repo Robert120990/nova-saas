@@ -262,7 +262,8 @@ const AVAILABLE_MODULES = [
     { id: 'egg_industrial', name: 'Huevo Industrial (Ovoproductos)', category: 'Verticales', icon: 'Sparkles', description: 'Recepción MP, pasteurización, silos, empaque, formulación y SCADA' },
     { id: 'crm', name: 'CRM (Acuerdos Comerciales)', category: 'Comercial', icon: 'Handshake', description: 'Gestión de precios pactados con clientes, volúmenes y contratos' },
     { id: 'accounting', name: 'Contabilidad Formal', category: 'Finanzas', icon: 'BookOpen', description: 'Catálogo de cuentas, partidas, correlativos y reportes financieros' },
-    { id: 'human_resources', name: 'Recursos Humanos y Planillas', category: 'Gestión', icon: 'Users', description: 'Expedientes de empleados, cálculo de planillas, ISSS, AFP y renta' }
+    { id: 'human_resources', name: 'Recursos Humanos y Planillas', category: 'Gestión', icon: 'Users', description: 'Expedientes de empleados, cálculo de planillas, ISSS, AFP y renta' },
+    { id: 'biometric', name: 'Marcador Digital Biométrico', category: 'Gestión', icon: 'Fingerprint', description: 'Control de asistencia con reloj ZKTeco, radar de ausencias, turnos y horas extra por empresa' }
 ];
 
 const getCompanyModulesMatrix = async (req, res) => {

@@ -35,6 +35,7 @@ function parseModules(modules, companyName = '', companyId = null) {
         if (!list) list = ['sales', 'purchases', 'inventory', 'accounting', 'human_resources'];
         if (!list.includes('egg_industrial')) list.push('egg_industrial');
         if (!list.includes('crm')) list.push('crm');
+        if (!list.includes('biometric')) list.push('biometric');
     }
 
     return list;

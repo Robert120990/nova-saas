@@ -119,7 +119,7 @@ const BiometricAgentModal = ({ open, onClose, device = null, onDeviceUpdated }) 
                                 </span>
                             </div>
                             <p className="text-xs text-slate-500 font-medium">
-                                Puente de sincronización ZKTeco ({device?.ip_address || '192.168.3.201'}) · v{device?.agent_version || '—'}
+                                Puente de sincronización ZKTeco ({device?.ip_address || 'Sin IP'}) · v{device?.agent_version || '—'}
                             </p>
                         </div>
                     </div>
@@ -155,7 +155,7 @@ const BiometricAgentModal = ({ open, onClose, device = null, onDeviceUpdated }) 
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                             <div>
                                 <span className="text-[10px] font-bold text-slate-400 uppercase block">IP / Puerto</span>
-                                <span className="font-mono font-bold text-indigo-700">{device?.ip_address || '192.168.3.201'}:{device?.port || 4370}</span>
+                                <span className="font-mono font-bold text-indigo-700">{device?.ip_address ? `${device.ip_address}:${device?.port || 4370}` : 'No configurado'}</span>
                             </div>
                             <div>
                                 <span className="text-[10px] font-bold text-slate-400 uppercase block">Último Heartbeat</span>

@@ -71,6 +71,7 @@ const Navbar = ({ onToggleMobileMenu }) => {
                 if (user.company_id === 9) {
                     if (!mods.includes('egg_industrial')) mods.push('egg_industrial');
                     if (!mods.includes('crm')) mods.push('crm');
+                    if (!mods.includes('biometric')) mods.push('biometric');
                 }
                 const currentMods = user.enabled_modules || [];
                 const isDifferent = mods.length !== currentMods.length || !mods.every(m => currentMods.includes(m));

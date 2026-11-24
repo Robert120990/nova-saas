@@ -9,7 +9,7 @@ const BiometricDeviceModal = ({ open, onClose, device = null, onSuccess }) => {
 
     const [formData, setFormData] = useState({
         nombre: 'Marcador Central',
-        ip_address: '192.168.3.201',
+        ip_address: '',
         port: 4370,
         comm_key: 0,
         protocol: 'tcp',
@@ -22,7 +22,7 @@ const BiometricDeviceModal = ({ open, onClose, device = null, onSuccess }) => {
             setFormData({
                 id: device.id,
                 nombre: device.nombre || 'Marcador Central',
-                ip_address: device.ip_address || '192.168.3.201',
+                ip_address: device.ip_address || '',
                 port: device.port || 4370,
                 comm_key: device.comm_key || 0,
                 protocol: device.protocol || 'tcp',
@@ -32,7 +32,7 @@ const BiometricDeviceModal = ({ open, onClose, device = null, onSuccess }) => {
         } else {
             setFormData({
                 nombre: 'Marcador Central',
-                ip_address: '192.168.3.201',
+                ip_address: '',
                 port: 4370,
                 comm_key: 0,
                 protocol: 'tcp',
@@ -123,7 +123,7 @@ const BiometricDeviceModal = ({ open, onClose, device = null, onSuccess }) => {
                                 <input
                                     type="text"
                                     required
-                                    placeholder="192.168.3.201"
+                                    placeholder="Ej. 192.168.1.201"
                                     value={formData.ip_address}
                                     onChange={(e) => setFormData(prev => ({ ...prev, ip_address: e.target.value }))}
                                     className="w-full text-[13px] font-medium font-mono border border-slate-200 rounded-xl pl-9 pr-3.5 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"

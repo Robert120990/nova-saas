@@ -17,6 +17,7 @@ import {
     Handshake, 
     BookOpen, 
     Users,
+    Fingerprint,
     RefreshCw
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -31,6 +32,7 @@ const MODULE_ICONS = {
     crm: Handshake,
     accounting: BookOpen,
     human_resources: Users,
+    biometric: Fingerprint,
 };
 
 export default function CompanyModules() {

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { normalizeDateRangeInput } from '../../../utils/dateUtils';
 import { unwrapList } from '../../../utils/apiUtils';
+import { useAuth } from '../../../context/AuthContext';
 import BiometricEditOvertimeModal from '../BiometricEditOvertimeModal';
 import BiometricFreezePeriodModal from '../BiometricFreezePeriodModal';
 import BiometricImportZkModal from '../BiometricImportZkModal';
@@ -15,6 +16,8 @@ import BiometricOvertimeTable from '../BiometricOvertimeTable';
 import { BiometricPendingBanner, BiometricFrozenBanner } from '../BiometricOvertimeBanners';
 
 const BiometricOvertimeCortesTab = () => {
+    const { user } = useAuth();
+    const companyId = user?.company_id || null;
     const queryClient = useQueryClient();
     const [subView, setSubView] = useState('pending');
     const [search, setSearch] = useState('');
@@ -32,7 +35,7 @@ const BiometricOvertimeCortesTab = () => {
         data: summaryData = {},
         refetch: refetchSummary
     } = useQuery({
-        queryKey: ['rh-biometric-cortes-summary'],
+        queryKey: ['rh-biometric-cortes-summary', companyId],
         queryFn: async () => (await axios.get('/api/rh/biometric/cortes/summary')).data || {}
     });
 
@@ -74,6 +77,7 @@ const BiometricOvertimeCortesTab = () => {
     } = useQuery({
         queryKey: [
             'rh-biometric-cortes-daily-overtime',
+            companyId,
             selectedCorte?.id || 'pending',
             activeStartDate,
             activeEndDate,
@@ -100,7 +104,7 @@ const BiometricOvertimeCortesTab = () => {
         isLoading: isCortesLoading,
         refetch: refetchCortes
     } = useQuery({
-        queryKey: ['rh-biometric-cortes-list'],
+        queryKey: ['rh-biometric-cortes-list', companyId],
         queryFn: async () => unwrapList(await axios.get('/api/rh/biometric/cortes')),
         enabled: subView === 'history'
     });

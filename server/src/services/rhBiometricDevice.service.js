@@ -62,7 +62,12 @@ async function getDevices(companyId) {
 
 async function saveDevice(companyId, data) {
     const { id, branch_id, nombre, ip_address, port, comm_key, protocol, is_active } = data;
-    const ip = (ip_address || '192.168.3.201').trim();
+    const ip = String(ip_address || '').trim();
+    if (!ip) {
+        const err = new Error('Debe ingresar la dirección IP del reloj biométrico.');
+        err.status = 400;
+        throw err;
+    }
     const tcpPort = parseInt(port, 10) || 4370;
     const keyComm = parseInt(comm_key, 10) || 0;
     const proto = protocol === 'udp' ? 'udp' : 'tcp';

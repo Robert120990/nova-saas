@@ -7,6 +7,7 @@ import {
     Plus, Radar, ListChecks
 } from 'lucide-react';
 import { getTodayString, getFirstDayOfMonth, normalizeDateRangeInput } from '../../../utils/dateUtils';
+import { useAuth } from '../../../context/AuthContext';
 import { useConfirm } from '../../../context/ConfirmContext';
 import BiometricDailyRadarView from '../BiometricDailyRadarView';
 import BiometricAbsencesHistoryView from '../BiometricAbsencesHistoryView';
@@ -15,6 +16,8 @@ import BiometricAbsenceAuthorizeModal from '../BiometricAbsenceAuthorizeModal';
 import AccionPersonalModal from '../AccionPersonalModal';
 
 const BiometricAbsencesTab = () => {
+    const { user } = useAuth();
+    const companyId = user?.company_id || null;
     const queryClient = useQueryClient();
     const confirm = useConfirm();
 
@@ -53,7 +56,7 @@ const BiometricAbsencesTab = () => {
     }, [historySearch]);
 
     const { data: radarData = { rows: [], summary: {} }, isLoading: isRadarLoading } = useQuery({
-        queryKey: ['rh-biometric-daily-radar', radarDate, debouncedRadarSearch, radarStatusFilter],
+        queryKey: ['rh-biometric-daily-radar', companyId, radarDate, debouncedRadarSearch, radarStatusFilter],
         queryFn: async () => {
             const res = await axios.get('/api/rh/biometric/absences/daily-radar', {
                 params: {
@@ -67,7 +70,7 @@ const BiometricAbsencesTab = () => {
     });
 
     const { data: historyResp = { data: [], pagination: {}, summary: {} }, isLoading: isHistoryLoading } = useQuery({
-        queryKey: ['rh-biometric-absences', startDate, endDate, categoria, estadoAutorizacion, debouncedHistorySearch, page, limit],
+        queryKey: ['rh-biometric-absences', companyId, startDate, endDate, categoria, estadoAutorizacion, debouncedHistorySearch, page, limit],
         queryFn: async () => {
             const res = await axios.get('/api/rh/biometric/absences', {
                 params: {

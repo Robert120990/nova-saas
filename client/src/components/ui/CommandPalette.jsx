@@ -80,7 +80,9 @@ const CommandPalette = ({ isOpen, onClose }) => {
 
             if (item.path && ITEM_MODULE_MAP[item.path]) {
                 const reqMod = ITEM_MODULE_MAP[item.path];
-                if (Array.isArray(user?.enabled_modules) && !user.enabled_modules.includes(reqMod)) {
+                if (Array.isArray(user?.enabled_modules)) {
+                    if (!user.enabled_modules.includes(reqMod)) return;
+                } else if (reqMod === 'biometric' && !isAndelsaContext) {
                     return;
                 }
             }

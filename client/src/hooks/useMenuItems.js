@@ -23,6 +23,7 @@ export const ITEM_MODULE_MAP = {
     '/ventas/combustibles': 'gas_station',
     '/ventas/dtes-turno': 'gas_station',
     '/ventas/entrega-remesas': 'gas_station',
+    '/rh/marcador-digital': 'biometric',
 };
 
 function normalize(item) {

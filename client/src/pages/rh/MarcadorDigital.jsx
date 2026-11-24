@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
     Fingerprint, Radio, Settings, Plus, RefreshCw,
-    FileText, Sliders, Lock, UserPlus, CalendarX
+    FileText, Sliders, Lock, UserPlus, CalendarX, Layers
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import { getTodayString, normalizeDateRangeInput } from '../../utils/dateUtils';
 import { unwrapList } from '../../utils/apiUtils';
 import {
@@ -24,6 +26,13 @@ import {
 } from '../../components/rh/tabs';
 
 const MarcadorDigital = () => {
+    const { user } = useAuth();
+    const companyId = user?.company_id || null;
+    const isAndelsa = companyId === 9 || (typeof user?.company_name === 'string' && user.company_name.toUpperCase().includes('ANDELSA'));
+    const hasBiometricModule = Array.isArray(user?.enabled_modules)
+        ? user.enabled_modules.includes('biometric')
+        : isAndelsa;
+
     const today = getTodayString();
     const [mainTab, setMainTab] = useState('marcaciones');
 
@@ -55,8 +64,9 @@ const MarcadorDigital = () => {
     }, [searchTerm]);
 
     const { data: rawDevices = [], refetch: refetchDevices } = useQuery({
-        queryKey: ['rh-biometric-devices'],
+        queryKey: ['rh-biometric-devices', companyId],
         queryFn: async () => unwrapList(await axios.get('/api/rh/biometric/devices')),
+        enabled: hasBiometricModule,
         refetchInterval: 15000
     });
 
@@ -76,8 +86,9 @@ const MarcadorDigital = () => {
     });
 
     const { data: radarToday = {}, refetch: refetchRadarToday } = useQuery({
-        queryKey: ['rh-biometric-daily-radar', today, '', 'todos'],
+        queryKey: ['rh-biometric-daily-radar', companyId, today, '', 'todos'],
         queryFn: async () => (await axios.get('/api/rh/biometric/absences/daily-radar', { params: { date: today } })).data || {},
+        enabled: hasBiometricModule,
         refetchInterval: 30000
     });
 
@@ -89,7 +100,7 @@ const MarcadorDigital = () => {
         isFetching,
         refetch: refetchLogs
     } = useQuery({
-        queryKey: ['rh-biometric-attendance', page, limit, startDate, endDate, debouncedSearch, punchType, source],
+        queryKey: ['rh-biometric-attendance', companyId, page, limit, startDate, endDate, debouncedSearch, punchType, source],
         queryFn: async () => {
             const res = await axios.get('/api/rh/biometric/attendance-logs', {
                 params: {
@@ -104,7 +115,7 @@ const MarcadorDigital = () => {
             });
             return res.data || {};
         },
-        enabled: mainTab === 'marcaciones',
+        enabled: hasBiometricModule && mainTab === 'marcaciones',
         refetchInterval: 20000
     });
 
@@ -136,6 +147,26 @@ const MarcadorDigital = () => {
         if (mainTab === 'marcaciones') refetchLogs();
     };
 
+    if (!hasBiometricModule) {
+        return (
+            <div className="p-6 max-w-2xl mx-auto mt-10">
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center space-y-4">
+                    <div className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-500 flex items-center justify-center mx-auto">
+                        <Fingerprint className="w-7 h-7" />
+                    </div>
+                    <h2 className="text-lg font-black text-slate-800">Marcador Digital no habilitado en {user?.company_name || 'esta empresa'}</h2>
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                        El módulo de control biométrico se activa de forma independiente por empresa. Si esta empresa cuenta con reloj biométrico, puede habilitarlo desde <strong>Módulos por Empresa</strong>.
+                    </p>
+                    <Link to="/config/modulos-empresa" className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm">
+                        <Layers className="w-4 h-4" />
+                        Ir a Módulos por Empresa
+                    </Link>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="p-4 sm:p-6 space-y-6 max-w-[1600px] mx-auto">
             {/* Header */}
@@ -166,71 +197,39 @@ const MarcadorDigital = () => {
                             </button>
                         </div>
                         <p className="text-xs text-slate-500 font-medium">
-                            Sincronización con reloj ZKTeco ({activeDevice?.ip_address || '192.168.3.201'})
+                            {activeDevice?.ip_address ? `Sincronización con reloj ZKTeco (${activeDevice.ip_address})` : 'Sin reloj biométrico configurado en esta empresa'}
                         </p>
                     </div>
                 </div>
 
                 {/* Header Actions */}
                 <div className="flex items-center gap-2 flex-wrap">
-                    <button
-                        type="button"
-                        onClick={() => setIsEmployeeModalOpen(true)}
-                        className="flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-all shadow-sm"
-                        title="Registrar nuevo colaborador y configurarlo para el reloj marcador"
-                    >
-                        <UserPlus className="w-4 h-4 text-emerald-600" />
-                        <span>Nuevo Empleado</span>
+                    <button type="button" onClick={() => setIsEmployeeModalOpen(true)} title="Registrar nuevo colaborador y configurarlo para el reloj marcador"
+                        className="flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-all shadow-sm">
+                        <UserPlus className="w-4 h-4 text-emerald-600" /><span>Nuevo Empleado</span>
                     </button>
-                    <button
-                        type="button"
-                        onClick={() => setIsReportModalOpen(true)}
-                        className="flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-sm"
-                        title="Ver y exportar reporte de asistencia por rango de fechas"
-                    >
-                        <FileText className="w-4 h-4 text-emerald-600" />
-                        <span>Reporte Asistencia</span>
+                    <button type="button" onClick={() => setIsReportModalOpen(true)} title="Ver y exportar reporte de asistencia por rango de fechas"
+                        className="flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-sm">
+                        <FileText className="w-4 h-4 text-emerald-600" /><span>Reporte Asistencia</span>
                     </button>
-                    <button
-                        type="button"
-                        onClick={() => setIsConfigModalOpen(true)}
-                        className="flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-sm"
-                        title="Configurar turnos, horarios, tolerancias, festivos y horas extras"
-                    >
-                        <Sliders className="w-4 h-4 text-indigo-600" />
-                        <span>Configuración</span>
+                    <button type="button" onClick={() => setIsConfigModalOpen(true)} title="Configurar turnos, horarios, tolerancias, festivos y horas extras"
+                        className="flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-sm">
+                        <Sliders className="w-4 h-4 text-indigo-600" /><span>Configuración</span>
                     </button>
-                    <button
-                        type="button"
-                        onClick={() => setIsAgentModalOpen(true)}
-                        className="flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-sm"
-                    >
-                        <Radio className="w-4 h-4 text-indigo-600" />
-                        <span>Conector LAN</span>
+                    <button type="button" onClick={() => setIsAgentModalOpen(true)}
+                        className="flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-sm">
+                        <Radio className="w-4 h-4 text-indigo-600" /><span>Conector LAN</span>
                     </button>
-                    <button
-                        type="button"
-                        onClick={() => setIsDeviceModalOpen(true)}
-                        className="flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-sm"
-                    >
-                        <Settings className="w-4 h-4 text-slate-500" />
-                        <span>Configurar Reloj</span>
+                    <button type="button" onClick={() => setIsDeviceModalOpen(true)}
+                        className="flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-sm">
+                        <Settings className="w-4 h-4 text-slate-500" /><span>Configurar Reloj</span>
                     </button>
-                    <button
-                        type="button"
-                        onClick={() => setIsPunchModalOpen(true)}
-                        className="flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all shadow-sm shadow-indigo-200"
-                    >
-                        <Plus className="w-4 h-4" />
-                        <span>Marcación Manual</span>
+                    <button type="button" onClick={() => setIsPunchModalOpen(true)}
+                        className="flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all shadow-sm shadow-indigo-200">
+                        <Plus className="w-4 h-4" /><span>Marcación Manual</span>
                     </button>
-                    <button
-                        type="button"
-                        onClick={handleRefresh}
-                        disabled={isFetching}
-                        className="p-2 text-slate-500 hover:text-slate-800 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-sm disabled:opacity-50"
-                        title="Actualizar registros"
-                    >
+                    <button type="button" onClick={handleRefresh} disabled={isFetching} title="Actualizar registros"
+                        className="p-2 text-slate-500 hover:text-slate-800 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-sm disabled:opacity-50">
                         <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin text-indigo-600' : ''}`} />
                     </button>
                 </div>

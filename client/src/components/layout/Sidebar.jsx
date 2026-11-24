@@ -245,6 +245,9 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
         if (Array.isArray(user?.enabled_modules)) {
             return user.enabled_modules.includes(reqMod);
         }
+        if (reqMod === 'biometric') {
+            return user?.company_id === 9 || (typeof user?.company_name === 'string' && user.company_name.toUpperCase().includes('ANDELSA'));
+        }
         return true;
     };
 

@@ -115,7 +115,7 @@ const BiometricLogsTable = ({
                                 ) : (
                                     <span className="inline-flex items-center gap-1 text-[11px] font-mono text-slate-600 whitespace-nowrap">
                                         <Fingerprint className="w-3.5 h-3.5 text-indigo-500" />
-                                        {log.device_nombre || 'Reloj'} ({log.device_ip || '192.168.3.201'})
+                                        {log.device_nombre || 'Reloj'}{log.device_ip ? ` (${log.device_ip})` : ''}
                                     </span>
                                 )}
                             </td>

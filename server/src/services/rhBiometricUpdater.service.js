@@ -188,7 +188,7 @@ async function requestRemoteDeviceUpdate(companyId, deviceId, userLabel = 'Admin
 function buildOneClickUpdaterBat(device, serverUrl) {
     const cleanUrl = String(serverUrl || 'https://sys.sipesv.com').replace(/\/+$/, '');
     const agentKey = String(device.agent_key || '');
-    const deviceIp = String(device.ip_address || '192.168.3.201');
+    const deviceIp = String(device.ip_address || '');
     const devicePort = parseInt(device.port, 10) || 4370;
     const commKey = parseInt(device.comm_key, 10) || 0;
     const protocol = device.protocol === 'udp' ? 'udp' : 'tcp';
