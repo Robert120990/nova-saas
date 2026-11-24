@@ -2,7 +2,7 @@
 
 > **GENERADO AUTOMÁTICAMENTE** — no editar a mano.
 > Regenerar con: `node scripts/generate-project-structure.js`
-> Última generación: 2026-10-30
+> Última generación: 2026-11-24
 >
 > Mapa exhaustivo de la estructura física del repositorio con la función de
 > cada archivo. Para reglas de negocio y convenciones ver AGENTS.md, CLAUDE.md
@@ -184,8 +184,10 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `eggSalesReportExport.service.js` | Egg Sales Report Export.service. |
 | `eggSalesReportHelpers.js` | Egg Sales Report Helpers. |
 | `eggStock.service.js` | Egg Stock.service. |
+| `eggSupplies.service.js` | Egg Supplies.service. |
 | `eggTelemetry.service.js` | Egg Telemetry.service. |
 | `energyAnalytics.service.js` | Energy Analytics.service. |
+| `energyReportPdf.service.js` | Energy Report Pdf.service. |
 | `energySystem.service.js` | Energy System.service. |
 | `excel.service.js` | Generación de archivos Excel (exceljs) para exportaciones. |
 | `filproExtractor.service.js` | Filpro Extractor.service. |
@@ -216,21 +218,29 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `rhBiometricAbsences.service.js` | Rh Biometric Absences.service. |
 | `rhBiometricAbsencesWrite.service.js` | Rh Biometric Absences Write.service. |
 | `rhBiometricAndelsaExcel.service.js` | Rh Biometric Andelsa Excel.service. |
+| `rhBiometricAndelsaExcelWorkbook.helper.js` | Rh Biometric Andelsa Excel Workbook.helper. |
+| `rhBiometricCalc.helper.js` | Rh Biometric Calc.helper. |
+| `rhBiometricClockUsers.service.js` | Rh Biometric Clock Users.service. |
 | `rhBiometricConfig.service.js` | Rh Biometric Config.service. |
 | `rhBiometricCortes.service.js` | Rh Biometric Cortes.service. |
 | `rhBiometricCortesWrite.service.js` | Rh Biometric Cortes Write.service. |
 | `rhBiometricDate.helper.js` | Rh Biometric Date.helper. |
+| `rhBiometricDevice.service.js` | Rh Biometric Device.service. |
 | `rhBiometricReport.service.js` | Rh Biometric Report.service. |
 | `rhBiometricReportAbsences.helper.js` | Rh Biometric Report Absences.helper. |
+| `rhBiometricUpdater.service.js` | Rh Biometric Updater.service. |
 | `rhBiometricZkImport.service.js` | Rh Biometric Zk Import.service. |
+| `rhBiometricZkParser.helper.js` | Rh Biometric Zk Parser.helper. |
 | `rhContratoLaboralPdf.service.js` | Rh Contrato Laboral Pdf.service. |
 | `rhIsssReportExcel.service.js` | Rh Isss Report Excel.service. |
+| `rhPatrono.service.js` | Rh Patrono.service. |
 | `rhReportPdf.service.js` | Rh Report Pdf.service. |
 | `rrsVentasTiendaAutoSync.service.js` | Rrs Ventas Tienda Auto Sync.service. |
 | `salesIntegrityAudit.service.js` | Sales Integrity Audit.service. |
 | `salesIntegrityAuditPdf.service.js` | Sales Integrity Audit Pdf.service. |
 | `salesTiendaShift.service.js` | Sales Tienda Shift.service. |
 | `salesTiendaShiftComparison.service.js` | Sales Tienda Shift Comparison.service. |
+| `session.service.js` | Session.service. |
 | `sujetoExcluidoDte.service.js` | Sujeto Excluido Dte.service. |
 | `suspiciousSalesDetector.js` | Detector de ventas sospechosas/anómalas para auditoría. |
 | `telegram.service.js` | Envío de mensajes/alertas vía bot de Telegram. |
@@ -243,6 +253,7 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `ticketAgyCodeEngine.service.js` | Ticket Agy Code Engine.service. |
 | `ticketAgyConsole.service.js` | Ticket Agy Console.service. |
 | `ticketAgyFormatters.js` | Ticket Agy Formatters. |
+| `ticketAgyRepoDiscovery.service.js` | Ticket Agy Repo Discovery.service. |
 | `ticketAgyTelegram.service.js` | Ticket Agy Telegram.service. |
 | `ticketAgyWorkflow.service.js` | Ticket Agy Workflow.service. |
 | `ticketAiTaskBridge.service.js` | Ticket Ai Task Bridge.service. |
@@ -295,6 +306,7 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `customer.controller.js` | CRUD de clientes con crédito, límites y datos DTE. |
 | `customerBranch.controller.js` | Asignación de clientes permitidos por sucursal. |
 | `customerDiscount.controller.js` | Descuentos especiales manuales por cliente/producto. |
+| `customerFleet.controller.js` | Customer Fleet.controller. |
 | `cxc.controller.js` | Cuentas por cobrar: saldos, abonos, antigüedad. |
 | `cxp.controller.js` | Cuentas por pagar a proveedores: saldos y abonos. |
 | `dashboard.controller.js` | KPIs del panel principal: ventas del día, top productos, alertas. |
@@ -304,6 +316,7 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `eggCosteoLibra.controller.js` | Egg Costeo Libra.controller. |
 | `eggDispatch.controller.js` | Egg Dispatch.controller. |
 | `eggIndustrial.controller.js` | Módulo industrial de huevo: recepción, producción, empaque, costos y trazabilidad. |
+| `eggSupplies.controller.js` | Egg Supplies.controller. |
 | `energySystem.controller.js` | Energy System.controller. |
 | `expense.controller.js` | Gastos y sus categorías por sucursal. |
 | `filpro.controller.js` | Filpro.controller. |
@@ -440,6 +453,7 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | `closeoutPdf.js` | Genera el PDF del cierre de gasolinera (jspdf). |
 | `closeoutPrint.js` | Impresión directa del cierre de gasolinera. |
 | `dateUtils.js` | Date Utils. |
+| `deviceId.js` | Device Id. |
 | `eggPresentationUtils.js` | Egg Presentation Utils. |
 | `eggSizeUtils.js` | Egg Size Utils. |
 | `excelExport.js` | Excel Export. |
@@ -583,6 +597,13 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | `QuotationModal.jsx` | Quotation Modal. |
 | `SendEmailModal.jsx` | Send Email Modal. |
 | `SignaturePadModal.jsx` | Signature Pad Modal. |
+
+**`client/src/components/customers/`**
+
+| Archivo | Descripción |
+|---|---|
+| `CustomerFleetsModal.jsx` | Customer Fleets Modal. |
+| `index.js` | Index. |
 
 **`client/src/components/cxc/`**
 
@@ -863,6 +884,24 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | `EggQualityFinishedProductModal.jsx` | Egg Quality Finished Product Modal. |
 | `index.js` | Index. |
 
+**`client/src/components/egg/rawMaterialWriteOff/`**
+
+| Archivo | Descripción |
+|---|---|
+| `constants.js` | Constants. |
+| `index.js` | Index. |
+| `InvoicePickerSection.jsx` | Invoice Picker Section. |
+| `LinkInvoiceTarimasModal.jsx` | Link Invoice Tarimas Modal. |
+| `TarimaPickerSection.jsx` | Tarima Picker Section. |
+| `WriteOffSummaryCards.jsx` | Write Off Summary Cards. |
+
+**`client/src/components/egg/rawMaterialWriteOff/tabs/`**
+
+| Archivo | Descripción |
+|---|---|
+| `ActiveLotsTarimasTab.jsx` | Active Lots Tarimas Tab. |
+| `WriteOffHistoryTab.jsx` | Write Off History Tab. |
+
 **`client/src/components/egg/reception/`**
 
 | Archivo | Descripción |
@@ -876,6 +915,19 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | `ReceptionIsCreateModalOpenModal.jsx` | Reception Is Create Modal Open Modal. |
 | `ReceptionVoidConfirmIdNullModal.jsx` | Reception Void Confirm Id Null Modal. |
 | `useReceptionModel.jsx` | Use Reception Model. |
+
+**`client/src/components/egg/supplies/`**
+
+| Archivo | Descripción |
+|---|---|
+| `index.js` | Index. |
+| `SuppliesHeader.jsx` | Supplies Header. |
+| `SuppliesInventorySection.jsx` | Supplies Inventory Section. |
+| `SuppliesSummaryCards.jsx` | Supplies Summary Cards. |
+| `SuppliesTableSection.jsx` | Supplies Table Section. |
+| `SupplyFormModal.jsx` | Supply Form Modal. |
+| `SupplyMovementModal.jsx` | Supply Movement Modal. |
+| `useSuppliesModel.js` | Use Supplies Model. |
 
 **`client/src/components/egg/tabs/`**
 
@@ -1081,6 +1133,7 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | `BiometricAbsenceModal.jsx` | Biometric Absence Modal. |
 | `BiometricAbsencesHistoryView.jsx` | Biometric Absences History View. |
 | `BiometricAgentModal.jsx` | Biometric Agent Modal. |
+| `BiometricAgentUpdateSection.jsx` | Biometric Agent Update Section. |
 | `BiometricConfigModal.jsx` | Biometric Config Modal. |
 | `BiometricCortesHistoryTable.jsx` | Biometric Cortes History Table. |
 | `BiometricDailyRadarView.jsx` | Biometric Daily Radar View. |
@@ -1096,6 +1149,7 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | `BiometricOvertimeTable.jsx` | Biometric Overtime Table. |
 | `BiometricReportModal.jsx` | Biometric Report Modal. |
 | `BiometricSummaryCards.jsx` | Biometric Summary Cards. |
+| `BiometricUpdateBanner.jsx` | Biometric Update Banner. |
 | `EmployeeSearchModal.jsx` | Employee Search Modal. |
 | `index.js` | Index. |
 | `PlanillaExportModal.jsx` | Planilla Export Modal. |
@@ -1121,6 +1175,7 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | Archivo | Descripción |
 |---|---|
 | `index.js` | Index. |
+| `RhPatronoConfigSection.jsx` | Rh Patrono Config Section. |
 
 **`client/src/components/rh/config/tabs/`**
 
@@ -1193,6 +1248,7 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | Archivo | Descripción |
 |---|---|
 | `BiometricAbsencesTab.jsx` | Biometric Absences Tab. |
+| `BiometricDeviceUsersTab.jsx` | Biometric Device Users Tab. |
 | `BiometricEmployeeShiftsTab.jsx` | Biometric Employee Shifts Tab. |
 | `BiometricHolidaysTab.jsx` | Biometric Holidays Tab. |
 | `BiometricLogsTab.jsx` | Biometric Logs Tab. |
@@ -1224,6 +1280,7 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | `index.js` | Index. |
 | `SaleDetailModal.jsx` | Modal de detalle de venta: productos, totales, DTE, acciones. |
 | `SalesIntegrityAuditModal.jsx` | Sales Integrity Audit Modal. |
+| `ShiftSalesByCategoryModal.jsx` | Shift Sales By Category Modal. |
 
 **`client/src/components/sales/audit/`**
 
@@ -1520,8 +1577,10 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | `Packaging.jsx` | Empaque de huevo procesado. |
 | `Production.jsx` | Producción del proceso industrial. |
 | `ProductionCalendar.jsx` | Módulo industrial de huevo: Production Calendar. |
+| `RawMaterialInvoiceWriteOff.jsx` | Módulo industrial de huevo: Raw Material Invoice Write Off. |
 | `Reception.jsx` | Recepción de huevo en planta. |
 | `Reports.jsx` | Módulo industrial de huevo: Reports. |
+| `Supplies.jsx` | Módulo industrial de huevo: Supplies. |
 | `Traceability.jsx` | Trazabilidad de lotes de recepción a empaque. |
 
 **`client/src/pages/energy/`**
@@ -1694,7 +1753,7 @@ oficiales viven en `cumplientoDTE/svfe-json-schemas/` y la firma en `services/si
 Patrón de nombres: `migration_v<N>_<descripcion>.{sql|js}` y un runner `run_migration_v<N>.js` por versión.
 
 - Rango de versiones detectado: **v2 → v640**
-- Total de archivos: **592** (193 .sql · 158 .js migración · 239 runners run_migration* · 2 .json · 0 otros)
+- Total de archivos: **603** (193 .sql · 165 .js migración · 243 runners run_migration* · 2 .json · 0 otros)
 
 > Los archivos NO se listan individualmente por su volumen: para conocer el esquema vigente usa
 > `SELECT ... FROM information_schema` o revisa `server/src/config/db.schema.js`,
