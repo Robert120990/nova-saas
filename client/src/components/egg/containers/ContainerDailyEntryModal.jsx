@@ -186,7 +186,7 @@ export default function ContainerDailyEntryModal({
                             </label>
                             <MoneyInput
                                 value={dailyRate}
-                                onChange={(val) => setDailyRate(val)}
+                                onChange={(e) => setDailyRate(e.target.value)}
                                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-[13px] font-bold"
                             />
                         </div>
@@ -196,7 +196,7 @@ export default function ContainerDailyEntryModal({
                             </label>
                             <MoneyInput
                                 value={loadingCost}
-                                onChange={(val) => setLoadingCost(val)}
+                                onChange={(e) => setLoadingCost(e.target.value)}
                                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-[13px] font-bold"
                             />
                         </div>
