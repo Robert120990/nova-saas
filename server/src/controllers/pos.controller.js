@@ -36,13 +36,17 @@ const getPOS = async (req, res) => {
     }
 };
 
+const normalizeFlag = (val) => (val === true || val === 'true' || val === 1 || val === '1' || val === 'on') ? 1 : 0;
+
 const createPOS = async (req, res) => {
     const data = { ...req.body };
     data.company_id = req.company_id;
-    if (data.allow_discounts !== undefined) {
-        data.allow_discounts = (data.allow_discounts === true || data.allow_discounts === 'true' || data.allow_discounts === 1 || data.allow_discounts === '1' || data.allow_discounts === 'on') ? 1 : 0;
-    } else {
-        data.allow_discounts = 0;
+    data.allow_discounts = data.allow_discounts !== undefined ? normalizeFlag(data.allow_discounts) : 0;
+    if (data.allow_offline !== undefined) {
+        data.allow_offline = normalizeFlag(data.allow_offline);
+    }
+    if (data.auto_print !== undefined) {
+        data.auto_print = normalizeFlag(data.auto_print);
     }
     try {
         const [result] = await pool.query('INSERT INTO points_of_sale SET ?', [data]);
@@ -56,7 +60,13 @@ const updatePOS = async (req, res) => {
     const { id } = req.params;
     const data = { ...req.body };
     if (data.allow_discounts !== undefined) {
-        data.allow_discounts = (data.allow_discounts === true || data.allow_discounts === 'true' || data.allow_discounts === 1 || data.allow_discounts === '1' || data.allow_discounts === 'on') ? 1 : 0;
+        data.allow_discounts = normalizeFlag(data.allow_discounts);
+    }
+    if (data.allow_offline !== undefined) {
+        data.allow_offline = normalizeFlag(data.allow_offline);
+    }
+    if (data.auto_print !== undefined) {
+        data.auto_print = normalizeFlag(data.auto_print);
     }
     try {
         await pool.query('UPDATE points_of_sale SET ? WHERE id = ? AND company_id = ?', [data, id, req.company_id]);

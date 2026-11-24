@@ -7,6 +7,7 @@ const purchaseItemSchema = z.object({
     descripcion: optionalString,
     nombre: optionalString,
     codigo: optionalString,
+    codigo_barra: optionalString,
     cantidad: z.coerce.number().positive({ message: 'La cantidad debe ser mayor a 0' }),
     precio_unitario: z.coerce.number().min(0, { message: 'El precio unitario no puede ser negativo' }),
     tipo_compra: optionalString,
@@ -15,7 +16,7 @@ const purchaseItemSchema = z.object({
     fovial: z.coerce.number().optional().nullable(),
     cotrans: z.coerce.number().optional().nullable(),
     unidad_medida: optionalString
-});
+}).passthrough();
 
 // Purchase Header Shape
 const purchaseBaseShape = {
@@ -34,16 +35,16 @@ const purchaseBaseShape = {
     numero_control: optionalString,
     num_control: optionalString,
     sello_recepcion: optionalString,
-    dias_credito: z.coerce.number().optional().default(0),
+    dias_credito: z.coerce.number().optional(),
     fecha_vencimiento: optionalString,
-    total_nosujeta: z.coerce.number().optional().default(0),
-    total_exenta: z.coerce.number().optional().default(0),
-    total_gravada: z.coerce.number().optional().default(0),
-    iva: z.coerce.number().optional().default(0),
-    retencion: z.coerce.number().optional().default(0),
-    percepcion: z.coerce.number().optional().default(0),
-    fovial: z.coerce.number().optional().default(0),
-    cotrans: z.coerce.number().optional().default(0),
+    total_nosujeta: z.coerce.number().optional(),
+    total_exenta: z.coerce.number().optional(),
+    total_gravada: z.coerce.number().optional(),
+    iva: z.coerce.number().optional(),
+    retencion: z.coerce.number().optional(),
+    percepcion: z.coerce.number().optional(),
+    fovial: z.coerce.number().optional(),
+    cotrans: z.coerce.number().optional(),
     monto_total: z.coerce.number().optional(),
     period_year: z.coerce.number().optional(),
     period_month: z.coerce.number().optional(),
@@ -55,11 +56,22 @@ const purchaseBaseShape = {
     items: z.array(purchaseItemSchema).min(1, { message: 'Debe incluir al menos un producto en la compra' })
 };
 
-const purchaseCreateSchema = z.object(purchaseBaseShape);
+const purchaseCreateSchema = z.object({
+    ...purchaseBaseShape,
+    dias_credito: purchaseBaseShape.dias_credito.default(0),
+    total_nosujeta: purchaseBaseShape.total_nosujeta.default(0),
+    total_exenta: purchaseBaseShape.total_exenta.default(0),
+    total_gravada: purchaseBaseShape.total_gravada.default(0),
+    iva: purchaseBaseShape.iva.default(0),
+    retencion: purchaseBaseShape.retencion.default(0),
+    percepcion: purchaseBaseShape.percepcion.default(0),
+    fovial: purchaseBaseShape.fovial.default(0),
+    cotrans: purchaseBaseShape.cotrans.default(0)
+}).passthrough();
 const purchaseUpdateSchema = z.object({
     ...purchaseBaseShape,
     items: z.array(purchaseItemSchema).optional()
-}).partial();
+}).partial().passthrough();
 
 // Purchase Checks (Chq Contado)
 const purchaseCheckShape = {
@@ -88,29 +100,36 @@ const purchaseCheckConfigSchema = z.object({
 
 // Quedan Items
 const quedanItemSchema = z.object({
+    fecha: optionalString,
     documento: optionalString,
     gravadas: z.coerce.number().optional().default(0),
     iva: z.coerce.number().optional().default(0),
     retencion: z.coerce.number().optional().default(0),
     percepcion: z.coerce.number().optional().default(0),
     exentas: z.coerce.number().optional().default(0),
-    tipo: optionalString.default('FAC')
-});
+    total: z.coerce.number().optional().nullable(),
+    tipo: optionalString.default('CCF')
+}).passthrough();
 
 // Quedan Header
-const quedanShape = {
+const quedanBaseShape = {
     branch_id: z.coerce.number().int().positive().optional().nullable(),
     num_quedan: requiredString('El número de quedan es requerido'),
     provider_id: z.coerce.number().int().positive({ message: 'El proveedor es requerido' }),
     fecha: z.string({ message: 'La fecha es requerida' }).min(1, { message: 'La fecha es requerida' }),
-    dias_credito: z.coerce.number().optional().default(0),
+    dias_credito: z.coerce.number().optional(),
     fecha_vencimiento: optionalString,
-    destino: optionalString.default('T'),
-    items: z.array(quedanItemSchema).optional().default([])
+    destino: optionalString,
+    items: z.array(quedanItemSchema).optional()
 };
 
-const quedanSchema = z.object(quedanShape);
-const quedanUpdateSchema = z.object(quedanShape).partial();
+const quedanSchema = z.object({
+    ...quedanBaseShape,
+    dias_credito: quedanBaseShape.dias_credito.default(0),
+    destino: quedanBaseShape.destino.default('T'),
+    items: quedanBaseShape.items.default([])
+}).passthrough();
+const quedanUpdateSchema = z.object(quedanBaseShape).partial().passthrough();
 
 module.exports = {
     purchaseItemSchema,

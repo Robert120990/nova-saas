@@ -19,8 +19,14 @@ const saleItemSchema = z.object({
     venta_gravada: z.coerce.number().default(0).optional(),
     venta_exenta: z.coerce.number().default(0).optional(),
     venta_nosujeta: z.coerce.number().default(0).optional(),
+    exento: z.union([z.boolean(), z.number()]).optional(),
+    tipoItem: z.any().optional(),
+    tipo_item: z.any().optional(),
+    referencedDoc: optionalString,
+    noGravado: z.coerce.number().optional(),
+    no_gravado: z.coerce.number().optional(),
     tributos: z.any().optional()
-});
+}).passthrough();
 
 const salePaymentSchema = z.object({
     codigo: optionalString,
@@ -28,10 +34,11 @@ const salePaymentSchema = z.object({
     monto: z.coerce.number({ required_error: 'El monto de pago es requerido' })
         .positive('El monto de pago debe ser mayor a cero'),
     referencia: optionalString
-});
+}).passthrough();
 
 const saleLinkedDocumentSchema = z.object({
     doc_type: optionalString,
+    tipoDte: optionalString,
     doc_number: optionalString,
     emission_date: optionalString,
     generation_type: z.coerce.number().int().nullable().optional(),
@@ -40,7 +47,7 @@ const saleLinkedDocumentSchema = z.object({
     iva_retenido: z.coerce.number().nullable().optional(),
     ivaRetenido: z.coerce.number().nullable().optional(),
     descripcion: optionalString
-});
+}).passthrough();
 
 const saleCreateSchema = z.object({
     header: z.object({
@@ -81,12 +88,12 @@ const saleCreateSchema = z.object({
         transporter_name: optionalString,
         vehicle_plate: optionalString,
         cliente_nombre: optionalString
-    }, { required_error: 'La cabecera de la venta es requerida' }),
+    }, { required_error: 'La cabecera de la venta es requerida' }).passthrough(),
     items: z.array(saleItemSchema, { required_error: 'Los ítems de la venta son requeridos' })
         .min(1, 'La venta debe contener al menos un producto'),
     payments: z.array(salePaymentSchema).optional().default([]),
     linkedDocuments: z.array(saleLinkedDocumentSchema).optional().default([])
-});
+}).passthrough();
 
 const saleChangeShiftSchema = z.object({
     ids: z.array(
@@ -115,7 +122,7 @@ const saleCustomerUpdateSchema = z.object({
     telefono: optionalString,
     correo: z.string().trim().email('Correo electrónico no válido').nullable().optional().or(z.literal('')),
     retransmit: z.boolean().optional()
-});
+}).passthrough();
 
 const salesSettingsSchema = z.record(z.string(), z.any());
 
@@ -152,8 +159,8 @@ const editDTEItemsSchema = z.object({
             .trim().min(1, 'La descripción no puede estar vacía'),
         cantidad: z.coerce.number().positive('La cantidad debe ser mayor a cero').optional().default(1),
         precio_unitario: z.coerce.number().min(0).nullable().optional()
-    }), { required_error: 'items es requerido' })
-});
+    }).passthrough(), { required_error: 'items es requerido' })
+}).passthrough();
 
 module.exports = {
     saleCreateSchema,

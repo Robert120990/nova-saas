@@ -1,10 +1,11 @@
 const { z } = require('zod');
-const { optionalString, requiredString } = require('./schemaHelpers');
+const { optionalString, requiredString, emptyToNullId } = require('./schemaHelpers');
 
 // Gas Station Distributors
 const gasDistributorShape = {
     codigo: requiredString('El código de distribuidora es requerido'),
-    descripcion: optionalString
+    descripcion: optionalString,
+    status: optionalString
 };
 const gasDistributorSchema = z.object(gasDistributorShape);
 const gasDistributorUpdateSchema = z.object(gasDistributorShape).partial();
@@ -12,31 +13,44 @@ const gasDistributorUpdateSchema = z.object(gasDistributorShape).partial();
 // Gas Station Islands
 const gasIslandShape = {
     codigo: requiredString('El código de isla es requerido'),
-    descripcion: optionalString
+    descripcion: optionalString,
+    status: optionalString,
+    branch_id: emptyToNullId
 };
 const gasIslandSchema = z.object(gasIslandShape);
 const gasIslandUpdateSchema = z.object(gasIslandShape).partial();
 
 // Gas Station Nozzles
-const gasNozzleShape = {
+const gasNozzleBaseShape = {
     codigo: requiredString('El código de manguera es requerido'),
     descripcion: optionalString,
+    tipo: z.enum(['A', 'C', 'M'], { message: 'El tipo de pistola debe ser A (Autoservicio), C (Servicio Completo) o M (Master)' }).optional(),
     island_id: z.coerce.number().int().positive({ message: 'La isla es requerida' }),
     product_id: z.coerce.number().int().positive({ message: 'El producto de combustible es requerido' }),
-    distributor_id: z.coerce.number().int().positive().optional().nullable()
+    branch_id: emptyToNullId
 };
-const gasNozzleSchema = z.object(gasNozzleShape);
-const gasNozzleUpdateSchema = z.object(gasNozzleShape).partial();
+const gasNozzleSchema = z.object({
+    ...gasNozzleBaseShape,
+    tipo: gasNozzleBaseShape.tipo.default('C')
+});
+const gasNozzleUpdateSchema = z.object(gasNozzleBaseShape).partial();
 
 // Gas Station Tanks
-const gasTankShape = {
+const gasTankBaseShape = {
     codigo: requiredString('El código de tanque es requerido'),
     descripcion: optionalString,
-    capacidad: z.coerce.number().min(0, { message: 'La capacidad no puede ser negativa' }).optional().default(0),
-    tipo_combustible: z.coerce.number().optional().default(0)
+    capacidad: z.coerce.number().min(0, { message: 'La capacidad no puede ser negativa' }).optional(),
+    reserva: z.coerce.number().min(0, { message: 'La reserva no puede ser negativa' }).optional(),
+    tipo_combustible: z.coerce.number().optional(),
+    branch_id: emptyToNullId
 };
-const gasTankSchema = z.object(gasTankShape);
-const gasTankUpdateSchema = z.object(gasTankShape).partial();
+const gasTankSchema = z.object({
+    ...gasTankBaseShape,
+    capacidad: gasTankBaseShape.capacidad.default(0),
+    reserva: gasTankBaseShape.reserva.default(0),
+    tipo_combustible: gasTankBaseShape.tipo_combustible.default(0)
+});
+const gasTankUpdateSchema = z.object(gasTankBaseShape).partial();
 
 // Gas Station Despachadores
 const gasDespachadorShape = {

@@ -42,7 +42,7 @@ const Nozzles = () => {
         queryFn: async () => (await axios.get('/api/products/fuel')).data || []
     });
 
-    const items = response.data || [];
+    const items = Array.isArray(response?.data) ? response.data : [];
 
     const mutation = useMutation({
         mutationFn: (data) => {
@@ -50,7 +50,7 @@ const Nozzles = () => {
             return axios.post('/api/gas-station/nozzles', data);
         },
         onSuccess: () => {
-            queryClient.invalidateQueries(['gas-nozzles']);
+            queryClient.invalidateQueries({ queryKey: ['gas-nozzles'] });
             setIsModalOpen(false);
             setSelectedItem(null);
             toast.success(selectedItem ? 'Pistola actualizada' : 'Pistola creada');
@@ -61,7 +61,7 @@ const Nozzles = () => {
     const deleteMutation = useMutation({
         mutationFn: (id) => axios.delete(`/api/gas-station/nozzles/${id}`),
         onSuccess: () => {
-            queryClient.invalidateQueries(['gas-nozzles']);
+            queryClient.invalidateQueries({ queryKey: ['gas-nozzles'] });
             toast.success('Pistola eliminada');
         }
     });
@@ -177,7 +177,7 @@ const Nozzles = () => {
                 onClose={() => setIsModalOpen(false)}
                 title={selectedItem ? 'Editar Pistola' : 'Nueva Pistola'}
             >
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form key={selectedItem?.id || 'new'} onSubmit={handleSubmit} className="space-y-4">
                     <div>
                         <label className={labelCls}>Código <span className="text-red-400">*</span></label>
                         <input

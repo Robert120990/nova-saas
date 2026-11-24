@@ -5,7 +5,7 @@ const { optionalString } = require('./schemaHelpers');
  * Validation schemas for POS Points of Sale & Cash Shifts (Turnos de Caja / Arqueos)
  */
 
-const posShape = {
+const posBaseShape = {
     nombre: z.string({ required_error: 'El nombre del punto de venta es requerido' })
         .trim().min(1, 'El nombre no puede estar vacío'),
     branch_id: z.coerce.number({ required_error: 'La sucursal es requerida' })
@@ -13,11 +13,17 @@ const posShape = {
         .positive('Debe indicar una sucursal válida'),
     codigo: optionalString,
     allow_discounts: z.union([z.boolean(), z.number(), z.string()]).optional(),
-    status: z.enum(['activo', 'inactivo']).default('activo').optional()
+    allow_offline: z.union([z.boolean(), z.number(), z.string()]).optional(),
+    auto_print: z.union([z.boolean(), z.number(), z.string()]).optional(),
+    printer_name: optionalString,
+    status: z.enum(['activo', 'inactivo']).optional()
 };
 
-const posSchema = z.object(posShape);
-const posUpdateSchema = z.object(posShape).partial();
+const posSchema = z.object({
+    ...posBaseShape,
+    status: posBaseShape.status.default('activo')
+});
+const posUpdateSchema = z.object(posBaseShape).partial();
 
 const sellerItemSchema = z.union([
     z.object({
@@ -74,7 +80,7 @@ const shiftArqueoTarjetaSchema = z.object({
 const shiftArqueoSchema = z.object({
     actual_cash: z.coerce.number().min(0, 'El efectivo real no puede ser negativo').optional(),
     opening_balance: z.coerce.number().min(0, 'El fondo inicial no puede ser negativo').optional(),
-    closing_balance: z.coerce.number().min(0, 'El fondo final no puede ser negativo').optional().default(0),
+    closing_balance: z.coerce.number().min(0, 'El fondo final no puede ser negativo').optional(),
     expenses: z.array(shiftArqueoExpenseSchema).optional().default([]),
     incomes: z.array(shiftArqueoIncomeSchema).optional().default([]),
     remesas: z.array(shiftArqueoRemesaSchema).optional().default([]),

@@ -36,7 +36,7 @@ const Tanks = () => {
         queryFn: async () => (await axios.get('/api/gas-station/tanks', { params: { search: debouncedSearch, page } })).data
     });
 
-    const items = response.data || [];
+    const items = Array.isArray(response?.data) ? response.data : [];
 
     const mutation = useMutation({
         mutationFn: (data) => {
@@ -44,7 +44,7 @@ const Tanks = () => {
             return axios.post('/api/gas-station/tanks', data);
         },
         onSuccess: () => {
-            queryClient.invalidateQueries(['gas-tanks']);
+            queryClient.invalidateQueries({ queryKey: ['gas-tanks'] });
             setIsModalOpen(false);
             setSelectedItem(null);
             toast.success(selectedItem ? 'Tanque actualizado' : 'Tanque creado');
@@ -55,7 +55,7 @@ const Tanks = () => {
     const deleteMutation = useMutation({
         mutationFn: (id) => axios.delete(`/api/gas-station/tanks/${id}`),
         onSuccess: () => {
-            queryClient.invalidateQueries(['gas-tanks']);
+            queryClient.invalidateQueries({ queryKey: ['gas-tanks'] });
             toast.success('Tanque eliminado');
         },
         onError: (error) => {
@@ -147,8 +147,8 @@ const Tanks = () => {
                                 </div>
                             </td>
                             <td className="px-3 py-1 text-xs text-slate-500">{item.descripcion}</td>
-                            <td className="px-3 py-1 text-xs font-medium text-slate-700">{parseFloat(item.capacidad).toFixed(2)}</td>
-                            <td className="px-3 py-1 text-xs font-medium text-slate-700">{parseFloat(item.reserva).toFixed(2)}</td>
+                            <td className="px-3 py-1 text-xs font-medium text-slate-700">{(parseFloat(item.capacidad) || 0).toFixed(2)}</td>
+                            <td className="px-3 py-1 text-xs font-medium text-slate-700">{(parseFloat(item.reserva) || 0).toFixed(2)}</td>
                             <td className="px-3 py-1 text-xs font-medium text-slate-700">{getFuelTypeLabel(item.tipo_combustible)}</td>
                             <td className="px-3 py-1 flex gap-1">
                                 {canManageTanks ? (
@@ -179,7 +179,7 @@ const Tanks = () => {
                 onClose={() => setIsModalOpen(false)}
                 title={selectedItem ? 'Editar Tanque' : 'Nuevo Tanque'}
             >
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form key={selectedItem?.id || 'new'} onSubmit={handleSubmit} className="space-y-4">
                     <div>
                         <label className={labelCls}>Código <span className="text-red-400">*</span></label>
                         <input
@@ -198,11 +198,11 @@ const Tanks = () => {
                     </div>
                     <div>
                         <label className={labelCls}>Capacidad (galones) <span className="text-red-400">*</span></label>
-                        <input name="capacidad" type="number" step="0.01" defaultValue={selectedItem?.capacidad} required placeholder="0.00" className={fieldCls} />
+                        <input name="capacidad" type="number" min="0" step="0.01" defaultValue={selectedItem?.capacidad} required placeholder="0.00" className={fieldCls} />
                     </div>
                     <div>
                         <label className={labelCls}>Reserva (galones) <span className="text-red-400">*</span></label>
-                        <input name="reserva" type="number" step="0.01" defaultValue={selectedItem?.reserva} required placeholder="0.00" className={fieldCls} />
+                        <input name="reserva" type="number" min="0" step="0.01" defaultValue={selectedItem?.reserva} required placeholder="0.00" className={fieldCls} />
                     </div>
                     <div>
                         <label className={labelCls}>Tipo de Combustible <span className="text-red-400">*</span></label>
