@@ -8,5 +8,6 @@ export { default as EnergyYearChart } from './EnergyYearChart';
 export { default as EnergyAnalyticsCards } from './EnergyAnalyticsCards';
 export { default as EnergyAnalyticsDataTable } from './EnergyAnalyticsDataTable';
 export { default as EnergyAnalyticsSection } from './EnergyAnalyticsSection';
+export { default as EnergySfvReportTab } from './EnergySfvReportTab';
 export { default as EnergyHistoryTable } from './EnergyHistoryTable';
 export { default as EnergyConfigModal } from './EnergyConfigModal';

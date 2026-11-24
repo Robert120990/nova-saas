@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { 
@@ -13,6 +13,7 @@ import {
     FileSpreadsheet
 } from 'lucide-react';
 import { getTodayString, formatDate } from '../../utils/dateUtils';
+import PdfViewerModal from '../ui/PdfViewerModal';
 import EnergyDayChart from './EnergyDayChart';
 import EnergyMonthChart from './EnergyMonthChart';
 import EnergyYearChart from './EnergyYearChart';
@@ -33,6 +34,20 @@ export default function EnergyAnalyticsSection({ companyHeaders }) {
     const [loading, setLoading] = useState(false);
     const [analyticsData, setAnalyticsData] = useState(null);
     const [showTable, setShowTable] = useState(false);
+    const [pdfModal, setPdfModal] = useState({ open: false, url: null, isLoading: false, error: null, title: '', subtitle: '', fileName: '' });
+    const pdfUrlRef = useRef(null);
+
+    const closePdfModal = () => {
+        if (pdfUrlRef.current) {
+            window.URL.revokeObjectURL(pdfUrlRef.current);
+            pdfUrlRef.current = null;
+        }
+        setPdfModal({ open: false, url: null, isLoading: false, error: null, title: '', subtitle: '', fileName: '' });
+    };
+
+    useEffect(() => () => {
+        if (pdfUrlRef.current) window.URL.revokeObjectURL(pdfUrlRef.current);
+    }, []);
 
     // Cargar analítica según período seleccionado
     const fetchAnalytics = async () => {
@@ -60,39 +75,68 @@ export default function EnergyAnalyticsSection({ companyHeaders }) {
     };
 
     const handleExportReport = async (format = 'pdf') => {
-        const toastId = toast.loading(format === 'excel' ? 'Generando reporte Excel del SFV...' : 'Generando reporte PDF del SFV...');
+        const isAnnual = period === 'year';
+        const reportPeriod = isAnnual ? 'year' : 'month';
+        const targetMonth = period === 'day' ? selectedDate.slice(0, 7) : selectedMonth;
+        const baseName = isAnnual ? `Reporte_SFV_Anual_${selectedYear}` : `Reporte_SFV_Mensual_${targetMonth}`;
+        const reqParams = {
+            period: reportPeriod,
+            ...(isAnnual ? { year: selectedYear } : { month: targetMonth }),
+            plantId: selectedPlant,
+            ...(format === 'excel' ? { format: 'excel' } : {})
+        };
+
+        if (format === 'pdf') {
+            if (pdfUrlRef.current) {
+                window.URL.revokeObjectURL(pdfUrlRef.current);
+                pdfUrlRef.current = null;
+            }
+            setPdfModal({
+                open: true,
+                url: null,
+                isLoading: true,
+                error: null,
+                title: isAnnual ? `Reporte SFV Anual (${selectedYear})` : `Reporte SFV Mensual (${targetMonth})`,
+                subtitle: `${plantName} • Desempeño Fotovoltaico y BESS`,
+                fileName: `${baseName}.pdf`
+            });
+            try {
+                const res = await axios.get('/api/energy/analytics/report', {
+                    params: reqParams,
+                    headers: companyHeaders,
+                    responseType: 'blob'
+                });
+                const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+                pdfUrlRef.current = url;
+                setPdfModal((prev) => ({ ...prev, url, isLoading: false }));
+            } catch (err) {
+                const msg = err.response?.data?.message || err.message;
+                setPdfModal((prev) => ({ ...prev, isLoading: false, error: msg }));
+                toast.error('Error al generar reporte PDF: ' + msg);
+            }
+            return;
+        }
+
+        const toastId = toast.loading('Generando reporte Excel del SFV...');
         try {
-            const targetMonth = period === 'day' ? selectedDate.slice(0, 7) : selectedMonth;
             const res = await axios.get('/api/energy/analytics/report', {
-                params: {
-                    period: 'month',
-                    month: targetMonth,
-                    year: selectedYear,
-                    plantId: selectedPlant,
-                    format: format === 'excel' ? 'excel' : undefined
-                },
+                params: reqParams,
                 headers: companyHeaders,
                 responseType: 'blob'
             });
-            const blob = new Blob([res.data], {
-                type: format === 'excel'
-                    ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                    : 'application/pdf'
-            });
-            const url = window.URL.createObjectURL(blob);
-            if (format === 'pdf') {
-                window.open(url, '_blank');
-            } else {
-                const link = document.createElement('a');
-                link.href = url;
-                link.setAttribute('download', `Reporte_SFV_${targetMonth}.xlsx`);
-                document.body.appendChild(link);
-                link.click();
-                link.remove();
-            }
-            toast.success(format === 'excel' ? 'Reporte Excel descargado' : 'Reporte PDF generado', { id: toastId });
+            const url = window.URL.createObjectURL(new Blob([res.data], {
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            }));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `${baseName}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+            toast.success('Reporte Excel SFV descargado', { id: toastId });
         } catch (err) {
-            toast.error('Error al generar reporte: ' + (err.response?.data?.message || err.message), { id: toastId });
+            toast.error('Error al generar Excel: ' + (err.response?.data?.message || err.message), { id: toastId });
         }
     };
 
@@ -263,7 +307,7 @@ export default function EnergyAnalyticsSection({ companyHeaders }) {
                 </div>
 
                 {/* Selector de Planta y Refrescar */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                     <div className="flex items-center gap-1.5">
                         <Layers className="w-3.5 h-3.5 text-slate-400" />
                         {availablePlants.length > 1 ? (
@@ -366,6 +410,20 @@ export default function EnergyAnalyticsSection({ companyHeaders }) {
                     />
                 </>
             )}
+
+            <PdfViewerModal
+                isOpen={pdfModal.open}
+                onClose={closePdfModal}
+                title={pdfModal.title}
+                subtitle={pdfModal.subtitle}
+                badge="Reporte SFV Oficial"
+                pdfUrl={pdfModal.url}
+                isLoading={pdfModal.isLoading}
+                error={pdfModal.error}
+                onRetry={() => handleExportReport('pdf')}
+                fileName={pdfModal.fileName}
+                footerNote="Sistema Fotovoltaico (SFV) y Baterías BESS • Formato Carta sin firmas"
+            />
         </div>
     );
 }

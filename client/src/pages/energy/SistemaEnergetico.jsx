@@ -10,7 +10,8 @@ import {
     History,
     Radio,
     Building2,
-    Sun
+    Sun,
+    FileText
 } from 'lucide-react';
 import { 
     EnergySummaryCards, 
@@ -18,6 +19,7 @@ import {
     EnergyInvertersTable, 
     EnergyBatteryStatus, 
     EnergyAnalyticsSection,
+    EnergySfvReportTab,
     EnergyHistoryTable, 
     EnergyConfigModal 
 } from '../../components/energy';
@@ -250,41 +252,28 @@ export default function SistemaEnergetico() {
 
             {/* Pestañas de Navegación */}
             <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 overflow-x-auto">
-                <button
-                    onClick={() => setActiveTab('live')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                        activeTab === 'live'
-                            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-                    }`}
-                >
-                    <Activity className="w-4 h-4" />
-                    Monitoreo en Vivo
-                </button>
-
-                <button
-                    onClick={() => setActiveTab('charts')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                        activeTab === 'charts'
-                            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-                    }`}
-                >
-                    <BarChart2 className="w-4 h-4" />
-                    Análisis Temporal (Día / Mes / Año)
-                </button>
-
-                <button
-                    onClick={() => setActiveTab('history')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                        activeTab === 'history'
-                            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-                    }`}
-                >
-                    <History className="w-4 h-4" />
-                    Historial de Lecturas (4h)
-                </button>
+                {[
+                    { id: 'live', label: 'Monitoreo en Vivo', icon: Activity },
+                    { id: 'charts', label: 'Análisis Temporal (Día / Mes / Año)', icon: BarChart2 },
+                    { id: 'report', label: 'Reporte SFV (Mes / Año)', icon: FileText },
+                    { id: 'history', label: 'Historial de Lecturas (4h)', icon: History }
+                ].map((tab) => {
+                    const TabIcon = tab.icon;
+                    return (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                                activeTab === tab.id
+                                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                            }`}
+                        >
+                            <TabIcon className="w-4 h-4 shrink-0" />
+                            {tab.label}
+                        </button>
+                    );
+                })}
             </div>
 
             {/* Contenido según Pestaña */}
@@ -301,6 +290,13 @@ export default function SistemaEnergetico() {
 
             {activeTab === 'charts' && (
                 <EnergyAnalyticsSection companyHeaders={companyHeaders} />
+            )}
+
+            {activeTab === 'report' && (
+                <EnergySfvReportTab
+                    companyHeaders={companyHeaders}
+                    selectedLocation={locations.find(l => Number(l.companyId) === Number(selectedCompanyId)) || null}
+                />
             )}
 
             {activeTab === 'history' && (

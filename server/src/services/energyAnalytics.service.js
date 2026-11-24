@@ -254,7 +254,10 @@ async function getAnalyticsData(companyId, params = {}) {
             try {
                 const gClient = await createGessClient(creds);
                 if (!gClient) return null;
-                const targetDate = params.date || nowParts.dateStr;
+                const targetDate = params.date
+                    || (period === 'month' && params.month && params.month !== nowParts.monthStr ? `${params.month}-15` : null)
+                    || (period === 'year' && params.year && String(params.year) !== String(nowParts.yearStr) ? `${params.year}-12-31` : null)
+                    || nowParts.dateStr;
                 const statRes = await gClient.oper('MonitorServlet', `&action=plantStorageStatistic&date=${targetDate}`);
                 return statRes?.dat || null;
             } catch (err) {
