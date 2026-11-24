@@ -136,7 +136,16 @@ echo   (Mantenga esta ventana abierta para sincronizar con SIPE)
 echo ======================================================================
 echo.
 
+:run_agent
+set "BIOMETRIC_WRAPPER=1"
 "%NODE_CMD%" biometric-agent.js
+if %errorlevel% equ 42 (
+    echo.
+    echo [INFO] Auto-actualizacion aplicada. Reiniciando conector biometrico...
+    echo.
+    timeout /t 2 /nobreak >nul
+    goto run_agent
+)
 
 echo.
 echo ======================================================================

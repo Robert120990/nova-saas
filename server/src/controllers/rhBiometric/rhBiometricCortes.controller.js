@@ -78,10 +78,24 @@ const unfreezeCorte = async (req, res) => {
     }
 };
 
+/**
+ * Actualizar horas extra en lote (aprobar reloj, denegar 0h, tope o valor fijo)
+ */
+const batchUpdateOvertimeEntries = async (req, res) => {
+    try {
+        const result = await rhBiometricCortesService.batchUpdateOvertimeEntries(req.company_id, req.user?.id, req.body);
+        res.json(result);
+    } catch (error) {
+        console.error('Error al actualizar horas extra en lote:', error);
+        res.status(400).json({ message: error.message || 'Error al actualizar horas extra en lote' });
+    }
+};
+
 module.exports = {
     getPendingOvertimeSummary,
     getDailyOvertimeRows,
     updateOvertimeEntry,
+    batchUpdateOvertimeEntries,
     freezePeriod,
     getCortesList,
     unfreezeCorte

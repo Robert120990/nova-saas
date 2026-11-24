@@ -130,7 +130,9 @@ async function getDailyAttendanceRadar(companyId, filters = {}) {
         if (ingresoStr && ingresoStr > targetDate) continue;
 
         summary.total_activos++;
-        const uidKey = String(emp.codigo_biometrico || emp.codigo || '').trim().toLowerCase().replace(/^0+/, '');
+        const uidKey = emp.codigo_biometrico
+            ? String(emp.codigo_biometrico).trim().toLowerCase().replace(/^0+/, '')
+            : '';
         const empPunches = punchByEmpId.get(emp.id) || (uidKey ? punchByUid.get(uidKey) : null) || [];
         const empAbsence = absenceByEmpId.get(emp.id) || null;
 

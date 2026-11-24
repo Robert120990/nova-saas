@@ -6,3 +6,4 @@ export { default as BiometricPayrollTab } from './BiometricPayrollTab';
 export { default as BiometricLogsTab } from './BiometricLogsTab';
 export { default as BiometricOvertimeCortesTab } from './BiometricOvertimeCortesTab';
 export { default as BiometricAbsencesTab } from './BiometricAbsencesTab';
+export { default as BiometricDeviceUsersTab } from './BiometricDeviceUsersTab';

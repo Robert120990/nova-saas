@@ -53,6 +53,87 @@ const createManualPunch = async (req, res) => {
     }
 };
 
+const updateManualPunch = async (req, res) => {
+    try {
+        const userLabel = req.user?.nombre || req.user?.username || 'RH';
+        const result = await rhBiometricService.updateManualPunch(req.company_id, req.params.id, req.body, userLabel);
+        res.json(result);
+    } catch (error) {
+        res.status(error.status || 500).json({ message: error.message || 'Error al actualizar marcación manual.' });
+    }
+};
+
+const deleteManualPunch = async (req, res) => {
+    try {
+        const result = await rhBiometricService.deleteManualPunch(req.company_id, req.params.id);
+        res.json(result);
+    } catch (error) {
+        res.status(error.status || 500).json({ message: error.message || 'Error al eliminar marcación manual.' });
+    }
+};
+
+const getClockUsersComparison = async (req, res) => {
+    try {
+        const data = await rhBiometricService.getClockUsersComparison(req.company_id);
+        res.json({ success: true, ...data });
+    } catch (error) {
+        res.status(500).json({ message: error.message || 'Error al consultar usuarios del reloj.' });
+    }
+};
+
+const linkClockUser = async (req, res) => {
+    try {
+        const result = await rhBiometricService.linkClockUserToEmployee(req.company_id, req.body);
+        res.json(result);
+    } catch (error) {
+        res.status(error.status || 500).json({ message: error.message || 'Error al vincular usuario biométrico.' });
+    }
+};
+
+const cleanupInvalidDates = async (req, res) => {
+    try {
+        const result = await rhBiometricService.cleanupInvalidDates(req.company_id);
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ message: error.message || 'Error al limpiar fechas CMOS corruptas.' });
+    }
+};
+
+const setUpdatePolicy = async (req, res) => {
+    try {
+        const result = await rhBiometricService.setDeviceUpdatePolicy(req.company_id, req.params.id, req.body?.update_policy);
+        res.json(result);
+    } catch (error) {
+        res.status(error.status || 500).json({ message: error.message || 'Error al cambiar política de actualización.' });
+    }
+};
+
+const requestDeviceUpdate = async (req, res) => {
+    try {
+        const userLabel = req.user?.nombre || req.user?.username || 'Admin';
+        const result = await rhBiometricService.requestRemoteDeviceUpdate(req.company_id, req.params.id, userLabel);
+        res.json(result);
+    } catch (error) {
+        res.status(error.status || 500).json({ message: error.message || 'Error al solicitar actualización del conector.' });
+    }
+};
+
+const downloadUpdaterBat = async (req, res) => {
+    try {
+        const [devices] = await require('../../config/db').query(
+            'SELECT * FROM rh_biometric_devices WHERE id = ? AND company_id = ?',
+            [req.params.id, req.company_id]
+        );
+        if (!devices.length) return res.status(404).json({ message: 'Dispositivo no encontrado.' });
+        const batContent = rhBiometricService.buildOneClickUpdaterBat(devices[0], getBestServerUrl(req));
+        res.setHeader('Content-Type', 'application/x-bat');
+        res.setHeader('Content-Disposition', 'attachment; filename="actualizar-conector.bat"');
+        res.send(batContent);
+    } catch (error) {
+        res.status(500).json({ message: error.message || 'Error al generar actualizador 1-clic.' });
+    }
+};
+
 const syncFromAgent = async (req, res) => {
     try {
         const agentKey = req.headers['x-agent-key'] || req.body?.agent_key;
@@ -94,16 +175,26 @@ const heartbeatFromAgent = async (req, res) => {
 
         const deviceInfo = req.body?.device_info || null;
         const status = req.body?.status || 'online';
-        await rhBiometricService.updateDeviceHeartbeat(device.id, deviceInfo, status);
+        const mergedInfo = await rhBiometricService.updateDeviceHeartbeat(device.id, deviceInfo, status);
 
         const lastPunchInfo = await rhBiometricService.getDeviceLastPunch(device.id, device.company_id);
+        const agentMeta = rhBiometricService.getLatestAgentMetadata();
+        const compat = rhBiometricService.evaluateDeviceCompatibility(device, mergedInfo);
+        const updatePolicy = mergedInfo?.update_policy === 'prompt' ? 'prompt' : 'auto';
+        const updateRequested = !!mergedInfo?.pending_update_request;
 
         res.json({
             success: true,
             status: 'pong',
             serverTime: new Date().toISOString(),
             last_punch_time: lastPunchInfo.last_punch_time,
-            total_server_logs: lastPunchInfo.total_logs
+            total_server_logs: lastPunchInfo.total_logs,
+            latest_agent_version: agentMeta.version,
+            agent_script_sha256: agentMeta.sha256,
+            update_policy: updatePolicy,
+            update_requested: updateRequested,
+            is_compatible: compat.compatible,
+            changelog: agentMeta.changelog
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -147,10 +238,8 @@ const downloadConfig = async (req, res) => {
         if (!devices.length) return res.status(404).json({ message: 'Dispositivo no encontrado.' });
         const dev = devices[0];
 
-        const serverUrl = getBestServerUrl(req);
-
         const cfg = {
-            serverUrl,
+            serverUrl: getBestServerUrl(req),
             companyId: dev.company_id,
             deviceId: dev.id,
             deviceName: dev.nombre,
@@ -159,8 +248,8 @@ const downloadConfig = async (req, res) => {
             devicePort: dev.port || 4370,
             commKey: dev.comm_key || 0,
             protocol: dev.protocol || 'tcp',
-            syncIntervalSeconds: 30,
-            realTimeEnabled: true
+            syncIntervalSeconds: 60,
+            autoUpdate: true
         };
 
         res.setHeader('Content-Type', 'application/json');
@@ -171,47 +260,42 @@ const downloadConfig = async (req, res) => {
     }
 };
 
-const downloadBat = (req, res) => {
-    const batPath = path.resolve(__dirname, '../../../../scripts/biometric-agent/iniciar-conector.bat');
-    if (fs.existsSync(batPath)) {
-        res.setHeader('Content-Type', 'application/x-bat');
-        res.setHeader('Content-Disposition', 'attachment; filename="iniciar-conector.bat"');
-        return res.sendFile(batPath);
-    }
-    const fallbackBat = `@echo off\r\ntitle Conector Marcador Biometrico ZKTeco - SIPE WEB\r\ncolor 0A\r\ncd /d "%~dp0"\r\necho Carpeta: %cd%\r\nwhere node >nul 2>nul\r\nif %errorlevel% neq 0 (\r\n  echo [ERROR] Node.js no esta instalado. Descarguelo desde https://nodejs.org\r\n  pause\r\n  exit /b 1\r\n)\r\nif not exist "biometric-agent.js" (\r\n  echo [ERROR] No se encuentra biometric-agent.js en esta carpeta.\r\n  pause\r\n  exit /b 1\r\n)\r\nif not exist "node_modules\\node-zklib" (\r\n  echo [INFO] Instalando libreria node-zklib...\r\n  call npm install node-zklib --no-audit --no-fund\r\n)\r\nnode biometric-agent.js\r\npause\r\n`;
-    res.setHeader('Content-Type', 'application/x-bat');
-    res.setHeader('Content-Disposition', 'attachment; filename="iniciar-conector.bat"');
-    res.send(fallbackBat);
-};
-
-const downloadStopBat = (req, res) => {
-    const batPath = path.resolve(__dirname, '../../../../scripts/biometric-agent/detener-conector.bat');
-    if (fs.existsSync(batPath)) {
-        res.setHeader('Content-Type', 'application/x-bat');
-        res.setHeader('Content-Disposition', 'attachment; filename="detener-conector.bat"');
-        return res.sendFile(batPath);
-    }
-    const fallbackBat = `@echo off\r\ntitle Detener Conector Marcador Biometrico ZKTeco\r\ncolor 0C\r\ntaskkill /fi "WINDOWTITLE eq Conector Marcador Biometrico*" /f /t >nul 2>nul\r\npowershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*biometric-agent*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }" >nul 2>nul\r\necho [OK] Conector biometrico detenido.\r\npause\r\n`;
-    res.setHeader('Content-Type', 'application/x-bat');
-    res.setHeader('Content-Disposition', 'attachment; filename="detener-conector.bat"');
-    res.send(fallbackBat);
-};
-
-const downloadAgentScript = (req, res) => {
+const sendAgentFile = (res, fileName, contentType, fallbackContent) => {
     const candidatePaths = [
-        path.resolve(__dirname, '../../../../scripts/biometric-agent/biometric-agent.js'),
-        path.resolve(process.cwd(), 'scripts/biometric-agent/biometric-agent.js'),
-        path.resolve(__dirname, '../../../scripts/biometric-agent/biometric-agent.js')
+        path.resolve(__dirname, `../../../../scripts/biometric-agent/${fileName}`),
+        path.resolve(process.cwd(), `scripts/biometric-agent/${fileName}`),
+        path.resolve(__dirname, `../../../scripts/biometric-agent/${fileName}`)
     ];
-
     for (const p of candidatePaths) {
         if (fs.existsSync(p)) {
-            res.setHeader('Content-Type', 'application/javascript');
-            res.setHeader('Content-Disposition', 'attachment; filename="biometric-agent.js"');
+            res.setHeader('Content-Type', contentType);
+            res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
             return res.sendFile(p);
         }
     }
-    res.status(404).json({ message: 'Archivo de conector no encontrado en el servidor.' });
+    if (fallbackContent) {
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        return res.send(fallbackContent);
+    }
+    return res.status(404).json({ message: `Archivo ${fileName} no encontrado en el servidor.` });
+};
+
+const downloadBat = (_req, res) => sendAgentFile(res, 'iniciar-conector.bat', 'application/x-bat', '@echo off\r\ncd /d "%~dp0"\r\nnode biometric-agent.js\r\npause\r\n');
+const downloadStopBat = (_req, res) => sendAgentFile(res, 'detener-conector.bat', 'application/x-bat', '@echo off\r\ntaskkill /fi "WINDOWTITLE eq Conector Marcador Biometrico*" /f /t >nul 2>nul\r\npause\r\n');
+const downloadServiceBat = (_req, res) => sendAgentFile(res, 'instalar-servicio-windows.bat', 'application/x-bat');
+const downloadAgentScript = (_req, res) => sendAgentFile(res, 'biometric-agent.js', 'application/javascript');
+
+const downloadAgentScriptByKey = async (req, res) => {
+    try {
+        const agentKey = req.headers['x-agent-key'] || req.query?.agent_key;
+        if (!agentKey) return res.status(401).json({ message: 'Clave x-agent-key requerida.' });
+        const device = await rhBiometricService.getDeviceByAgentKey(agentKey);
+        if (!device) return res.status(403).json({ message: 'Dispositivo no autorizado.' });
+        return downloadAgentScript(req, res);
+    } catch (error) {
+        return res.status(500).json({ message: error.message });
+    }
 };
 
 module.exports = {
@@ -220,21 +304,20 @@ module.exports = {
     regenerateAgentKey,
     getAttendanceLogs,
     createManualPunch,
+    updateManualPunch,
+    deleteManualPunch,
+    getClockUsersComparison,
+    linkClockUser,
+    cleanupInvalidDates,
+    setUpdatePolicy,
+    requestDeviceUpdate,
+    downloadUpdaterBat,
     syncFromAgent,
     heartbeatFromAgent,
     downloadConfig,
     downloadBat,
     downloadStopBat,
+    downloadServiceBat,
     downloadAgentScript,
-    downloadAgentScriptByKey: async (req, res) => {
-        try {
-            const agentKey = req.headers['x-agent-key'] || req.query?.agent_key;
-            if (!agentKey) return res.status(401).json({ message: 'Clave x-agent-key requerida.' });
-            const device = await rhBiometricService.getDeviceByAgentKey(agentKey);
-            if (!device) return res.status(403).json({ message: 'Dispositivo no autorizado.' });
-            return downloadAgentScript(req, res);
-        } catch (error) {
-            return res.status(500).json({ message: error.message });
-        }
-    }
+    downloadAgentScriptByKey
 };

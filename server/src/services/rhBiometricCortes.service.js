@@ -4,12 +4,11 @@ const {
     getTodayDateOnly,
     extractDateOnly,
     extractTime,
-    timeStringToMinutes,
-    diffMinutesLocal,
     addDays,
     normalizeDateRange,
     appendPunchTimeBounds
 } = require('./rhBiometricDate.helper');
+const { evaluateDayAttendance } = require('./rhBiometricCalc.helper');
 const writeOps = require('./rhBiometricCortesWrite.service');
 
 /**
@@ -69,10 +68,7 @@ async function getPendingRangeSummary(companyId) {
         }
     }
 
-    if (!startDate || startDate > today) {
-        startDate = today;
-    }
-
+    if (!startDate || startDate > today) startDate = today;
     const endDate = today;
 
     const pendingData = await getDailyOvertimeRows(companyId, {
@@ -87,12 +83,7 @@ async function getPendingRangeSummary(companyId) {
         rango_pendiente: {
             fecha_inicio: startDate,
             fecha_fin: endDate,
-            total_filas: pendingData.summary.total_filas,
-            total_empleados: pendingData.summary.total_empleados,
-            total_horas_trabajadas: pendingData.summary.total_horas_trabajadas,
-            total_horas_extra_calculadas: pendingData.summary.total_horas_extra_calculadas,
-            total_horas_extra_aprobadas: pendingData.summary.total_horas_extra_aprobadas,
-            total_editados: pendingData.summary.total_editados
+            ...pendingData.summary
         }
     };
 }
@@ -125,12 +116,8 @@ async function getDailyOvertimeRows(companyId, filters = {}) {
     let { startDate, endDate } = normalizeDateRange(rawStart || today, rawEnd || today);
     if (!startDate) startDate = today;
     if (!endDate) endDate = today;
-    if (filters.mode === 'pending' && endDate > today) {
-        endDate = today;
-    }
-    if (startDate > endDate) {
-        startDate = endDate;
-    }
+    if (filters.mode === 'pending' && endDate > today) endDate = today;
+    if (startDate > endDate) startDate = endDate;
 
     const settings = await getSettings(companyId);
     const conditions = ['l.company_id = ?'];
@@ -223,76 +210,64 @@ async function getDailyOvertimeRows(companyId, filters = {}) {
     let totalMinutosTrabajados = 0;
     let totalHorasExtraCalculadas = 0;
     let totalHorasExtraAprobadas = 0;
+    let totalHorasExtraDiurnas = 0;
+    let totalHorasExtraNocturnas = 0;
     let totalEditados = 0;
+    let totalIncompletas = 0;
 
     for (const item of grouped.values()) {
-        const sorted = item.punches.sort();
-        const horaEntrada = sorted[0];
-        let horaSalidaAlmuerzo = null;
-        let horaEntradaAlmuerzo = null;
-        let horaSalida = null;
+        const [, m, d] = item.fecha.split('-');
+        const esFestivo = holidayMap.has(`${m}-${d}`);
 
-        if (sorted.length === 2) {
-            horaSalida = sorted[1];
-        } else if (sorted.length === 3) {
-            horaSalidaAlmuerzo = sorted[1];
-            horaSalida = sorted[2];
-        } else if (sorted.length >= 4) {
-            horaSalidaAlmuerzo = sorted[1];
-            horaEntradaAlmuerzo = sorted[2];
-            horaSalida = sorted[sorted.length - 1];
-        }
-
-        const entradaEsperadaMins = timeStringToMinutes(item.hora_entrada_esperada);
-        const limiteEntrada = entradaEsperadaMins + item.tolerancia_minutos;
-
-        let minutosTardanza = 0;
-        let esLlegadaTarde = false;
-        if (horaEntrada) {
-            const entradaRealMins = timeStringToMinutes(extractTime(horaEntrada));
-            if (entradaRealMins > limiteEntrada) {
-                minutosTardanza = entradaRealMins - entradaEsperadaMins;
-                esLlegadaTarde = true;
-            }
-        }
-
-        let minutosTrabajados = 0;
-        if (horaEntrada && horaSalida) {
-            let diffMins = diffMinutesLocal(horaEntrada, horaSalida);
-            if (horaSalidaAlmuerzo && horaEntradaAlmuerzo) {
-                const lunchMins = diffMinutesLocal(horaSalidaAlmuerzo, horaEntradaAlmuerzo);
-                diffMins = Math.max(0, diffMins - lunchMins);
-            }
-            minutosTrabajados = diffMins;
-        }
-
-        const horasTrabajadas = parseFloat((minutosTrabajados / 60).toFixed(2));
-        let horasExtraCalculadas = 0;
-        if (!item.exento_horas_extras && horasTrabajadas > item.jornada_horas) {
-            horasExtraCalculadas = parseFloat((horasTrabajadas - item.jornada_horas).toFixed(2));
-        }
+        const calc = evaluateDayAttendance(item.punches, {
+            fecha: item.fecha,
+            horaEntradaEsperada: item.hora_entrada_esperada,
+            toleranciaMinutos: item.tolerancia_minutos,
+            jornadaHoras: item.jornada_horas,
+            exentoHorasExtras: item.exento_horas_extras,
+            esFestivo
+        });
 
         const adj = adjustmentMap.get(`${item.device_uid}_${item.fecha}`)
             || (item.empleado_id ? adjustmentMap.get(`emp_${item.empleado_id}_${item.fecha}`) : null);
         const isEdited = adj ? !!adj.es_editado : false;
         const horasExtraAprobadas = adj && adj.horas_extra_aprobadas !== null
             ? parseFloat(Number(adj.horas_extra_aprobadas).toFixed(2))
-            : horasExtraCalculadas;
+            : calc.horasExtraCalculadas;
         const observacion = adj?.observacion || '';
         const isFrozen = adj ? !!adj.congelado : item.congelado;
         const activeCorteId = adj?.corte_id || item.corte_id;
 
-        if (onlyOvertimeFlag && horasExtraCalculadas <= 0 && horasExtraAprobadas <= 0) {
+        if (onlyOvertimeFlag && calc.horasExtraCalculadas <= 0 && horasExtraAprobadas <= 0) {
             continue;
         }
 
-        totalMinutosTrabajados += minutosTrabajados;
-        empSet.add(item.empleado_id || item.device_uid);
-        totalHorasExtraCalculadas += horasExtraCalculadas;
-        totalHorasExtraAprobadas += horasExtraAprobadas;
-        if (isEdited) totalEditados++;
+        // Proporcionar desglose diurna/nocturna respecto a aprobadas cuando fue ajustado
+        let heDiurnas = calc.horasExtraDiurnas;
+        let heNocturnas = calc.horasExtraNocturnas;
+        if (isEdited) {
+            if (horasExtraAprobadas <= 0) {
+                heDiurnas = 0;
+                heNocturnas = 0;
+            } else if (calc.horasExtraCalculadas > 0) {
+                const ratio = horasExtraAprobadas / calc.horasExtraCalculadas;
+                heNocturnas = parseFloat((calc.horasExtraNocturnas * ratio).toFixed(2));
+                heDiurnas = parseFloat(Math.max(0, horasExtraAprobadas - heNocturnas).toFixed(2));
+            } else {
+                heDiurnas = horasExtraAprobadas;
+                heNocturnas = 0;
+            }
+        }
 
-        const [, m, d] = item.fecha.split('-');
+        totalMinutosTrabajados += calc.minutosTrabajados;
+        empSet.add(item.empleado_id || item.device_uid);
+        totalHorasExtraCalculadas += calc.horasExtraCalculadas;
+        totalHorasExtraAprobadas += horasExtraAprobadas;
+        totalHorasExtraDiurnas += heDiurnas;
+        totalHorasExtraNocturnas += heNocturnas;
+        if (isEdited) totalEditados++;
+        if (calc.esMarcacionIncompleta) totalIncompletas++;
+
         rows.push({
             id: adj?.id || null,
             empleado_id: item.empleado_id,
@@ -302,19 +277,25 @@ async function getDailyOvertimeRows(companyId, filters = {}) {
             cargo: item.cargo,
             departamento: item.departamento,
             fecha: item.fecha,
-            entrada: extractTime(horaEntrada),
-            salida: extractTime(horaSalida),
-            horas_trabajadas: horasTrabajadas,
-            minutos_tardanza: minutosTardanza,
-            es_llegada_tarde: esLlegadaTarde,
-            horas_extra_calculadas: horasExtraCalculadas,
+            entrada: extractTime(calc.horaEntrada),
+            salida: extractTime(calc.horaSalida),
+            horas_trabajadas: calc.horasTrabajadas,
+            minutos_tardanza: calc.minutosTardanza,
+            es_llegada_tarde: calc.esLlegadaTarde,
+            horas_extra_calculadas: calc.horasExtraCalculadas,
             horas_extra_aprobadas: horasExtraAprobadas,
+            horas_extra_diurnas: heDiurnas,
+            horas_extra_nocturnas: heNocturnas,
+            es_domingo: calc.esDomingo,
+            es_festivo: calc.esFestivo,
+            marcas_count: calc.marcasCount,
+            es_marcacion_incompleta: calc.esMarcacionIncompleta,
+            alerta_marcacion: calc.alertaMarcacion,
             es_editado: isEdited,
             observacion,
             congelado: isFrozen,
             corte_id: activeCorteId,
-            exento_horas_extras: item.exento_horas_extras,
-            es_festivo: holidayMap.has(`${m}-${d}`)
+            exento_horas_extras: item.exento_horas_extras
         });
     }
 
@@ -326,7 +307,10 @@ async function getDailyOvertimeRows(companyId, filters = {}) {
             total_horas_trabajadas: parseFloat((totalMinutosTrabajados / 60).toFixed(2)),
             total_horas_extra_calculadas: parseFloat(totalHorasExtraCalculadas.toFixed(2)),
             total_horas_extra_aprobadas: parseFloat(totalHorasExtraAprobadas.toFixed(2)),
-            total_editados: totalEditados
+            total_horas_extra_diurnas: parseFloat(totalHorasExtraDiurnas.toFixed(2)),
+            total_horas_extra_nocturnas: parseFloat(totalHorasExtraNocturnas.toFixed(2)),
+            total_editados: totalEditados,
+            total_incompletas: totalIncompletas
         },
         range: {
             fecha_inicio: startDate,
@@ -340,6 +324,7 @@ module.exports = {
     getPendingRangeSummary,
     getDailyOvertimeRows,
     updateOvertimeEntry: writeOps.updateOvertimeEntry,
+    batchUpdateOvertimeEntries: writeOps.batchUpdateOvertimeEntries,
     freezePeriod: (companyId, userId, data) => writeOps.freezePeriod(companyId, userId, data, getDailyOvertimeRows),
     getCortesList: writeOps.getCortesList,
     unfreezeCorte: writeOps.unfreezeCorte

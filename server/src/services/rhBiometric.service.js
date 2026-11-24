@@ -1,14 +1,14 @@
 const pool = require('../config/db');
-const crypto = require('crypto');
 const {
     getTodayDateOnly,
     formatToSqlDateTime,
     isValidBiometricDateTime,
     appendPunchTimeBounds
 } = require('./rhBiometricDate.helper');
+const deviceService = require('./rhBiometricDevice.service');
 
 /**
- * Servicio de Control de Marcador Digital Biométrico (ZKTeco) en Recursos Humanos
+ * Servicio de Marcaciones del Marcador Digital Biométrico (ZKTeco) en Recursos Humanos
  */
 
 const PUNCH_TYPE_MAP = {
@@ -29,130 +29,29 @@ const VERIFY_TYPE_MAP = {
     15: 'Rostro / Facial'
 };
 
-async function getDevices(companyId) {
-    const [rows] = await pool.query(
-        `SELECT d.*, b.nombre as branch_name,
-                (CASE WHEN d.last_seen >= NOW() - INTERVAL 90 SECOND THEN 1 ELSE 0 END) as is_online,
-                (SELECT COUNT(*) FROM rh_biometric_attendance_logs
-                 WHERE device_id = d.id AND punch_time >= '2018-01-01 00:00:00'
-                   AND punch_time <= DATE_ADD(NOW(), INTERVAL 1 DAY)) as total_punches
-         FROM rh_biometric_devices d
-         LEFT JOIN branches b ON b.id = d.branch_id
-         WHERE d.company_id = ?
-         ORDER BY d.id ASC`,
-        [companyId]
-    );
-    return rows;
-}
-
-async function saveDevice(companyId, data) {
-    const { id, branch_id, nombre, ip_address, port, comm_key, protocol, is_active } = data;
-    const ip = (ip_address || '192.168.3.201').trim();
-    const tcpPort = parseInt(port, 10) || 4370;
-    const keyComm = parseInt(comm_key, 10) || 0;
-    const proto = protocol === 'udp' ? 'udp' : 'tcp';
-    const active = is_active === false || is_active === 0 ? 0 : 1;
-
-    if (id) {
-        await pool.query(
-            `UPDATE rh_biometric_devices
-             SET branch_id = ?, nombre = ?, ip_address = ?, port = ?, comm_key = ?, protocol = ?, is_active = ?
-             WHERE id = ? AND company_id = ?`,
-            [branch_id || null, nombre || 'Marcador Digital ZKTeco', ip, tcpPort, keyComm, proto, active, id, companyId]
-        );
-        const [updated] = await pool.query('SELECT * FROM rh_biometric_devices WHERE id = ?', [id]);
-        return updated[0];
-    }
-
-    const agentKey = crypto.randomBytes(24).toString('hex');
-    const [res] = await pool.query(
-        `INSERT INTO rh_biometric_devices
-         (company_id, branch_id, nombre, ip_address, port, comm_key, protocol, agent_key, is_active, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'offline')`,
-        [companyId, branch_id || null, nombre || 'Marcador Digital ZKTeco', ip, tcpPort, keyComm, proto, agentKey, active]
-    );
-    const [created] = await pool.query('SELECT * FROM rh_biometric_devices WHERE id = ?', [res.insertId]);
-    return created[0];
-}
-
-async function regenerateAgentKey(companyId, deviceId) {
-    const newKey = crypto.randomBytes(24).toString('hex');
-    await pool.query(
-        `UPDATE rh_biometric_devices SET agent_key = ? WHERE id = ? AND company_id = ?`,
-        [newKey, deviceId, companyId]
-    );
-    return newKey;
-}
-
-async function getDeviceByAgentKey(agentKey) {
-    if (!agentKey) return null;
-    const [rows] = await pool.query(
-        `SELECT d.*, c.nombre_comercial as company_name
-         FROM rh_biometric_devices d
-         JOIN companies c ON c.id = d.company_id
-         WHERE d.agent_key = ? AND d.is_active = 1
-         LIMIT 1`,
-        [agentKey.trim()]
-    );
-    return rows.length ? rows[0] : null;
-}
-
-async function updateDeviceHeartbeat(deviceId, deviceInfo = null, status = 'online') {
-    const infoJson = deviceInfo ? JSON.stringify(deviceInfo) : null;
-    await pool.query(
-        `UPDATE rh_biometric_devices
-         SET status = ?, last_seen = NOW(), device_info = COALESCE(?, device_info)
-         WHERE id = ?`,
-        [status, infoJson, deviceId]
-    );
-}
-
 /**
- * Obtiene la última marcación VÁLIDA registrada (excluyendo fechas corruptas de CMOS como año 2000 o 2118)
+ * Procesa un lote de marcaciones enviadas por el conector LAN.
+ * Vinculación ESTRICTA por `codigo_biometrico` (nunca cruza por `codigo` de planilla ni `emp.id`).
  */
-async function getDeviceLastPunch(deviceId, companyId) {
-    const [rows] = await pool.query(
-        `SELECT DATE_FORMAT(MAX(punch_time), '%Y-%m-%d %H:%i:%s') as last_punch_time, COUNT(*) as total_logs
-         FROM rh_biometric_attendance_logs
-         WHERE device_id = ? AND company_id = ?
-           AND punch_time >= '2018-01-01 00:00:00'
-           AND punch_time <= DATE_ADD(NOW(), INTERVAL 1 DAY)`,
-        [deviceId, companyId]
-    );
-    return {
-        last_punch_time: rows[0]?.last_punch_time || null,
-        total_logs: rows[0]?.total_logs || 0
-    };
-}
-
 async function processBatchPunches(companyId, deviceId, punches = []) {
     if (!Array.isArray(punches) || punches.length === 0) {
         return { totalReceived: 0, insertedCount: 0, skippedInvalidDates: 0 };
     }
 
     const [employees] = await pool.query(
-        `SELECT id, codigo, codigo_biometrico
+        `SELECT id, codigo_biometrico
          FROM rh_empleados
-         WHERE company_id = ?`,
+         WHERE company_id = ? AND codigo_biometrico IS NOT NULL AND codigo_biometrico != ''`,
         [companyId]
     );
 
     const empMap = new Map();
     for (const emp of employees) {
-        if (emp.codigo) {
-            const num = String(emp.codigo).replace(/^0+/, '');
-            if (num) empMap.set(num.toLowerCase(), emp.id);
-            empMap.set(String(emp.codigo).trim().toLowerCase(), emp.id);
-        }
-        empMap.set(String(emp.id), emp.id);
-    }
-    for (const emp of employees) {
-        if (emp.codigo_biometrico) {
-            const bio = String(emp.codigo_biometrico).trim().toLowerCase();
-            empMap.set(bio, emp.id);
-            const bioNoZero = bio.replace(/^0+/, '');
-            if (bioNoZero) empMap.set(bioNoZero, emp.id);
-        }
+        const bio = String(emp.codigo_biometrico).trim().toLowerCase();
+        if (!bio) continue;
+        empMap.set(bio, emp.id);
+        const bioNoZero = bio.replace(/^0+/, '');
+        if (bioNoZero) empMap.set(bioNoZero, emp.id);
     }
 
     let insertedCount = 0;
@@ -241,6 +140,56 @@ async function createManualPunch(companyId, data) {
     );
 
     return { id: res.insertId, success: true };
+}
+
+async function updateManualPunch(companyId, punchId, data, userLabel = 'RH') {
+    const [existing] = await pool.query(
+        `SELECT id, source, congelado, notas FROM rh_biometric_attendance_logs
+         WHERE id = ? AND company_id = ? LIMIT 1`,
+        [punchId, companyId]
+    );
+    if (!existing.length) throw Object.assign(new Error('Marcación no encontrada.'), { status: 404 });
+    if (existing[0].source !== 'manual') {
+        throw Object.assign(new Error('Solo se pueden editar marcaciones registradas manualmente. Las marcas del reloj están protegidas.'), { status: 403 });
+    }
+    if (existing[0].congelado) {
+        throw Object.assign(new Error('No se puede editar una marcación perteneciente a un corte congelado.'), { status: 409 });
+    }
+
+    const { punch_time, punch_type, notas } = data;
+    const normalizedTime = punch_time ? (formatToSqlDateTime(punch_time) || punch_time) : null;
+    if (!normalizedTime) throw Object.assign(new Error('Fecha y hora válidas requeridas.'), { status: 400 });
+
+    const auditNote = (notas && notas.trim())
+        ? `${notas.trim()} [Editado por ${userLabel}]`
+        : `${existing[0].notas || 'Marcación manual'} [Editado por ${userLabel}]`;
+
+    await pool.query(
+        `UPDATE rh_biometric_attendance_logs
+         SET punch_time = ?, punch_type = ?, notas = ?
+         WHERE id = ? AND company_id = ?`,
+        [normalizedTime, punch_type || 'entrada', auditNote.slice(0, 250), punchId, companyId]
+    );
+
+    return { id: Number(punchId), success: true, message: 'Marcación manual actualizada correctamente.' };
+}
+
+async function deleteManualPunch(companyId, punchId) {
+    const [existing] = await pool.query(
+        `SELECT id, source, congelado FROM rh_biometric_attendance_logs
+         WHERE id = ? AND company_id = ? LIMIT 1`,
+        [punchId, companyId]
+    );
+    if (!existing.length) throw Object.assign(new Error('Marcación no encontrada.'), { status: 404 });
+    if (existing[0].source !== 'manual') {
+        throw Object.assign(new Error('Solo se pueden eliminar marcaciones manuales. Las marcas del reloj biométrico son inmutables.'), { status: 403 });
+    }
+    if (existing[0].congelado) {
+        throw Object.assign(new Error('No se puede eliminar una marcación de un corte congelado.'), { status: 409 });
+    }
+
+    await pool.query('DELETE FROM rh_biometric_attendance_logs WHERE id = ? AND company_id = ?', [punchId, companyId]);
+    return { success: true, message: 'Marcación manual eliminada correctamente.' };
 }
 
 async function getAttendanceLogs(companyId, query = {}) {
@@ -346,13 +295,10 @@ async function getAttendanceLogs(companyId, query = {}) {
 }
 
 module.exports = {
-    getDevices,
-    saveDevice,
-    regenerateAgentKey,
-    getDeviceByAgentKey,
-    updateDeviceHeartbeat,
-    getDeviceLastPunch,
+    ...deviceService,
     processBatchPunches,
     createManualPunch,
+    updateManualPunch,
+    deleteManualPunch,
     getAttendanceLogs
 };

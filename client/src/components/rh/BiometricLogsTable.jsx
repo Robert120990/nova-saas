@@ -1,6 +1,6 @@
 import {
     LogIn, LogOut, Coffee, Clock, CheckCircle2,
-    ShieldCheck, Laptop, Fingerprint, FolderArchive
+    ShieldCheck, Laptop, Fingerprint, FolderArchive, Edit3, Trash2
 } from 'lucide-react';
 import { formatDateTime } from '../../utils/dateUtils';
 import Table from '../ui/Table';
@@ -12,7 +12,9 @@ const BiometricLogsTable = ({
     pagination = { total: 0, totalPages: 1, page: 1, limit: 20 },
     limit = 20,
     onLimitChange,
-    onPageChange
+    onPageChange,
+    onEditManual,
+    onDeleteManual
 }) => {
     const safeLogs = Array.isArray(logs) ? logs : [];
 
@@ -37,7 +39,8 @@ const BiometricLogsTable = ({
         { label: 'Código Bio', sortKey: 'device_uid', sortType: 'number' },
         { label: 'Tipo Marcación', sortKey: 'punch_type', sortType: 'string' },
         { label: 'Modo Verificación', sortKey: 'verify_label', sortType: 'string' },
-        { label: 'Origen / Dispositivo', sortKey: 'source', sortType: 'string' }
+        { label: 'Origen / Dispositivo', sortKey: 'source', sortType: 'string' },
+        { label: 'Acciones', className: 'text-center', sortable: false }
     ];
 
     return (
@@ -52,6 +55,7 @@ const BiometricLogsTable = ({
                     const BadgeIcon = badge.icon;
                     const isManual = log.source === 'manual';
                     const isZkImport = log.source === 'zk_import';
+                    const canModifyManual = isManual && !log.congelado;
                     return (
                         <tr key={log.id} className="hover:bg-slate-50/80 transition-colors text-xs font-medium text-slate-700">
                             <td className="py-3 px-4 font-mono font-bold text-slate-800 whitespace-nowrap">
@@ -68,7 +72,7 @@ const BiometricLogsTable = ({
                                         </span>
                                     </div>
                                 ) : (
-                                    <span className="text-amber-600 font-medium">
+                                    <span className="text-amber-600 font-semibold">
                                         No vinculado (UID: {log.device_uid})
                                     </span>
                                 )}
@@ -90,21 +94,54 @@ const BiometricLogsTable = ({
                                     {log.verify_label || 'Huella'}
                                 </span>
                             </td>
-                            <td className="py-3 px-4 whitespace-nowrap">
+                            <td className="py-3 px-4">
                                 {isManual ? (
-                                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                                        <Laptop className="w-3 h-3" />
-                                        Manual ({log.registrado_por_nombre || 'RH'})
-                                    </span>
+                                    <div>
+                                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                                            <Laptop className="w-3 h-3" />
+                                            Manual
+                                        </span>
+                                        {log.notas && (
+                                            <span className="block text-[10px] text-slate-400 truncate max-w-[200px] mt-0.5" title={log.notas}>
+                                                {log.notas}
+                                            </span>
+                                        )}
+                                    </div>
                                 ) : isZkImport ? (
                                     <span className="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
                                         <FolderArchive className="w-3 h-3" />
                                         Archivo ZK (.xls)
                                     </span>
                                 ) : (
-                                    <span className="inline-flex items-center gap-1 text-[11px] font-mono text-slate-600">
+                                    <span className="inline-flex items-center gap-1 text-[11px] font-mono text-slate-600 whitespace-nowrap">
                                         <Fingerprint className="w-3.5 h-3.5 text-indigo-500" />
                                         {log.device_nombre || 'Reloj'} ({log.device_ip || '192.168.3.201'})
+                                    </span>
+                                )}
+                            </td>
+                            <td className="py-3 px-3 text-center whitespace-nowrap">
+                                {canModifyManual ? (
+                                    <div className="inline-flex items-center gap-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => onEditManual && onEditManual(log)}
+                                            className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                            title="Editar marcación manual"
+                                        >
+                                            <Edit3 className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => onDeleteManual && onDeleteManual(log)}
+                                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                            title="Eliminar marcación manual"
+                                        >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <span className="text-[10px] text-slate-300" title={log.congelado ? 'Corte congelado' : 'Marca protegida del reloj'}>
+                                        —
                                     </span>
                                 )}
                             </td>

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
-    Sliders, Clock, Users, Calendar, Link2, X, UserCheck
+    Sliders, Clock, Users, Calendar, Link2, X, UserCheck, Fingerprint
 } from 'lucide-react';
 import { unwrapList } from '../../utils/apiUtils';
 import {
@@ -11,7 +11,8 @@ import {
     BiometricEmployeeShiftsTab,
     BiometricOvertimeTab,
     BiometricHolidaysTab,
-    BiometricPayrollTab
+    BiometricPayrollTab,
+    BiometricDeviceUsersTab
 } from './tabs';
 
 const BiometricConfigModal = ({ open, onClose }) => {
@@ -237,6 +238,7 @@ const BiometricConfigModal = ({ open, onClose }) => {
                 <div className="flex border-b border-slate-200 px-6 bg-slate-50/50 gap-2 overflow-x-auto">
                     {[
                         { id: 'turnos', label: 'Turnos y Horarios', icon: Clock },
+                        { id: 'usuarios_reloj', label: 'Usuarios en Reloj', icon: Fingerprint },
                         { id: 'horarios_empleados', label: 'Horarios por Empleado', icon: UserCheck },
                         { id: 'horas_extras', label: 'Exención Horas Extra', icon: Users },
                         { id: 'festivos', label: 'Días Festivos', icon: Calendar },
@@ -277,6 +279,8 @@ const BiometricConfigModal = ({ open, onClose }) => {
                             isReclassifying={reclassifyMutation.isPending}
                         />
                     )}
+
+                    {activeTab === 'usuarios_reloj' && <BiometricDeviceUsersTab />}
 
                     {activeTab === 'horarios_empleados' && (
                         <BiometricEmployeeShiftsTab

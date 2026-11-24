@@ -124,6 +124,17 @@ const BiometricOvertimeCortesTab = () => {
         }
     });
 
+    const batchOvertimeMutation = useMutation({
+        mutationFn: async (payload) => (await axios.post('/api/rh/biometric/cortes/overtime-batch', payload)).data,
+        onSuccess: (data) => {
+            toast.success(data?.message || 'Horas extra actualizadas en lote.');
+            queryClient.invalidateQueries({ queryKey: ['rh-biometric-cortes-summary'] });
+            queryClient.invalidateQueries({ queryKey: ['rh-biometric-cortes-daily-overtime'] });
+            queryClient.invalidateQueries({ queryKey: ['rh-biometric-cortes-list'] });
+        },
+        onError: (err) => toast.error(err.response?.data?.message || 'Error en actualización masiva')
+    });
+
     const handleOpenEdit = (row) => {
         setSelectedEntry(row);
         setIsEditModalOpen(true);
@@ -291,6 +302,10 @@ const BiometricOvertimeCortesTab = () => {
                     onOnlyOvertimeChange={setOnlyOvertime}
                     isFrozenView={!!selectedCorte}
                     onOpenEdit={handleOpenEdit}
+                    isBatchPending={batchOvertimeMutation.isPending}
+                    onBatchAction={(payload, onDone) => {
+                        batchOvertimeMutation.mutate(payload, { onSuccess: () => onDone && onDone() });
+                    }}
                 />
             )}
 

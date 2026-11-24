@@ -212,8 +212,101 @@ async function unfreezeCorte(companyId, corteId) {
     }
 }
 
+/**
+ * Aprobación / denegación / ajuste masivo de horas extra en lote
+ */
+async function batchUpdateOvertimeEntries(companyId, userId, { entries = [], action = 'deny_zero', customHours = 0, observacion = '' }) {
+    if (!Array.isArray(entries) || entries.length === 0) {
+        throw new Error('Debe seleccionar al menos un registro para actualizar en lote.');
+    }
+
+    const conn = await pool.getConnection();
+    const touchedCortes = new Set();
+    let updatedCount = 0;
+
+    try {
+        await conn.beginTransaction();
+
+        for (const item of entries) {
+            const cleanFecha = extractDateOnly(item.fecha);
+            if (!item.device_uid || !cleanFecha) continue;
+
+            let aprobadas = 0;
+            const calc = Math.max(0, parseFloat(item.horas_extra_calculadas || 0));
+            const custom = Math.max(0, parseFloat(customHours || 0));
+
+            if (action === 'approve_clock') aprobadas = calc;
+            else if (action === 'deny_zero') aprobadas = 0;
+            else if (action === 'set_custom') aprobadas = custom;
+            else if (action === 'cap_hours') aprobadas = Math.min(calc, custom);
+
+            aprobadas = parseFloat(aprobadas.toFixed(2));
+            const note = observacion && observacion.trim()
+                ? observacion.trim()
+                : (action === 'deny_zero' ? 'Denegadas en lote por jefatura' : (action === 'approve_clock' ? 'Aprobadas en lote según reloj' : `Ajuste en lote (${aprobadas} h)`));
+
+            await conn.query(
+                `INSERT INTO rh_biometric_daily_overtime (
+                    company_id, empleado_id, device_uid, fecha, entrada, salida,
+                    horas_trabajadas, horas_extra_calculadas, horas_extra_aprobadas,
+                    es_editado, observacion, corte_id, created_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    horas_extra_aprobadas = VALUES(horas_extra_aprobadas),
+                    es_editado = 1,
+                    observacion = VALUES(observacion),
+                    updated_at = NOW()`,
+                [
+                    companyId, item.empleado_id || null, item.device_uid, cleanFecha,
+                    item.entrada && item.entrada !== '---' ? item.entrada : null,
+                    item.salida && item.salida !== '---' ? item.salida : null,
+                    parseFloat(item.horas_trabajadas || 0), calc, aprobadas,
+                    note, item.corte_id || null, userId || null
+                ]
+            );
+
+            await conn.query(
+                `UPDATE rh_biometric_attendance_logs
+                 SET horas_extra = ?
+                 WHERE company_id = ? AND device_uid = ?
+                   AND punch_time >= ? AND punch_time <= ?`,
+                [aprobadas, companyId, item.device_uid, `${cleanFecha} 00:00:00`, `${cleanFecha} 23:59:59`]
+            );
+
+            if (item.corte_id) touchedCortes.add(item.corte_id);
+            updatedCount++;
+        }
+
+        for (const corteId of touchedCortes) {
+            await conn.query(
+                `UPDATE rh_biometric_cortes c
+                 SET total_horas_extra_aprobadas = (
+                     SELECT COALESCE(SUM(horas_extra_aprobadas), 0)
+                     FROM rh_biometric_daily_overtime
+                     WHERE corte_id = c.id
+                 )
+                 WHERE id = ? AND company_id = ?`,
+                [corteId, companyId]
+            );
+        }
+
+        await conn.commit();
+        return {
+            success: true,
+            updatedCount,
+            message: `${updatedCount} registro(s) de horas extra actualizados en lote.`
+        };
+    } catch (err) {
+        await conn.rollback();
+        throw err;
+    } finally {
+        conn.release();
+    }
+}
+
 module.exports = {
     updateOvertimeEntry,
+    batchUpdateOvertimeEntries,
     freezePeriod,
     getCortesList,
     unfreezeCorte

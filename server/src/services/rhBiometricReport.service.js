@@ -6,11 +6,10 @@ const { enrichReportWithAbsences } = require('./rhBiometricReportAbsences.helper
 const {
     extractDateOnly,
     extractTime,
-    timeStringToMinutes,
-    diffMinutesLocal,
     normalizeDateRange,
     appendPunchTimeBounds
 } = require('./rhBiometricDate.helper');
+const { evaluateDayAttendance, formatDecimalHoursText } = require('./rhBiometricCalc.helper');
 
 async function getAttendanceReportData(companyId, filters = {}) {
     const rawStart = filters.startDate || filters.start_date;
@@ -103,62 +102,51 @@ async function getAttendanceReportData(companyId, filters = {}) {
     let totalMinutosTrabajados = 0;
     let totalLlegadasTarde = 0;
     let totalHorasExtra = 0;
+    let totalHorasExtraDiurnas = 0;
+    let totalHorasExtraNocturnas = 0;
+    let totalIncompletas = 0;
 
     for (const item of grouped.values()) {
-        const sorted = item.punches.sort();
-        const horaEntrada = sorted[0];
-        let horaSalidaAlmuerzo = null, horaEntradaAlmuerzo = null, horaSalida = null;
+        const [, m, d] = item.fecha.split('-');
+        const esFestivo = holidayMap.has(`${m}-${d}`);
+        const calc = evaluateDayAttendance(item.punches, {
+            fecha: item.fecha,
+            horaEntradaEsperada: item.hora_entrada_esperada,
+            toleranciaMinutos: item.tolerancia_minutos,
+            jornadaHoras: item.jornada_horas,
+            exentoHorasExtras: item.exento_horas_extras,
+            esFestivo
+        });
 
-        if (sorted.length === 2) {
-            horaSalida = sorted[1];
-        } else if (sorted.length === 3) {
-            horaSalidaAlmuerzo = sorted[1];
-            horaSalida = sorted[2];
-        } else if (sorted.length >= 4) {
-            horaSalidaAlmuerzo = sorted[1];
-            horaEntradaAlmuerzo = sorted[2];
-            horaSalida = sorted[sorted.length - 1];
-        }
+        totalMinutosTrabajados += calc.minutosTrabajados;
+        if (calc.esLlegadaTarde) totalLlegadasTarde++;
+        if (calc.esMarcacionIncompleta) totalIncompletas++;
 
-        const entradaEsperadaMins = timeStringToMinutes(item.hora_entrada_esperada);
-        const limiteEntrada = entradaEsperadaMins + item.tolerancia_minutos;
-
-        let minutosTardanza = 0, esLlegadaTarde = false;
-        if (horaEntrada) {
-            const entradaRealMins = timeStringToMinutes(extractTime(horaEntrada));
-            if (entradaRealMins > limiteEntrada) {
-                minutosTardanza = entradaRealMins - entradaEsperadaMins;
-                esLlegadaTarde = true;
-                totalLlegadasTarde++;
-            }
-        }
-
-        let minutosTrabajados = 0;
-        if (horaEntrada && horaSalida) {
-            let diffMins = diffMinutesLocal(horaEntrada, horaSalida);
-            if (horaSalidaAlmuerzo && horaEntradaAlmuerzo) {
-                const lunchMins = diffMinutesLocal(horaSalidaAlmuerzo, horaEntradaAlmuerzo);
-                diffMins = Math.max(0, diffMins - lunchMins);
-            }
-            minutosTrabajados = diffMins;
-            totalMinutosTrabajados += minutosTrabajados;
-        }
-
-        const horasTrabajadas = parseFloat((minutosTrabajados / 60).toFixed(2));
-        let horasExtra = 0;
-        if (!item.exento_horas_extras && horasTrabajadas > item.jornada_horas) {
-            horasExtra = parseFloat((horasTrabajadas - item.jornada_horas).toFixed(2));
-        }
+        let horasExtra = calc.horasExtraCalculadas;
+        let heDiurnas = calc.horasExtraDiurnas;
+        let heNocturnas = calc.horasExtraNocturnas;
 
         const adj = adjMap.get(`${item.device_uid}_${item.fecha}`)
             || (item.empleado_id ? adjMap.get(`emp_${item.empleado_id}_${item.fecha}`) : null)
             || adjMap.get(`${item.codigo}_${item.fecha}`);
         if (adj && adj.horas_extra_aprobadas !== null) {
             horasExtra = parseFloat(Number(adj.horas_extra_aprobadas).toFixed(2));
+            if (horasExtra <= 0) {
+                heDiurnas = 0;
+                heNocturnas = 0;
+            } else if (calc.horasExtraCalculadas > 0) {
+                const ratio = horasExtra / calc.horasExtraCalculadas;
+                heNocturnas = parseFloat((calc.horasExtraNocturnas * ratio).toFixed(2));
+                heDiurnas = parseFloat(Math.max(0, horasExtra - heNocturnas).toFixed(2));
+            } else {
+                heDiurnas = horasExtra;
+                heNocturnas = 0;
+            }
         }
         totalHorasExtra += horasExtra;
+        totalHorasExtraDiurnas += heDiurnas;
+        totalHorasExtraNocturnas += heNocturnas;
 
-        const [, m, d] = item.fecha.split('-');
         reportRows.push({
             empleado_id: item.empleado_id,
             device_uid: item.device_uid,
@@ -168,19 +156,24 @@ async function getAttendanceReportData(companyId, filters = {}) {
             departamento: item.departamento,
             cargo: item.cargo,
             fecha: item.fecha,
-            entrada: extractTime(horaEntrada),
-            salida_almuerzo: extractTime(horaSalidaAlmuerzo),
-            entrada_almuerzo: extractTime(horaEntradaAlmuerzo),
-            salida: extractTime(horaSalida),
-            horas_trabajadas: horasTrabajadas,
-            minutos_tardanza: minutosTardanza,
-            es_llegada_tarde: esLlegadaTarde,
+            entrada: extractTime(calc.horaEntrada),
+            salida_almuerzo: extractTime(calc.horaSalidaAlmuerzo),
+            entrada_almuerzo: extractTime(calc.horaEntradaAlmuerzo),
+            salida: extractTime(calc.horaSalida),
+            horas_trabajadas: calc.horasTrabajadas,
+            minutos_tardanza: calc.minutosTardanza,
+            es_llegada_tarde: calc.esLlegadaTarde,
             horas_extra: horasExtra,
+            horas_extra_diurnas: heDiurnas,
+            horas_extra_nocturnas: heNocturnas,
+            es_domingo: calc.esDomingo,
+            es_festivo: calc.esFestivo,
+            es_marcacion_incompleta: calc.esMarcacionIncompleta,
+            alerta_marcacion: calc.alertaMarcacion,
             es_editado: adj ? !!adj.es_editado : false,
             observacion: adj?.observacion || '',
             congelado: adj ? !!adj.congelado : false,
-            exento_horas_extras: item.exento_horas_extras,
-            es_festivo: holidayMap.has(`${m}-${d}`)
+            exento_horas_extras: item.exento_horas_extras
         });
     }
 
@@ -188,7 +181,10 @@ async function getAttendanceReportData(companyId, filters = {}) {
         total_registros: reportRows.length,
         total_horas_trabajadas: parseFloat((totalMinutosTrabajados / 60).toFixed(2)),
         total_llegadas_tarde: totalLlegadasTarde,
-        total_horas_extra: parseFloat(totalHorasExtra.toFixed(2))
+        total_horas_extra: parseFloat(totalHorasExtra.toFixed(2)),
+        total_horas_extra_diurnas: parseFloat(totalHorasExtraDiurnas.toFixed(2)),
+        total_horas_extra_nocturnas: parseFloat(totalHorasExtraNocturnas.toFixed(2)),
+        total_incompletas: totalIncompletas
     };
     await enrichReportWithAbsences(companyId, { ...filters, startDate, endDate }, reportRows, summary, holidayMap, settings);
 
@@ -207,17 +203,17 @@ async function generateAttendancePdf(companyId, filters = {}) {
 
     const cols = [
         { label: 'FECHA', x: 30, w: 46, align: 'left' },
-        { label: 'CÓDIGO', x: 78, w: 38, align: 'left' },
-        { label: 'EMPLEADO', x: 118, w: 120, align: 'left' },
-        { label: 'TURNO', x: 240, w: 85, align: 'left' },
-        { label: 'DEPARTAMENTO', x: 328, w: 75, align: 'left' },
-        { label: 'ENTRADA', x: 406, w: 42, align: 'center' },
-        { label: 'S. ALM', x: 450, w: 42, align: 'center' },
-        { label: 'E. ALM', x: 494, w: 42, align: 'center' },
-        { label: 'SALIDA', x: 538, w: 42, align: 'center' },
-        { label: 'HRS TRAB', x: 582, w: 48, align: 'right' },
-        { label: 'TARDE', x: 632, w: 42, align: 'right' },
-        { label: 'H. EXTRA', x: 676, w: 56, align: 'right' }
+        { label: 'CÓDIGO', x: 78, w: 36, align: 'left' },
+        { label: 'EMPLEADO', x: 116, w: 118, align: 'left' },
+        { label: 'TURNO', x: 236, w: 78, align: 'left' },
+        { label: 'DEPARTAMENTO', x: 316, w: 72, align: 'left' },
+        { label: 'ENTRADA', x: 390, w: 40, align: 'center' },
+        { label: 'S. ALM', x: 432, w: 40, align: 'center' },
+        { label: 'E. ALM', x: 474, w: 40, align: 'center' },
+        { label: 'SALIDA', x: 516, w: 40, align: 'center' },
+        { label: 'HRS TRAB', x: 558, w: 54, align: 'right' },
+        { label: 'TARDE', x: 614, w: 38, align: 'right' },
+        { label: 'H. EXTRA', x: 654, w: 78, align: 'right' }
     ];
 
     const renderHeaderRow = () => {
@@ -241,7 +237,7 @@ async function generateAttendancePdf(companyId, filters = {}) {
 
         if (r.es_ausencia) {
             const absColor = r.ausencia_estado === 'pendiente' ? '#b45309' : (r.ausencia_goce ? '#0369a1' : '#b91c1c');
-            doc.font('Helvetica-Bold').fillColor(absColor).text(r.observacion || r.entrada, cols[5].x, y, { width: 174, align: 'left', lineBreak: false });
+            doc.font('Helvetica-Bold').fillColor(absColor).text(r.observacion || r.entrada, cols[5].x, y, { width: 166, align: 'left', lineBreak: false });
             doc.font('Helvetica').fillColor('#334155');
         } else {
             doc.text(r.entrada, cols[5].x, y, { width: cols[5].w, align: 'center', lineBreak: false });
@@ -249,7 +245,8 @@ async function generateAttendancePdf(companyId, filters = {}) {
             doc.text(r.entrada_almuerzo, cols[7].x, y, { width: cols[7].w, align: 'center', lineBreak: false });
             doc.text(r.salida, cols[8].x, y, { width: cols[8].w, align: 'center', lineBreak: false });
         }
-        doc.text(r.horas_trabajadas > 0 ? r.horas_trabajadas.toFixed(2) : '—', cols[9].x, y, { width: cols[9].w, align: 'right', lineBreak: false });
+
+        doc.text(r.horas_trabajadas > 0 ? formatDecimalHoursText(r.horas_trabajadas, true) : '—', cols[9].x, y, { width: cols[9].w, align: 'right', lineBreak: false });
 
         if (r.es_llegada_tarde) {
             doc.font('Helvetica-Bold').fillColor('#b91c1c').text(`${r.minutos_tardanza} m`, cols[10].x, y, { width: cols[10].w, align: 'right', lineBreak: false });
@@ -259,7 +256,11 @@ async function generateAttendancePdf(companyId, filters = {}) {
         }
 
         if (r.horas_extra > 0) {
-            doc.font('Helvetica-Bold').fillColor('#15803d').text(`${r.horas_extra.toFixed(2)} h`, cols[11].x, y, { width: cols[11].w, align: 'right', lineBreak: false });
+            const heLabel = `${formatDecimalHoursText(r.horas_extra, true)} (${r.horas_extra.toFixed(2)}h)`;
+            doc.font('Helvetica-Bold').fillColor('#15803d').text(heLabel, cols[11].x, y, { width: cols[11].w, align: 'right', lineBreak: false });
+            doc.font('Helvetica').fillColor('#334155');
+        } else if (r.es_marcacion_incompleta) {
+            doc.font('Helvetica-Bold').fillColor('#b45309').text('Incompleta', cols[11].x, y, { width: cols[11].w, align: 'right', lineBreak: false });
             doc.font('Helvetica').fillColor('#334155');
         } else {
             doc.text('—', cols[11].x, y, { width: cols[11].w, align: 'right', lineBreak: false });
@@ -271,12 +272,12 @@ async function generateAttendancePdf(companyId, filters = {}) {
     y += 8;
     doc.rect(30, y, 702, 18).fill('#f8fafc');
     doc.strokeColor('#e2e8f0').lineWidth(0.5).rect(30, y, 702, 18).stroke();
-    doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
-    doc.text(`TOTAL HORAS: ${data.summary.total_horas_trabajadas} hrs`, 40, y + 5, { lineBreak: false });
-    doc.text(`TARDANZAS: ${data.summary.total_llegadas_tarde}`, 195, y + 5, { lineBreak: false });
-    doc.text(`H. EXTRAS: ${data.summary.total_horas_extra} hrs`, 315, y + 5, { lineBreak: false });
-    doc.text(`AUSENCIAS JUSTIF.: ${data.summary.total_ausencias_justificadas || 0}`, 455, y + 5, { lineBreak: false });
-    doc.text(`INJUSTIF./PEND.: ${(data.summary.total_ausencias_injustificadas || 0) + (data.summary.total_permisos_pendientes || 0)}`, 595, y + 5, { lineBreak: false });
+    doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text(`TOTAL HORAS: ${formatDecimalHoursText(data.summary.total_horas_trabajadas, true)} (${data.summary.total_horas_trabajadas}h)`, 38, y + 5, { lineBreak: false });
+    doc.text(`TARDANZAS: ${data.summary.total_llegadas_tarde}`, 205, y + 5, { lineBreak: false });
+    doc.text(`H. EXTRAS: ${formatDecimalHoursText(data.summary.total_horas_extra, true)} (D:${data.summary.total_horas_extra_diurnas}h N:${data.summary.total_horas_extra_nocturnas}h)`, 290, y + 5, { lineBreak: false });
+    doc.text(`AUSENCIAS: ${(data.summary.total_ausencias_justificadas || 0) + (data.summary.total_ausencias_injustificadas || 0)}`, 530, y + 5, { lineBreak: false });
+    doc.text(`INCOMPLETAS: ${data.summary.total_incompletas || 0}`, 635, y + 5, { lineBreak: false });
 
     y += 26;
     reportPdfHelper.renderClosingFooter(doc, 30, y, data.rows.length, 'Registros de Asistencia');
@@ -299,35 +300,45 @@ async function generateAttendanceExcel(companyId, filters = {}) {
         salida_almuerzo: r.salida_almuerzo || '',
         entrada_almuerzo: r.entrada_almuerzo || '',
         salida: r.salida || '',
+        horas_trabajadas_fmt: formatDecimalHoursText(r.horas_trabajadas, true),
         horas_trabajadas: r.horas_trabajadas || 0,
         minutos_tardanza: r.minutos_tardanza || 0,
+        horas_extra_fmt: r.horas_extra > 0 ? formatDecimalHoursText(r.horas_extra, true) : '0m',
         horas_extra: r.horas_extra || 0,
+        horas_extra_diurnas: r.horas_extra_diurnas || 0,
+        horas_extra_nocturnas: r.horas_extra_nocturnas || 0,
+        alerta: r.alerta_marcacion || '',
         exento_horas_extras: r.exento_horas_extras ? 'SÍ' : 'NO',
         es_festivo: r.es_festivo ? 'SÍ' : 'NO',
         observacion: r.observacion || ''
     }));
 
     return await excelService.createExcelBuffer({
-        title: 'Reporte de Asistencia Biometrico',
+        title: 'Reporte de Asistencia Biométrico',
         sheets: [{
             name: 'Asistencia',
             columns: [
-                { header: 'Fecha', key: 'fecha', width: 14 },
-                { header: 'Código', key: 'codigo', width: 12 },
-                { header: 'Empleado', key: 'nombre', width: 32 },
-                { header: 'Turno / Horario', key: 'turno', width: 22 },
-                { header: 'Departamento', key: 'departamento', width: 22 },
-                { header: 'Cargo', key: 'cargo', width: 22 },
-                { header: 'Entrada', key: 'entrada', width: 12 },
-                { header: 'Salida Almuerzo', key: 'salida_almuerzo', width: 14 },
-                { header: 'Entrada Almuerzo', key: 'entrada_almuerzo', width: 14 },
-                { header: 'Salida', key: 'salida', width: 12 },
-                { header: 'Horas Trabajadas', key: 'horas_trabajadas', width: 16 },
-                { header: 'Minutos Tarde', key: 'minutos_tardanza', width: 14 },
-                { header: 'Horas Extra', key: 'horas_extra', width: 14 },
-                { header: 'Exento H.E.', key: 'exento_horas_extras', width: 12 },
-                { header: 'Festivo', key: 'es_festivo', width: 10 },
-                { header: 'Justificación / Observaciones', key: 'observacion', width: 38 }
+                { header: 'Fecha', key: 'fecha', width: 13 },
+                { header: 'Código', key: 'codigo', width: 10 },
+                { header: 'Empleado', key: 'nombre', width: 30 },
+                { header: 'Turno / Horario', key: 'turno', width: 20 },
+                { header: 'Departamento', key: 'departamento', width: 20 },
+                { header: 'Cargo', key: 'cargo', width: 20 },
+                { header: 'Entrada', key: 'entrada', width: 11 },
+                { header: 'S. Almuerzo', key: 'salida_almuerzo', width: 12 },
+                { header: 'E. Almuerzo', key: 'entrada_almuerzo', width: 12 },
+                { header: 'Salida', key: 'salida', width: 11 },
+                { header: 'Hrs Trab (Reloj)', key: 'horas_trabajadas_fmt', width: 14 },
+                { header: 'Hrs Trab (Dec)', key: 'horas_trabajadas', width: 13 },
+                { header: 'Min Tarde', key: 'minutos_tardanza', width: 11 },
+                { header: 'H. Extra (Reloj)', key: 'horas_extra_fmt', width: 14 },
+                { header: 'H. Extra (Dec)', key: 'horas_extra', width: 13 },
+                { header: 'H.E. Diurnas', key: 'horas_extra_diurnas', width: 12 },
+                { header: 'H.E. Nocturnas', key: 'horas_extra_nocturnas', width: 13 },
+                { header: 'Alertas Marcación', key: 'alerta', width: 28 },
+                { header: 'Exento H.E.', key: 'exento_horas_extras', width: 11 },
+                { header: 'Festivo', key: 'es_festivo', width: 9 },
+                { header: 'Justificación / Observaciones', key: 'observacion', width: 36 }
             ],
             data: rows
         }]

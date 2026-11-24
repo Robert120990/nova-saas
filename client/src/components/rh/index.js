@@ -20,4 +20,6 @@ export { default as BiometricAbsenceModal } from './BiometricAbsenceModal';
 export { default as BiometricAbsenceAuthorizeModal } from './BiometricAbsenceAuthorizeModal';
 export { default as BiometricDailyRadarView } from './BiometricDailyRadarView';
 export { default as BiometricAbsencesHistoryView } from './BiometricAbsencesHistoryView';
+export { default as BiometricUpdateBanner } from './BiometricUpdateBanner';
+export { default as BiometricAgentUpdateSection } from './BiometricAgentUpdateSection';
 export { BiometricPendingBanner, BiometricFrozenBanner } from './BiometricOvertimeBanners';

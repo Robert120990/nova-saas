@@ -105,9 +105,15 @@ const generarPlanilla = async (req, res, pool, notificationService) => {
             }
         }
 
+        // Integración biométrica opcional (solo si vincular_con_planilla = 1 en rh_biometric_settings)
+        const { getBiometricPayrollContext } = require('./biometricIntegration.service');
+        const bioCtx = await getBiometricPayrollContext(pool, req.company_id, periodo_anio, periodo_mes, quincena);
+
         for (const emp of empleados) {
             const esAusente = emp.en_vacaciones === 1 || emp.incapacitado === 1;
-            const diasEmp = esAusente ? 0 : dias;
+            const bioEmp = bioCtx.enabled ? bioCtx.byEmployee.get(emp.id) : null;
+            const diasDescuentoBio = bioEmp ? Math.min(dias, bioEmp.diasAusenciaSinGoce || 0) : 0;
+            const diasEmp = esAusente ? 0 : Math.max(0, dias - diasDescuentoBio);
             const sueldoBase = parseFloat(emp.sueldo_base || 0);
             const bonificacionFija = parseFloat(emp.bonificacion_fija || 0);
             const sueldoDiario = sueldoBase / 30;
@@ -146,10 +152,13 @@ const generarPlanilla = async (req, res, pool, notificationService) => {
                             cantidad = pct;
                             valor = Math.round(sueldoBase * (pct / 100) * 100) / 100;
                         } else if (c.tipo_valor === 'horas') {
-                            const hrs = parseFloat(c.valor_base || 0);
+                            const isNocturna = (c.descripcion || '').toUpperCase().includes('NOCTURNA');
+                            const bioHrs = bioEmp
+                                ? (isNocturna ? (bioEmp.horasExtraNocturnas || 0) : (bioEmp.horasExtraDiurnas || 0))
+                                : 0;
+                            const hrs = bioCtx.enabled && bioHrs > 0 ? bioHrs : parseFloat(c.valor_base || 0);
                             cantidad = hrs;
                             if (hrs > 0) {
-                                const isNocturna = (c.descripcion || '').toUpperCase().includes('NOCTURNA');
                                 const factor = isNocturna ? 2.5 : 2.0;
                                 valor = Math.round((sueldoDiario / 8 * factor) * hrs * 100) / 100;
                             }

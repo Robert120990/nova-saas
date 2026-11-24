@@ -2,17 +2,13 @@
  * ============================================================================
  * CONECTOR LOCAL DE MARCADOR DIGITAL ZKTECO — RECURSOS HUMANOS (SIPE WEB)
  * ============================================================================
- * Este conector se ejecuta en una computadora dentro de la red local (LAN)
- * donde está conectado el reloj biométrico ZKTeco (IP: 192.168.3.201, Puerto: 4370).
- *
- * Funciones principales:
- * 1. Conecta con el reloj biométrico vía protocolo ZK nativo por TCP socket (4370).
- * 2. Extrae las marcaciones de asistencia (huella, rostro, tarjeta, PIN).
- * 3. ALMACENAMIENTO LOCAL: Guarda respaldo continuo en 'attendance_backup.jsonl'
- *    y mantiene el cursor de sincronización en 'sync-state.json'.
- * 4. SINCRONIZACIÓN INCREMENTAL AUTO-REPARABLE: Descarta fechas corruptas de batería
- *    CMOS (ej. años 2000 o 2118) y repara cursores futuros automáticamente.
- * 5. Escucha eventos en tiempo real para reflejar marcaciones al instante.
+ * Versión 2.1.0:
+ * 1. Conexión limpia por ciclo (evita fuga de listeners TCP en node-zklib).
+ * 2. Manejo robusto de ZKError (reporta errores reales al servidor SIPE).
+ * 3. Sincronización automática de catálogo de usuarios del reloj (zk.getUsers).
+ * 4. Cursor incremental anti-CMOS (descarta años corruptos <2018 o >hoy+24h).
+ * 5. Auto-actualización verificada por SHA-256 + verificación de sintaxis Node.
+ * 6. Intervalo adaptativo para relojes con >20,000 marcaciones almacenadas.
  * ============================================================================
  */
 
@@ -20,8 +16,23 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const https = require('https');
+const crypto = require('crypto');
+const { spawn, spawnSync } = require('child_process');
 
-// Reutilización de sockets TCP para evitar saturación de puertos en Windows
+const AGENT_VERSION = '2.2.0';
+const USERS_SYNC_INTERVAL_MS = 10 * 60 * 1000; // Sincronizar catálogo de usuarios del reloj cada 10 min
+const SELF_UPDATE_CHECK_MS = 15 * 60 * 1000;   // Revisar auto-actualización cada 15 min
+
+function compareSemver(a, b) {
+    const parse = (v) => String(v || '0.0.0').replace(/^[^0-9]*/, '').split('.').map(n => parseInt(n, 10) || 0);
+    const pa = parse(a);
+    const pb = parse(b);
+    for (let i = 0; i < 3; i++) {
+        if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0) ? 1 : -1;
+    }
+    return 0;
+}
+
 const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 10, keepAliveMsecs: 30000 });
 const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 10, keepAliveMsecs: 30000 });
 
@@ -51,8 +62,8 @@ let config = {
     devicePort: 4370,
     commKey: 0,
     protocol: 'tcp',
-    syncIntervalSeconds: 30,
-    realTimeEnabled: true
+    syncIntervalSeconds: 60,
+    autoUpdate: true
 };
 
 if (fs.existsSync(configPath)) {
@@ -71,6 +82,25 @@ let syncState = {
     lastSyncDate: null
 };
 
+function getErrorMessage(err) {
+    if (!err) return 'Error desconocido';
+    if (typeof err === 'string') return err;
+    if (err.err && typeof err.err === 'object' && err.err.message) {
+        return err.command ? `${err.command}: ${err.err.message}` : err.err.message;
+    }
+    if (typeof err.toast === 'function') {
+        try { const t = err.toast(); if (t) return t; } catch { /* ignore */ }
+    }
+    if (err.message) return err.message;
+    try { return JSON.stringify(err); } catch { return String(err); }
+}
+
+function log(msg, type = 'INFO') {
+    const time = new Date().toLocaleTimeString('es-SV', { hour12: false });
+    const prefix = type === 'ERROR' ? '❌ [ERROR]' : type === 'WARN' ? '⚠️ [AVISO]' : type === 'SUCCESS' ? '✅ [ÉXITO]' : 'ℹ️ [INFO]';
+    console.log(`[${time}] ${prefix} ${msg}`);
+}
+
 function formatDateObjLocal(d) {
     if (!(d instanceof Date) || isNaN(d.getTime())) return null;
     const pad = (n) => String(n).padStart(2, '0');
@@ -79,20 +109,14 @@ function formatDateObjLocal(d) {
 
 function formatLocalDateTime(val) {
     if (!val) return null;
-    if (val instanceof Date) {
-        return formatDateObjLocal(val);
-    }
+    if (val instanceof Date) return formatDateObjLocal(val);
     if (typeof val === 'string') {
         const str = val.trim();
-        // Si trae sufijo Z u offset UTC, convertir primero a hora local real de la PC
         if (str.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(str)) {
-            const parsed = new Date(str);
-            return formatDateObjLocal(parsed);
+            return formatDateObjLocal(new Date(str));
         }
         const match = str.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/);
-        if (match) {
-            return `${match[1]}-${match[2]}-${match[3]} ${match[4]}:${match[5]}:${match[6]}`;
-        }
+        if (match) return `${match[1]}-${match[2]}-${match[3]} ${match[4]}:${match[5]}:${match[6]}`;
         const fallback = new Date(str);
         if (!isNaN(fallback.getTime())) return formatDateObjLocal(fallback);
     }
@@ -103,34 +127,10 @@ function isValidPunchTimeStr(timeStr) {
     if (!timeStr || typeof timeStr !== 'string') return false;
     const m = timeStr.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
     if (!m) return false;
-    const year = Number(m[1]);
-    if (year < 2018) return false;
+    if (Number(m[1]) < 2018) return false;
     const ms = new Date(timeStr.replace(' ', 'T')).getTime();
     if (isNaN(ms)) return false;
-    // Rechazar fechas futuras corruptas (margen máximo +24h)
     return ms <= (Date.now() + 24 * 60 * 60 * 1000);
-}
-
-function loadSyncState() {
-    if (fs.existsSync(statePath)) {
-        try {
-            const raw = fs.readFileSync(statePath, 'utf8');
-            syncState = { ...syncState, ...JSON.parse(raw) };
-            if (syncState.lastPunchTime) {
-                const normalized = formatLocalDateTime(syncState.lastPunchTime);
-                if (!normalized || !isValidPunchTimeStr(normalized)) {
-                    log(`Cursor local corrupto/futuro detectado (${syncState.lastPunchTime}). Se restablecerá automáticamente.`, 'WARN');
-                    syncState.lastPunchTime = null;
-                    saveSyncState();
-                } else if (normalized !== syncState.lastPunchTime) {
-                    syncState.lastPunchTime = normalized;
-                    saveSyncState();
-                }
-            }
-        } catch (e) {
-            log(`Aviso leyendo sync-state.json: ${e.message}`, 'WARN');
-        }
-    }
 }
 
 function saveSyncState() {
@@ -142,8 +142,28 @@ function saveSyncState() {
     }
 }
 
+function loadSyncState() {
+    if (!fs.existsSync(statePath)) return;
+    try {
+        const raw = fs.readFileSync(statePath, 'utf8');
+        syncState = { ...syncState, ...JSON.parse(raw) };
+        if (syncState.lastPunchTime) {
+            const normalized = formatLocalDateTime(syncState.lastPunchTime);
+            if (!normalized || !isValidPunchTimeStr(normalized)) {
+                log(`Cursor local corrupto/futuro detectado (${syncState.lastPunchTime}). Restableciendo automáticamente.`, 'WARN');
+                syncState.lastPunchTime = null;
+                saveSyncState();
+            } else if (normalized !== syncState.lastPunchTime) {
+                syncState.lastPunchTime = normalized;
+                saveSyncState();
+            }
+        }
+    } catch (e) {
+        log(`Aviso leyendo sync-state.json: ${e.message}`, 'WARN');
+    }
+}
+
 function reconcileCursorWithServer(serverLastPunch, totalServerLogs) {
-    // 1. Limpiar cursor local si es inválido o futuro
     if (syncState.lastPunchTime) {
         const localNorm = formatLocalDateTime(syncState.lastPunchTime);
         if (!localNorm || !isValidPunchTimeStr(localNorm)) {
@@ -164,12 +184,10 @@ function reconcileCursorWithServer(serverLastPunch, totalServerLogs) {
         ? new Date(syncState.lastPunchTime.replace(' ', 'T')).getTime()
         : 0;
 
-    // Actualizar si no hay cursor local, si el servidor está más adelante,
-    // o si el cursor local quedó adelantado > 24h respecto al servidor (desincronización previa)
     if (!syncState.lastPunchTime || serverMs > localMs || (localMs - serverMs) > (24 * 60 * 60 * 1000)) {
         syncState.lastPunchTime = serverTimeStr;
         saveSyncState();
-        log(`Cursor sincronizado con SIPE SaaS: ${serverTimeStr}${totalServerLogs !== undefined ? ` (${totalServerLogs} registros válidos en nube)` : ''}.`);
+        log(`Cursor sincronizado con SIPE SaaS: ${serverTimeStr}${totalServerLogs !== undefined ? ` (${totalServerLogs} registros en nube)` : ''}.`);
     }
 }
 
@@ -199,13 +217,7 @@ for (let i = 0; i < args.length; i++) {
 }
 const isFullSync = args.includes('--full-sync') || args.includes('--force');
 
-function log(msg, type = 'INFO') {
-    const time = new Date().toLocaleTimeString('es-SV', { hour12: false });
-    const prefix = type === 'ERROR' ? '❌ [ERROR]' : type === 'WARN' ? '⚠️ [AVISO]' : type === 'SUCCESS' ? '✅ [ÉXITO]' : 'ℹ️ [INFO]';
-    console.log(`[${time}] ${prefix} ${msg}`);
-}
-
-function sendToServer(apiPath, method = 'POST', data = {}) {
+function requestServer(apiPath, method = 'POST', data = null, rawResponse = false) {
     return new Promise((resolve, reject) => {
         try {
             const rawUrl = `${config.serverUrl.replace(/\/+$/, '')}${apiPath}`;
@@ -213,45 +225,41 @@ function sendToServer(apiPath, method = 'POST', data = {}) {
             const isHttps = parsedUrl.protocol === 'https:';
             const client = isHttps ? https : http;
 
-            const postData = JSON.stringify(data);
+            const postData = data !== null && method !== 'GET' ? JSON.stringify(data) : '';
+            const headers = { 'x-agent-key': config.agentKey };
+            if (postData) {
+                headers['Content-Type'] = 'application/json';
+                headers['Content-Length'] = Buffer.byteLength(postData);
+            }
+
             const options = {
                 hostname: parsedUrl.hostname,
                 port: parsedUrl.port || (isHttps ? 443 : 80),
                 path: parsedUrl.pathname + parsedUrl.search,
                 method,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Content-Length': Buffer.byteLength(postData),
-                    'x-agent-key': config.agentKey
-                },
+                headers,
                 agent: isHttps ? httpsAgent : httpAgent,
                 rejectUnauthorized: false,
-                timeout: 20000
+                timeout: 25000
             };
 
             const req = client.request(options, (res) => {
                 let responseBody = '';
                 res.on('data', chunk => { responseBody += chunk; });
                 res.on('end', () => {
-                    let parsed = responseBody;
-                    try { parsed = JSON.parse(responseBody); } catch { /* ignore */ }
                     if (res.statusCode >= 200 && res.statusCode < 300) {
-                        resolve(parsed);
-                    } else {
-                        const errMsg = parsed?.message || `HTTP ${res.statusCode}`;
-                        reject(new Error(errMsg));
+                        if (rawResponse) return resolve(responseBody);
+                        try { return resolve(JSON.parse(responseBody)); } catch { return resolve(responseBody); }
                     }
+                    let errMsg = `HTTP ${res.statusCode}`;
+                    try { errMsg = JSON.parse(responseBody)?.message || errMsg; } catch { /* ignore */ }
+                    reject(new Error(errMsg));
                 });
             });
 
-            req.on('error', (err) => {
-                const hint = (config.serverUrl.includes('localhost') || config.serverUrl.includes('127.0.0.1'))
-                    ? ' (Sugerencia: Si ejecuta en otra PC, use la URL del servidor en config.json)'
-                    : '';
-                reject(new Error(`Conexión fallida a ${rawUrl}: ${err.message}${hint}`));
-            });
+            req.on('error', (err) => reject(new Error(`Conexión fallida a ${rawUrl}: ${err.message}`)));
             req.on('timeout', () => { req.destroy(); reject(new Error(`Timeout de conexión con ${rawUrl}`)); });
-            req.write(postData);
+            if (postData) req.write(postData);
             req.end();
         } catch (err) {
             reject(err);
@@ -259,124 +267,222 @@ function sendToServer(apiPath, method = 'POST', data = {}) {
     });
 }
 
-let zk = null;
-let isDeviceConnected = false;
+let lastDeviceReachable = false;
+let lastUsersSyncMs = 0;
+let lastUpdateCheckMs = 0;
+let lastNotifiedPromptVersion = null;
 let isSyncing = false;
-let syncTimer = null;
+let syncTimeout = null;
+let isShuttingDown = false;
 
-async function connectToDevice() {
-    if (isDeviceConnected && zk) return true;
+async function handleHeartbeatUpdate(hb) {
+    if (!hb || !hb.latest_agent_version) return false;
+    const latestVersion = hb.latest_agent_version;
+    const expectedSha256 = hb.agent_script_sha256;
+    const updatePolicy = hb.update_policy === 'prompt' ? 'prompt' : 'auto';
+    const updateRequested = !!hb.update_requested;
+    const isCompatible = hb.is_compatible !== false;
 
-    log(`Conectando con Marcador Digital en ${config.deviceIp}:${config.devicePort} (${config.protocol.toUpperCase()})...`);
+    const hasNewer = compareSemver(latestVersion, AGENT_VERSION) > 0;
+    if (!hasNewer && !updateRequested) return false;
+
+    if (!isCompatible) {
+        log(`Versión v${latestVersion} disponible pero marcada no compatible con este equipo/protocolo. Se omite actualización.`, 'WARN');
+        return false;
+    }
+
+    if (!updateRequested && (updatePolicy === 'prompt' || config.autoUpdate === false)) {
+        if (lastNotifiedPromptVersion !== latestVersion) {
+            lastNotifiedPromptVersion = latestVersion;
+            log(`🔔 Conector más reciente compatible disponible (v${AGENT_VERSION} -> v${latestVersion}). Apruebe la actualización desde SIPE WEB > Conector LAN.`, 'INFO');
+        }
+        return false;
+    }
+
+    if (!updateRequested && Date.now() - lastUpdateCheckMs < SELF_UPDATE_CHECK_MS && lastUpdateCheckMs > 0) {
+        return false;
+    }
+    lastUpdateCheckMs = Date.now();
+
+    try {
+        const currentContent = fs.readFileSync(__filename, 'utf8');
+        const currentHash = crypto.createHash('sha256').update(currentContent, 'utf8').digest('hex');
+        if (expectedSha256 && currentHash === expectedSha256) {
+            if (updateRequested) {
+                await requestServer('/api/rh/biometric/heartbeat', 'POST', {
+                    status: lastDeviceReachable ? 'online' : 'error',
+                    device_info: { agent_version: AGENT_VERSION, node_version: process.version, update_status: 'updated' }
+                }).catch(() => {});
+            }
+            return false;
+        }
+
+        log(`⬇️ Aplicando actualización de conector (v${AGENT_VERSION} -> v${latestVersion})${updateRequested ? ' [solicitada remotamente]' : ' [automática]'}...`);
+        await requestServer('/api/rh/biometric/heartbeat', 'POST', {
+            status: lastDeviceReachable ? 'online' : 'error',
+            device_info: { agent_version: AGENT_VERSION, node_version: process.version, update_status: 'updating' }
+        }).catch(() => {});
+
+        const newScript = await requestServer('/api/rh/biometric/agent-script', 'GET', null, true);
+        if (!newScript || typeof newScript !== 'string' || !newScript.includes('AGENT_VERSION')) {
+            throw new Error('Script descargado inválido.');
+        }
+
+        const downloadedHash = crypto.createHash('sha256').update(newScript, 'utf8').digest('hex');
+        if (expectedSha256 && downloadedHash !== expectedSha256) {
+            throw new Error('Hash SHA-256 no coincide; actualización abortada por seguridad.');
+        }
+
+        const tmpPath = `${__filename}.update.tmp`;
+        const bakPath = `${__filename}.bak`;
+        fs.writeFileSync(tmpPath, newScript, 'utf8');
+        const check = spawnSync(process.execPath, ['--check', tmpPath], { encoding: 'utf8' });
+        if (check.status !== 0) {
+            try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
+            throw new Error(`Error de sintaxis en nueva versión: ${check.stderr}`);
+        }
+
+        try { fs.copyFileSync(__filename, bakPath); } catch { /* backup best-effort */ }
+        fs.renameSync(tmpPath, __filename);
+
+        await requestServer('/api/rh/biometric/heartbeat', 'POST', {
+            status: lastDeviceReachable ? 'online' : 'error',
+            device_info: {
+                agent_version: latestVersion,
+                node_version: process.version,
+                platform: process.platform,
+                update_status: 'updated'
+            }
+        }).catch(() => {});
+
+        log(`✅ Actualización a v${latestVersion} aplicada con respaldo en biometric-agent.js.bak. Reiniciando...`, 'SUCCESS');
+
+        if (process.env.BIOMETRIC_WRAPPER === '1') {
+            process.exit(42);
+        } else {
+            const child = spawn(process.execPath, [__filename, ...process.argv.slice(2)], {
+                detached: true,
+                stdio: 'inherit'
+            });
+            child.unref();
+            process.exit(0);
+        }
+        return true;
+    } catch (err) {
+        const msg = getErrorMessage(err);
+        log(`No se pudo auto-actualizar el conector: ${msg}`, 'WARN');
+        await requestServer('/api/rh/biometric/heartbeat', 'POST', {
+            status: lastDeviceReachable ? 'online' : 'error',
+            device_info: {
+                agent_version: AGENT_VERSION,
+                node_version: process.version,
+                update_status: 'failed',
+                update_error: `${formatLocalDateTime(new Date())}: ${msg}`
+            }
+        }).catch(() => {});
+        return false;
+    }
+}
+
+async function safeDisconnectZk(zk) {
+    if (!zk) return;
+    try { await zk.disconnect(); } catch { /* ignore */ }
+    try {
+        if (zk.zklibTcp?.socket && !zk.zklibTcp.socket.destroyed) {
+            zk.zklibTcp.socket.removeAllListeners();
+            zk.zklibTcp.socket.destroy();
+        }
+    } catch { /* ignore */ }
+}
+
+function getAdaptiveIntervalMs(logCount) {
+    const configured = Math.max(15, parseInt(config.syncIntervalSeconds, 10) || 60);
+    // Para relojes con >20,000 marcaciones (~25s por lectura TCP), usar mínimo 60s para evitar saturación
+    const effectiveSecs = logCount > 20000 ? Math.max(60, configured) : configured;
+    return effectiveSecs * 1000;
+}
+
+async function syncAttendances() {
+    if (isSyncing || isShuttingDown) return;
+    isSyncing = true;
+    let zk = null;
+    let currentLogCount = syncState.lastLogCount || 0;
+
     try {
         zk = new ZKLib(
             config.deviceIp,
             config.devicePort,
-            10000,
-            4000,
+            60000, // Timeout amplio (60s) para relojes con >50,000 registros
+            15000,
             config.commKey || 0,
             config.protocol || 'tcp'
         );
 
         await zk.createSocket();
-        isDeviceConnected = true;
-        log(`Conexión establecida con el Marcador Digital ZKTeco (${config.deviceIp})`, 'SUCCESS');
+        lastDeviceReachable = true;
 
-        let info = {};
+        const deviceInfoPayload = {
+            agent_version: AGENT_VERSION,
+            node_version: process.version,
+            platform: process.platform,
+            connected_at: new Date().toISOString()
+        };
+
         try {
             if (typeof zk.getInfo === 'function') {
-                const zkInfo = await zk.getInfo().catch(() => null);
+                const zkInfo = await zk.getInfo();
                 if (zkInfo) {
-                    info = {
-                        user_counts: zkInfo.userCounts,
-                        log_counts: zkInfo.logCounts,
-                        log_capacity: zkInfo.logCapacity,
-                        connected_at: new Date().toISOString()
-                    };
-                    log(`Dispositivo: Usuarios: ${zkInfo.userCounts || 0} | Marcaciones: ${zkInfo.logCounts || 0} | Capacidad: ${zkInfo.logCapacity || 0}`);
+                    deviceInfoPayload.user_counts = zkInfo.userCounts || 0;
+                    deviceInfoPayload.log_counts = zkInfo.logCounts || 0;
+                    deviceInfoPayload.log_capacity = zkInfo.logCapacity || 100000;
+                    currentLogCount = zkInfo.logCounts || 0;
                 }
             }
-        } catch (err) {
-            log(`Aviso al consultar metadatos del dispositivo: ${err.message}`, 'WARN');
+        } catch (infoErr) {
+            log(`Aviso consultando getInfo(): ${getErrorMessage(infoErr)}`, 'WARN');
         }
 
-        try {
-            const hbRes = await sendToServer('/api/rh/biometric/heartbeat', 'POST', {
-                status: 'online',
-                device_info: info
-            });
-            log('Estado [ONLINE] reportado al servidor SIPE SaaS.', 'SUCCESS');
-            reconcileCursorWithServer(hbRes?.last_punch_time, hbRes?.total_server_logs);
-        } catch (serverErr) {
-            log(`No se pudo reportar estado al servidor: ${serverErr.message}`, 'WARN');
-        }
-
-        if (config.realTimeEnabled && typeof zk.getRealTimeLogs === 'function') {
+        // Sincronizar catálogo de usuarios del reloj periódicamente (cada 10 min)
+        if (Date.now() - lastUsersSyncMs >= USERS_SYNC_INTERVAL_MS && typeof zk.getUsers === 'function') {
             try {
-                await zk.getRealTimeLogs(async (event) => {
-                    if (event && (event.userId || event.uid || event.user_id)) {
-                        const uid = String(event.userId || event.user_id || event.uid);
-                        const rawTime = event.attTime || event.time || new Date();
-                        const timeStr = formatLocalDateTime(rawTime);
-                        if (!isValidPunchTimeStr(timeStr)) {
-                            log(`Marcación en tiempo real con fecha corrupta ignorada (${timeStr}). Revisar hora del reloj ZKTeco.`, 'WARN');
-                            return;
-                        }
-                        log(`🔔 Marcación detectada en tiempo real: Empleado PIN: ${uid} a las ${timeStr}`);
-                        try {
-                            const singlePunch = [{
-                                device_uid: uid,
-                                punch_time: timeStr,
-                                punch_code: typeof event.state === 'number' ? event.state : 0,
-                                verify_type: typeof event.verifyType === 'number' ? event.verifyType : 1,
-                                source: 'agent'
-                            }];
-                            const res = await sendToServer('/api/rh/biometric/sync', 'POST', { punches: singlePunch });
-                            appendToLocalBackup(singlePunch);
-                            syncState.lastPunchTime = timeStr;
-                            syncState.totalPunchesSynced += (res.insertedCount || 0);
-                            saveSyncState();
-                            log('✓ Marcación en tiempo real sincronizada con SIPE', 'SUCCESS');
-                        } catch (e) {
-                            log(`Error enviando marcación en tiempo real: ${e.message}`, 'WARN');
-                        }
-                    }
-                });
-                log('Modo de escucha en tiempo real activado.', 'SUCCESS');
-            } catch {
-                log(`Modo en tiempo real no soportado por este firmware (se usará polling incremental cada ${config.syncIntervalSeconds}s).`, 'WARN');
+                const usersRes = await zk.getUsers();
+                const rawUsers = Array.isArray(usersRes?.data) ? usersRes.data : (Array.isArray(usersRes) ? usersRes : []);
+                if (rawUsers.length > 0) {
+                    deviceInfoPayload.users = rawUsers.map(u => ({
+                        uid: u.uid,
+                        userId: String(u.userId || u.uid || '').trim(),
+                        name: (u.name || '').trim(),
+                        role: u.role ?? 0
+                    }));
+                    deviceInfoPayload.users_synced_at = new Date().toISOString();
+                    lastUsersSyncMs = Date.now();
+                    log(`Catálogo de usuarios del reloj leído: ${rawUsers.length} usuarios.`);
+                }
+            } catch (uErr) {
+                log(`Aviso consultando usuarios del reloj: ${getErrorMessage(uErr)}`, 'WARN');
             }
         }
 
-        return true;
-    } catch (err) {
-        isDeviceConnected = false;
-        zk = null;
-        log(`No se pudo conectar al Marcador (${config.deviceIp}): ${err.message}`, 'ERROR');
-        return false;
-    }
-}
-
-async function syncAttendances() {
-    if (isSyncing) return;
-    isSyncing = true;
-
-    try {
-        const connected = await connectToDevice();
-        if (!connected) {
-            isSyncing = false;
-            return;
-        }
-
-        log('Consultando registros de marcaciones en el dispositivo...');
+        const tFetch = Date.now();
         const attendances = await zk.getAttendances();
-        const logsList = (attendances && Array.isArray(attendances.data))
+        const fetchMs = Date.now() - tFetch;
+        const logsList = Array.isArray(attendances?.data)
             ? attendances.data
             : (Array.isArray(attendances) ? attendances : []);
 
+        // Desconectar inmediatamente al terminar de leer el reloj para liberar socket y evitar fugas
+        await safeDisconnectZk(zk);
+        zk = null;
+
+        currentLogCount = logsList.length || currentLogCount;
+        deviceInfoPayload.last_sync_logs = logsList.length;
+
         if (logsList.length === 0) {
             log('El dispositivo no contiene marcaciones almacenadas actualmente.');
-            isSyncing = false;
+            await requestServer('/api/rh/biometric/heartbeat', 'POST', {
+                status: 'online',
+                device_info: { ...deviceInfoPayload, clear_sync_error: true }
+            }).catch(() => {});
             return;
         }
 
@@ -398,18 +504,11 @@ async function syncAttendances() {
                 punch_code: typeof item.punch === 'number' ? item.punch : (typeof item.state === 'number' ? item.state : 0),
                 verify_type: typeof item.verifyType === 'number' ? item.verifyType : 1,
                 source: 'agent',
-                raw_data: {
-                    ...item,
-                    recordTime: timeStr
-                }
+                raw_data: { ...item, recordTime: timeStr }
             });
         }
 
-        if (ignoredInvalidDates > 0) {
-            log(`Filtrados ${ignoredInvalidDates} registros con fechas inválidas/corruptas del reloj (<2018 o >hoy+24h).`);
-        }
-
-        punchesPayload.sort((a, b) => new Date(a.punch_time.replace(' ', 'T')) - new Date(b.punch_time.replace(' ', 'T')));
+        punchesPayload.sort((a, b) => a.punch_time.localeCompare(b.punch_time));
 
         let toSync = punchesPayload;
         if (!isFullSync && syncState.lastPunchTime && isValidPunchTimeStr(syncState.lastPunchTime)) {
@@ -418,19 +517,26 @@ async function syncAttendances() {
             toSync = punchesPayload.filter(p => new Date(p.punch_time.replace(' ', 'T')).getTime() > cutoffMs);
         }
 
+        deviceInfoPayload.valid_logs = punchesPayload.length;
+        deviceInfoPayload.ignored_cmos_logs = ignoredInvalidDates;
+        deviceInfoPayload.last_fetch_ms = fetchMs;
+        deviceInfoPayload.sync_time = formatLocalDateTime(new Date());
+        deviceInfoPayload.clear_sync_error = true;
+
         if (toSync.length === 0) {
-            log(`Dispositivo con ${logsList.length} marcaciones (${punchesPayload.length} válidas). Todo sincronizado al día.`);
+            log(`Reloj leído (${logsList.length} marcas en ${(fetchMs / 1000).toFixed(1)}s). Todo sincronizado al día.`);
             syncState.lastLogCount = logsList.length;
             saveSyncState();
-            isSyncing = false;
+            const hb = await requestServer('/api/rh/biometric/heartbeat', 'POST', {
+                status: 'online',
+                device_info: deviceInfoPayload
+            });
+            reconcileCursorWithServer(hb?.last_punch_time, hb?.total_server_logs);
+            await handleHeartbeatUpdate(hb);
             return;
         }
 
-        if (syncState.lastPunchTime && !isFullSync) {
-            log(`⚡ Detectadas ${toSync.length} marcaciones NUEVAS válidas de ${logsList.length} en el reloj. Sincronizando...`);
-        } else {
-            log(`📥 Sincronización inicial/recuperación: ${toSync.length} marcaciones válidas a procesar...`);
-        }
+        log(`⚡ Sincronizando ${toSync.length} marcaciones nuevas (${logsList.length} en reloj, lectura ${(fetchMs / 1000).toFixed(1)}s)...`);
 
         const chunkSize = 300;
         let totalInserted = 0;
@@ -440,20 +546,17 @@ async function syncAttendances() {
 
         for (let i = 0; i < toSync.length; i += chunkSize) {
             const chunk = toSync.slice(i, i + chunkSize);
-            const res = await sendToServer('/api/rh/biometric/sync', 'POST', {
+            const isLastChunk = (i + chunkSize) >= toSync.length;
+            const res = await requestServer('/api/rh/biometric/sync', 'POST', {
                 punches: chunk,
-                device_info: {
-                    last_sync_logs: logsList.length,
-                    valid_logs: punchesPayload.length,
-                    sync_time: formatLocalDateTime(new Date())
-                }
+                device_info: isLastChunk ? deviceInfoPayload : undefined
             });
             totalInserted += (res.insertedCount || 0);
             appendToLocalBackup(chunk);
 
             const chunkLastTime = chunk[chunk.length - 1]?.punch_time;
             if (chunkLastTime && isValidPunchTimeStr(chunkLastTime)) {
-                if (!latestPunchTime || new Date(chunkLastTime.replace(' ', 'T')) > new Date(latestPunchTime.replace(' ', 'T'))) {
+                if (!latestPunchTime || chunkLastTime > latestPunchTime) {
                     latestPunchTime = chunkLastTime;
                 }
             }
@@ -467,75 +570,84 @@ async function syncAttendances() {
         saveSyncState();
 
         if (totalInserted > 0) {
-            log(`🎉 ${totalInserted} marcaciones NUEVAS sincronizadas exitosamente en SIPE SaaS.`, 'SUCCESS');
+            log(`🎉 ${totalInserted} marcaciones NUEVAS sincronizadas en SIPE SaaS (última: ${syncState.lastPunchTime}).`, 'SUCCESS');
         } else {
-            log('Marcaciones al día en el servidor (los registros ya existían en SIPE).');
+            log('Marcaciones al día en el servidor (registros ya existentes).');
         }
     } catch (err) {
-        log(`Error durante la sincronización: ${err.message}`, 'ERROR');
-        if (err.message && (err.message.includes('ECONNRESET') || err.message.includes('closed') || err.message.includes('timeout'))) {
-            isDeviceConnected = false;
-            try { if (zk) await zk.disconnect(); } catch { /* ignore */ }
-            zk = null;
-        }
+        lastDeviceReachable = false;
+        const msg = getErrorMessage(err);
+        log(`Error durante la sincronización: ${msg}`, 'ERROR');
+        await requestServer('/api/rh/biometric/heartbeat', 'POST', {
+            status: 'error',
+            device_info: {
+                agent_version: AGENT_VERSION,
+                last_sync_error: `${formatLocalDateTime(new Date())}: ${msg}`
+            }
+        }).catch(() => {});
     } finally {
+        await safeDisconnectZk(zk);
         isSyncing = false;
+        if (!isShuttingDown) {
+            const delayMs = getAdaptiveIntervalMs(currentLogCount);
+            syncTimeout = setTimeout(syncAttendances, delayMs);
+        }
     }
 }
 
 async function startAgent() {
     loadSyncState();
 
-    console.clear();
     console.log('========================================================================');
-    console.log('   CONECTOR LOCAL MARCADOR DIGITAL ZKTECO — RECURSOS HUMANOS (SIPE)     ');
+    console.log(`   CONECTOR LOCAL MARCADOR DIGITAL ZKTECO v${AGENT_VERSION} — SIPE WEB         `);
     console.log('========================================================================');
     console.log(` Servidor SaaS          : ${config.serverUrl}`);
-    console.log(` Empresa ID             : ${config.companyId}`);
+    console.log(` Empresa / Dispositivo  : #${config.companyId} / #${config.deviceId}`);
     console.log(` Dispositivo IP         : ${config.deviceIp}:${config.devicePort} (${config.protocol.toUpperCase()})`);
-    console.log(` Intervalo de Sync      : Cada ${config.syncIntervalSeconds} segundos`);
+    console.log(` Intervalo Base         : ${config.syncIntervalSeconds}s (adaptativo >=60s si >20k marcas)`);
     console.log(` Clave de Agente        : ${config.agentKey ? (config.agentKey.slice(0, 8) + '...' + config.agentKey.slice(-6)) : 'NO CONFIGURADA'}`);
     console.log(` Última Marcación Local : ${syncState.lastPunchTime || 'Sin historial / auto-recuperación'}`);
-    console.log(` Archivo de Respaldo    : ${backupPath}`);
     console.log('------------------------------------------------------------------------');
 
     if (!config.agentKey) {
         log('ADVERTENCIA: No ha configurado "agentKey" en config.json.', 'WARN');
-        log('Copie la clave desde la pantalla de Marcador Digital en el sistema SIPE WEB.', 'WARN');
     }
 
     try {
-        const hb = await sendToServer('/api/rh/biometric/heartbeat', 'POST', {
+        const hb = await requestServer('/api/rh/biometric/heartbeat', 'POST', {
             status: 'online',
-            started_at: new Date().toISOString()
+            device_info: { agent_version: AGENT_VERSION, node_version: process.version, platform: process.platform, started_at: new Date().toISOString() }
         });
-        log('Conexión inicial con el servidor SIPE establecida. Estado [EN LÍNEA].', 'SUCCESS');
+        log('Conexión inicial con SIPE SaaS establecida.', 'SUCCESS');
         reconcileCursorWithServer(hb?.last_punch_time, hb?.total_server_logs);
+        const updated = await handleHeartbeatUpdate(hb);
+        if (updated) return;
     } catch (hbErr) {
-        log(`No se pudo contactar al servidor SIPE en ${config.serverUrl}: ${hbErr.message}`, 'WARN');
+        log(`No se pudo contactar al servidor SIPE en ${config.serverUrl}: ${getErrorMessage(hbErr)}`, 'WARN');
     }
 
     await syncAttendances();
 
-    const intervalMs = Math.max(10, config.syncIntervalSeconds) * 1000;
-    syncTimer = setInterval(syncAttendances, intervalMs);
-
+    // Heartbeat de salud cada 30s (solo reporta 'online' si el último ciclo alcanzó el reloj)
     setInterval(async () => {
+        if (isShuttingDown) return;
         try {
-            const hb = await sendToServer('/api/rh/biometric/heartbeat', 'POST', {
-                status: isDeviceConnected ? 'online' : 'error'
+            const hb = await requestServer('/api/rh/biometric/heartbeat', 'POST', {
+                status: lastDeviceReachable ? 'online' : 'error',
+                device_info: { agent_version: AGENT_VERSION, node_version: process.version, platform: process.platform }
             });
             reconcileCursorWithServer(hb?.last_punch_time, hb?.total_server_logs);
+            if (!isSyncing) {
+                await handleHeartbeatUpdate(hb);
+            }
         } catch { /* silencio en heartbeat secundario */ }
-    }, 25000);
+    }, 30000);
 }
 
-process.on('SIGINT', async () => {
+process.on('SIGINT', () => {
+    isShuttingDown = true;
     log('Deteniendo conector biométrico...');
-    if (syncTimer) clearInterval(syncTimer);
-    try {
-        if (zk && isDeviceConnected) await zk.disconnect();
-    } catch { /* ignore */ }
+    if (syncTimeout) clearTimeout(syncTimeout);
     process.exit(0);
 });
 

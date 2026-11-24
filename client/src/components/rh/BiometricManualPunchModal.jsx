@@ -6,52 +6,62 @@ import { Clock, X, Save, Loader2, User } from 'lucide-react';
 import { getNowDateTimeLocal } from '../../utils/dateUtils';
 import { unwrapList } from '../../utils/apiUtils';
 
-const BiometricManualPunchModal = ({ open, onClose, onSuccess }) => {
+const toDateTimeLocalInput = (sqlStr) => {
+    if (!sqlStr) return getNowDateTimeLocal();
+    const s = String(sqlStr).trim();
+    const m = s.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/);
+    return m ? `${m[1]}T${m[2]}` : getNowDateTimeLocal();
+};
+
+const BiometricManualPunchModal = ({ open, onClose, onSuccess, initialPunch = null }) => {
     const queryClient = useQueryClient();
+    const isEditMode = !!(initialPunch && initialPunch.id);
 
     const [empleadoId, setEmpleadoId] = useState('');
     const [punchTime, setPunchTime] = useState(getNowDateTimeLocal());
     const [punchType, setPunchType] = useState('entrada');
-    const [notes, setNotes] = useState('');
+    const [notas, setNotas] = useState('');
 
-    // Fetch active employees for dropdown
     const { data: rawEmployees = [], isLoading: isLoadingEmp } = useQuery({
         queryKey: ['rh-empleados-active-picker'],
-        queryFn: async () => {
-            const res = await axios.get('/api/rh/empleados', {
-                params: { status: 'activo', limit: 300 }
-            });
-            return unwrapList(res);
-        },
+        queryFn: async () => unwrapList(await axios.get('/api/rh/empleados', { params: { status: 'activo', limit: 300 } })),
         enabled: open
     });
 
     const employees = Array.isArray(rawEmployees) ? rawEmployees : [];
 
     useEffect(() => {
-        if (open) {
+        if (!open) return;
+        if (initialPunch && initialPunch.id) {
+            setEmpleadoId(String(initialPunch.empleado_id || ''));
+            setPunchTime(toDateTimeLocalInput(initialPunch.punch_time));
+            setPunchType(initialPunch.punch_type || 'entrada');
+            setNotas(initialPunch.notas || '');
+        } else {
             setPunchTime(getNowDateTimeLocal());
             setPunchType('entrada');
-            setNotes('');
-            if (employees.length > 0 && !empleadoId) {
-                setEmpleadoId(employees[0].id);
-            }
+            setNotas('');
+            setEmpleadoId('');
         }
-    }, [open]);
+    }, [open, initialPunch]);
 
     const mutation = useMutation({
         mutationFn: async (payload) => {
-            const res = await axios.post('/api/rh/biometric/manual-punch', payload);
-            return res.data;
+            if (isEditMode) {
+                return (await axios.put(`/api/rh/biometric/manual-punch/${initialPunch.id}`, payload)).data;
+            }
+            return (await axios.post('/api/rh/biometric/manual-punch', payload)).data;
         },
         onSuccess: (data) => {
-            toast.success(data?.message || 'Marcación manual registrada correctamente');
+            toast.success(data?.message || (isEditMode ? 'Marcación manual actualizada' : 'Marcación manual registrada'));
             queryClient.invalidateQueries({ queryKey: ['rh-biometric-attendance'] });
+            queryClient.invalidateQueries({ queryKey: ['rh-biometric-cortes-daily-overtime'] });
+            queryClient.invalidateQueries({ queryKey: ['rh-biometric-daily-radar'] });
             if (onSuccess) onSuccess();
             onClose();
         },
         onError: (err) => {
-            toast.error(err.response?.data?.message || 'Error al registrar marcación');
+            toast.error(err.response?.data?.message || 'Error al guardar marcación');
         }
     });
 
@@ -59,17 +69,14 @@ const BiometricManualPunchModal = ({ open, onClose, onSuccess }) => {
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        if (!empleadoId) {
-            return toast.error('Debe seleccionar un empleado');
-        }
-        if (!punchTime) {
-            return toast.error('Debe indicar la fecha y hora de la marcación');
-        }
+        if (!isEditMode && !empleadoId) return toast.error('Debe seleccionar un empleado');
+        if (!punchTime) return toast.error('Debe indicar la fecha y hora de la marcación');
+
         mutation.mutate({
-            empleado_id: empleadoId,
-            punch_time: punchTime.replace('T', ' ') + ':00',
+            empleado_id: empleadoId || undefined,
+            punch_time: `${punchTime.replace('T', ' ')}:00`,
             punch_type: punchType,
-            notes: notes.trim()
+            notas: notas.trim()
         });
     };
 
@@ -78,7 +85,6 @@ const BiometricManualPunchModal = ({ open, onClose, onSuccess }) => {
     return (
         <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg border border-slate-100 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150">
-                {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/70">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 border border-amber-100 flex items-center justify-center">
@@ -86,48 +92,45 @@ const BiometricManualPunchModal = ({ open, onClose, onSuccess }) => {
                         </div>
                         <div>
                             <h2 className="text-base font-bold text-slate-800">
-                                Registrar Marcación Manual
+                                {isEditMode ? 'Editar Marcación Manual' : 'Registrar Marcación Manual'}
                             </h2>
                             <p className="text-xs text-slate-500 font-medium">
-                                Justificación de asistencia o corrección horaria
+                                {isEditMode
+                                    ? `${initialPunch.empleado_nombre_completo || 'Colaborador'} (ID #${initialPunch.id})`
+                                    : 'Justificación de asistencia o corrección horaria'}
                             </p>
                         </div>
                     </div>
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-                    >
+                    <button type="button" onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg">
                         <X className="w-5 h-5" />
                     </button>
                 </div>
 
-                {/* Form */}
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                    <div>
-                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                            Empleado
-                        </label>
-                        <div className="relative">
-                            <select
-                                required
-                                value={empleadoId}
-                                onChange={(e) => setEmpleadoId(e.target.value)}
-                                disabled={isLoadingEmp}
-                                className="w-full text-[13px] font-medium border border-slate-200 rounded-xl pl-9 pr-3.5 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white transition-all"
-                            >
-                                <option value="">-- Seleccionar empleado --</option>
-                                {employees.map((emp) => (
-                                    <option key={emp.id} value={emp.id}>
-                                        {emp.codigo ? `[${emp.codigo}] ` : ''}{emp.nombres} {emp.apellidos} {emp.cargo ? `— ${emp.cargo}` : ''}
-                                    </option>
-                                ))}
-                            </select>
-                            <User className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+                    {!isEditMode && (
+                        <div>
+                            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Empleado</label>
+                            <div className="relative">
+                                <select
+                                    required
+                                    value={empleadoId}
+                                    onChange={(e) => setEmpleadoId(e.target.value)}
+                                    disabled={isLoadingEmp}
+                                    className="w-full text-[13px] font-medium border border-slate-200 rounded-xl pl-9 pr-3.5 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white"
+                                >
+                                    <option value="">-- Seleccionar empleado --</option>
+                                    {employees.map((emp) => (
+                                        <option key={emp.id} value={emp.id}>
+                                            {emp.codigo ? `[${emp.codigo}] ` : ''}{emp.nombres} {emp.apellidos} {emp.cargo ? `— ${emp.cargo}` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                                <User className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+                            </div>
                         </div>
-                    </div>
+                    )}
 
-                    {selectedEmp && (
+                    {!isEditMode && selectedEmp && (
                         <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/70 flex items-center justify-between text-xs">
                             <div className="text-slate-600">
                                 <span className="font-semibold text-slate-800">Código Biométrico:</span>{' '}
@@ -143,13 +146,11 @@ const BiometricManualPunchModal = ({ open, onClose, onSuccess }) => {
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                                Tipo de Marcación
-                            </label>
+                            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Tipo de Marcación</label>
                             <select
                                 value={punchType}
                                 onChange={(e) => setPunchType(e.target.value)}
-                                className="w-full text-[13px] font-medium border border-slate-200 rounded-xl px-3.5 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white transition-all"
+                                className="w-full text-[13px] font-medium border border-slate-200 rounded-xl px-3.5 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white"
                             >
                                 <option value="entrada">Entrada Normal</option>
                                 <option value="salida">Salida Normal</option>
@@ -159,59 +160,39 @@ const BiometricManualPunchModal = ({ open, onClose, onSuccess }) => {
                         </div>
 
                         <div>
-                            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                                Fecha y Hora
-                            </label>
+                            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Fecha y Hora</label>
                             <input
                                 type="datetime-local"
                                 required
                                 value={punchTime}
                                 onChange={(e) => setPunchTime(e.target.value)}
-                                className="w-full text-[13px] font-medium border border-slate-200 rounded-xl px-3.5 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                                className="w-full text-[13px] font-medium border border-slate-200 rounded-xl px-3.5 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                             />
                         </div>
                     </div>
 
                     <div>
-                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                            Motivo / Observaciones (Opcional)
-                        </label>
-                        <div className="relative">
-                            <textarea
-                                rows="3"
-                                placeholder="Ej. Olvido de marcación en reloj físico, falla de energía o salida autorizada..."
-                                value={notes}
-                                onChange={(e) => setNotes(e.target.value)}
-                                className="w-full text-[13px] font-medium border border-slate-200 rounded-xl px-3.5 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-none"
-                            />
-                        </div>
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Motivo / Observaciones</label>
+                        <textarea
+                            rows="3"
+                            placeholder="Ej. Olvido de marcación en reloj físico, falla de energía o salida autorizada..."
+                            value={notas}
+                            onChange={(e) => setNotas(e.target.value)}
+                            className="w-full text-[13px] font-medium border border-slate-200 rounded-xl px-3.5 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
+                        />
                     </div>
 
-                    {/* Footer */}
                     <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="px-4 py-2 text-[13px] font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors"
-                        >
+                        <button type="button" onClick={onClose} className="px-4 py-2 text-[13px] font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">
                             Cancelar
                         </button>
                         <button
                             type="submit"
                             disabled={mutation.isPending}
-                            className="flex items-center gap-2 px-5 py-2 text-[13px] font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl shadow-sm shadow-indigo-200 transition-all"
+                            className="flex items-center gap-2 px-5 py-2 text-[13px] font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl shadow-sm shadow-indigo-200"
                         >
-                            {mutation.isPending ? (
-                                <>
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    <span>Registrando...</span>
-                                </>
-                            ) : (
-                                <>
-                                    <Save className="w-4 h-4" />
-                                    <span>Registrar Marcación</span>
-                                </>
-                            )}
+                            {mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                            <span>{mutation.isPending ? 'Guardando...' : (isEditMode ? 'Guardar Cambios' : 'Registrar Marcación')}</span>
                         </button>
                     </div>
                 </form>

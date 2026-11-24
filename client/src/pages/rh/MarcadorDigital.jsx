@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import axios from 'axios';
+import { toast } from 'sonner';
 import {
     Fingerprint, Radio, Settings, Plus, RefreshCw,
     FileText, Sliders, Lock, UserPlus, CalendarX
@@ -13,7 +14,8 @@ import {
     BiometricAgentModal,
     BiometricReportModal,
     BiometricConfigModal,
-    BiometricEmployeeModal
+    BiometricEmployeeModal,
+    BiometricUpdateBanner
 } from '../../components/rh';
 import {
     BiometricLogsTab,
@@ -38,6 +40,7 @@ const MarcadorDigital = () => {
     // Modales generales
     const [isDeviceModalOpen, setIsDeviceModalOpen] = useState(false);
     const [isPunchModalOpen, setIsPunchModalOpen] = useState(false);
+    const [editingManualPunch, setEditingManualPunch] = useState(null);
     const [isAgentModalOpen, setIsAgentModalOpen] = useState(false);
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
     const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
@@ -60,6 +63,17 @@ const MarcadorDigital = () => {
     const devices = Array.isArray(rawDevices) ? rawDevices : [];
     const activeDevice = devices.length > 0 ? devices[0] : null;
     const isOnline = !!activeDevice?.is_online;
+    const isSyncStale = !!activeDevice?.is_sync_stale;
+
+    const deleteManualMutation = useMutation({
+        mutationFn: async (punchId) => (await axios.delete(`/api/rh/biometric/manual-punch/${punchId}`)).data,
+        onSuccess: (data) => {
+            toast.success(data?.message || 'Marcación manual eliminada');
+            refetchLogs();
+            refetchRadarToday();
+        },
+        onError: (err) => toast.error(err.response?.data?.message || 'Error al eliminar marcación')
+    });
 
     const { data: radarToday = {}, refetch: refetchRadarToday } = useQuery({
         queryKey: ['rh-biometric-daily-radar', today, '', 'todos'],
@@ -139,14 +153,16 @@ const MarcadorDigital = () => {
                                 type="button"
                                 onClick={() => setIsAgentModalOpen(true)}
                                 className={`text-[11px] font-bold px-2.5 py-1 rounded-full border inline-flex items-center gap-1.5 transition-all shadow-sm ${
-                                    isOnline
+                                    isOnline && !isSyncStale
                                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                                        : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                                        : isSyncStale
+                                            ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                                            : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
                                 }`}
-                                title="Ver estado del conector de red local"
+                                title={isSyncStale ? 'Conector en línea pero lleva >24h sin sincronizar marcaciones' : 'Ver estado del conector de red local'}
                             >
-                                <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-ping' : 'bg-slate-400'}`} />
-                                {isOnline ? 'Conector En Línea' : 'Conector Desconectado'}
+                                <span className={`w-2 h-2 rounded-full ${isOnline && !isSyncStale ? 'bg-emerald-500 animate-ping' : isSyncStale ? 'bg-amber-500 animate-pulse' : 'bg-slate-400'}`} />
+                                {isOnline ? (isSyncStale ? 'Sin Sincronizar (>24h)' : 'Conector En Línea') : 'Conector Desconectado'}
                             </button>
                         </div>
                         <p className="text-xs text-slate-500 font-medium">
@@ -220,6 +236,9 @@ const MarcadorDigital = () => {
                 </div>
             </div>
 
+            {/* Aviso de actualización de conector */}
+            <BiometricUpdateBanner device={activeDevice} onOpenAgentModal={() => setIsAgentModalOpen(true)} onDeviceUpdated={refetchDevices} />
+
             {/* Pestañas Principales */}
             <div className="flex border-b border-slate-200 gap-4 overflow-x-auto">
                 <button
@@ -286,6 +305,12 @@ const MarcadorDigital = () => {
                     onPunchTypeChange={(val) => { setPunchType(val); setPage(1); }}
                     source={source}
                     onSourceChange={(val) => { setSource(val); setPage(1); }}
+                    onEditManual={(log) => { setEditingManualPunch(log); setIsPunchModalOpen(true); }}
+                    onDeleteManual={(log) => {
+                        if (window.confirm(`¿Eliminar la marcación manual de ${log.empleado_nombre_completo || log.device_uid} (${log.punch_time})?`)) {
+                            deleteManualMutation.mutate(log.id);
+                        }
+                    }}
                 />
             ) : mainTab === 'inasistencias' ? (
                 <BiometricAbsencesTab />
@@ -296,28 +321,10 @@ const MarcadorDigital = () => {
             {/* Modales Compartidos */}
             <BiometricReportModal open={isReportModalOpen} onClose={() => setIsReportModalOpen(false)} />
             <BiometricConfigModal open={isConfigModalOpen} onClose={() => setIsConfigModalOpen(false)} />
-            <BiometricDeviceModal
-                open={isDeviceModalOpen}
-                onClose={() => setIsDeviceModalOpen(false)}
-                device={activeDevice}
-                onSuccess={() => refetchDevices()}
-            />
-            <BiometricManualPunchModal
-                open={isPunchModalOpen}
-                onClose={() => setIsPunchModalOpen(false)}
-                onSuccess={() => { refetchLogs(); refetchRadarToday(); }}
-            />
-            <BiometricAgentModal
-                open={isAgentModalOpen}
-                onClose={() => setIsAgentModalOpen(false)}
-                device={activeDevice}
-                onDeviceUpdated={() => refetchDevices()}
-            />
-            <BiometricEmployeeModal
-                open={isEmployeeModalOpen}
-                onClose={() => setIsEmployeeModalOpen(false)}
-                onSuccess={() => handleRefresh()}
-            />
+            <BiometricDeviceModal open={isDeviceModalOpen} onClose={() => setIsDeviceModalOpen(false)} device={activeDevice} onSuccess={refetchDevices} />
+            <BiometricManualPunchModal open={isPunchModalOpen} initialPunch={editingManualPunch} onClose={() => { setIsPunchModalOpen(false); setEditingManualPunch(null); }} onSuccess={() => { refetchLogs(); refetchRadarToday(); }} />
+            <BiometricAgentModal open={isAgentModalOpen} onClose={() => setIsAgentModalOpen(false)} device={activeDevice} onDeviceUpdated={refetchDevices} />
+            <BiometricEmployeeModal open={isEmployeeModalOpen} onClose={() => setIsEmployeeModalOpen(false)} onSuccess={handleRefresh} />
         </div>
     );
 };

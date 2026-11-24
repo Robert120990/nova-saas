@@ -22,7 +22,9 @@ const BiometricLogsTab = ({
     punchType,
     onPunchTypeChange,
     source,
-    onSourceChange
+    onSourceChange,
+    onEditManual,
+    onDeleteManual
 }) => {
     return (
         <div className="space-y-6">
@@ -49,6 +51,8 @@ const BiometricLogsTab = ({
                 limit={limit}
                 onLimitChange={onLimitChange}
                 onPageChange={onPageChange}
+                onEditManual={onEditManual}
+                onDeleteManual={onDeleteManual}
             />
         </div>
     );
