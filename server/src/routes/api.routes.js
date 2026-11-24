@@ -1464,6 +1464,7 @@ router.get('/energy/daily-summary', verifyToken, tenantMiddleware, checkPermissi
 router.get('/energy/config', verifyToken, tenantMiddleware, checkPermission('manage_energy_config'), energySystemController.getConfig);
 router.put('/energy/config', verifyToken, tenantMiddleware, checkPermission('manage_energy_config'), energySystemController.updateConfig);
 router.get('/energy/analytics', verifyToken, tenantMiddleware, checkPermission(['manage_energy_system', 'manage_energy_config', 'view_dashboard_energy']), energySystemController.getAnalytics);
+router.get('/energy/analytics/report', verifyToken, tenantMiddleware, checkPermission(['manage_energy_system', 'manage_energy_config', 'view_dashboard_energy']), energySystemController.getAnalyticsReport);
 
 // Notifications
 router.use('/notifications', notificationRoutes);

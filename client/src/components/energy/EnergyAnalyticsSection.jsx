@@ -8,7 +8,9 @@ import {
     ChevronLeft, 
     ChevronRight, 
     RefreshCw, 
-    Layers
+    Layers,
+    FileText,
+    FileSpreadsheet
 } from 'lucide-react';
 import { getTodayString, formatDate } from '../../utils/dateUtils';
 import EnergyDayChart from './EnergyDayChart';
@@ -54,6 +56,43 @@ export default function EnergyAnalyticsSection({ companyHeaders }) {
             toast.error('Error al cargar analítica: ' + (err.response?.data?.message || err.message));
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleExportReport = async (format = 'pdf') => {
+        const toastId = toast.loading(format === 'excel' ? 'Generando reporte Excel del SFV...' : 'Generando reporte PDF del SFV...');
+        try {
+            const targetMonth = period === 'day' ? selectedDate.slice(0, 7) : selectedMonth;
+            const res = await axios.get('/api/energy/analytics/report', {
+                params: {
+                    period: 'month',
+                    month: targetMonth,
+                    year: selectedYear,
+                    plantId: selectedPlant,
+                    format: format === 'excel' ? 'excel' : undefined
+                },
+                headers: companyHeaders,
+                responseType: 'blob'
+            });
+            const blob = new Blob([res.data], {
+                type: format === 'excel'
+                    ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                    : 'application/pdf'
+            });
+            const url = window.URL.createObjectURL(blob);
+            if (format === 'pdf') {
+                window.open(url, '_blank');
+            } else {
+                const link = document.createElement('a');
+                link.href = url;
+                link.setAttribute('download', `Reporte_SFV_${targetMonth}.xlsx`);
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+            }
+            toast.success(format === 'excel' ? 'Reporte Excel descargado' : 'Reporte PDF generado', { id: toastId });
+        } catch (err) {
+            toast.error('Error al generar reporte: ' + (err.response?.data?.message || err.message), { id: toastId });
         }
     };
 
@@ -244,6 +283,26 @@ export default function EnergyAnalyticsSection({ companyHeaders }) {
                             </span>
                         )}
                     </div>
+
+                    <button
+                        type="button"
+                        onClick={() => handleExportReport('pdf')}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-colors"
+                        title="Generar Reporte PDF del Sistema Fotovoltaico (SFV)"
+                    >
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>Reporte PDF</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => handleExportReport('excel')}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold transition-colors"
+                        title="Exportar Reporte Excel del Sistema Fotovoltaico (SFV)"
+                    >
+                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                        <span>Excel</span>
+                    </button>
 
                     <button
                         onClick={fetchAnalytics}

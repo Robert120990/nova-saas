@@ -145,6 +145,21 @@ async function updateConfig(req, res) {
 }
 
 const energyAnalyticsService = require('../services/energyAnalytics.service');
+const energyReportPdfService = require('../services/energyReportPdf.service');
+
+/**
+ * Exportar Reporte PDF / Excel de desempeño del Sistema Fotovoltaico (SFV) y Baterías BESS
+ */
+async function getAnalyticsReport(req, res) {
+    try {
+        await energyReportPdfService.generateEnergyReport(req, res);
+    } catch (error) {
+        console.error('[EnergyController.getAnalyticsReport] Error:', error);
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
+}
 
 /**
  * Analítica temporal histórica (Día con curva 5m, Mes día a día, Año mes a mes)
@@ -191,5 +206,6 @@ module.exports = {
     getConfig,
     updateConfig,
     getAnalytics,
+    getAnalyticsReport,
     getLocations
 };
