@@ -68,9 +68,16 @@ const BiometricEmployeeShiftsTab = ({
                     </div>
                 ) : (
                     filteredEmployees.map(emp => (
-                        <div key={emp.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 hover:bg-slate-50 gap-2">
+                        <div key={emp.id} className={`flex flex-col sm:flex-row sm:items-center justify-between p-3 gap-2 ${emp.omitir_marcador_digital ? 'bg-amber-50/40' : 'hover:bg-slate-50'}`}>
                             <div>
-                                <span className="font-bold text-slate-800 text-xs block">{emp.nombre_completo}</span>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-bold text-slate-800 text-xs">{emp.nombre_completo}</span>
+                                    {!!emp.omitir_marcador_digital && (
+                                        <span className="px-1.5 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-200">
+                                            Omitido del marcador
+                                        </span>
+                                    )}
+                                </div>
                                 <span className="text-[11px] text-slate-400">
                                     [{emp.codigo}] {emp.cargo_nombre || 'Sin cargo'} &bull; {emp.departamento_nombre || 'Sin depto'}
                                 </span>
@@ -78,8 +85,9 @@ const BiometricEmployeeShiftsTab = ({
                             <div className="flex items-center gap-2">
                                 <select
                                     value={emp.turno_id || ''}
+                                    disabled={!!emp.omitir_marcador_digital}
                                     onChange={e => onAssignShift(emp.id, e.target.value || null)}
-                                    className="text-xs font-bold border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                    className="text-xs font-bold border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 disabled:opacity-50 disabled:bg-slate-100"
                                 >
                                     <option value="">Predeterminado (General)</option>
                                     {shifts.map(s => (

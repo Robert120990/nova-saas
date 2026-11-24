@@ -1423,8 +1423,11 @@ router.post('/rh/biometric/holidays', tenantMiddleware, checkPermission('manage_
 router.delete('/rh/biometric/holidays/:id', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.deleteHoliday);
 router.post('/rh/biometric/holidays/:id/toggle', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.toggleHoliday);
 router.get('/rh/biometric/overtime-employees', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.getOvertimeEmployees);
-router.post('/rh/biometric/overtime-employees/:employeeId', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.updateEmployeeOvertimeExemption);
 router.post('/rh/biometric/overtime-employees/batch', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.batchUpdateOvertimeExemptions);
+router.post('/rh/biometric/overtime-employees/:employeeId', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.updateEmployeeOvertimeExemption);
+router.get('/rh/biometric/omit-employees', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.getBiometricOmitEmployees);
+router.post('/rh/biometric/omit-employees/batch', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.batchUpdateBiometricOmit);
+router.post('/rh/biometric/omit-employees/:employeeId', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.updateEmployeeBiometricOmit);
 router.post('/rh/biometric/reclassify', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.reclassifyPunches);
 router.get('/rh/biometric/report', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.getAttendanceReport);
 router.get('/rh/biometric/report/export', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.exportAttendanceReport);

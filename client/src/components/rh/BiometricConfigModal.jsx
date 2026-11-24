@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
-    Sliders, Clock, Users, Calendar, Link2, X, UserCheck, Fingerprint
+    Sliders, Clock, Users, Calendar, Link2, X, UserCheck, Fingerprint, UserX
 } from 'lucide-react';
 import { unwrapList } from '../../utils/apiUtils';
 import {
@@ -12,7 +12,8 @@ import {
     BiometricOvertimeTab,
     BiometricHolidaysTab,
     BiometricPayrollTab,
-    BiometricDeviceUsersTab
+    BiometricDeviceUsersTab,
+    BiometricOmitEmployeesTab
 } from './tabs';
 
 const BiometricConfigModal = ({ open, onClose }) => {
@@ -240,6 +241,7 @@ const BiometricConfigModal = ({ open, onClose }) => {
                         { id: 'turnos', label: 'Turnos y Horarios', icon: Clock },
                         { id: 'usuarios_reloj', label: 'Usuarios en Reloj', icon: Fingerprint },
                         { id: 'horarios_empleados', label: 'Horarios por Empleado', icon: UserCheck },
+                        { id: 'omitir_marcador', label: 'Omitir del Marcador', icon: UserX },
                         { id: 'horas_extras', label: 'Exención Horas Extra', icon: Users },
                         { id: 'festivos', label: 'Días Festivos', icon: Calendar },
                         { id: 'planilla', label: 'Vinculación Planilla', icon: Link2 }
@@ -281,6 +283,7 @@ const BiometricConfigModal = ({ open, onClose }) => {
                     )}
 
                     {activeTab === 'usuarios_reloj' && <BiometricDeviceUsersTab />}
+                    {activeTab === 'omitir_marcador' && <BiometricOmitEmployeesTab />}
 
                     {activeTab === 'horarios_empleados' && (
                         <BiometricEmployeeShiftsTab

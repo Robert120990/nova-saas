@@ -95,7 +95,7 @@ const deleteHoliday = async (req, res) => {
 
 const toggleHoliday = async (req, res) => {
     try {
-        await rhBiometricConfigService.toggleHoliday(req.params.id, req.body.is_active);
+        await rhBiometricConfigService.toggleHoliday(req.company_id, req.params.id, req.body.is_active);
         res.json({ success: true, message: 'Estado del festivo actualizado.' });
     } catch (e) {
         res.status(500).json({ message: e.message });
@@ -130,6 +130,34 @@ const batchUpdateOvertimeExemptions = async (req, res) => {
     }
 };
 
+// Omitir del Marcador Digital (personal fuera de planta / sin horario definido)
+const getBiometricOmitEmployees = async (req, res) => {
+    try {
+        const employees = await rhBiometricConfigService.getBiometricOmitEmployees(req.company_id);
+        res.json({ success: true, data: employees });
+    } catch (e) {
+        res.status(500).json({ message: e.message });
+    }
+};
+
+const updateEmployeeBiometricOmit = async (req, res) => {
+    try {
+        const result = await rhBiometricConfigService.updateEmployeeBiometricOmit(req.company_id, req.params.employeeId, req.body.omitir);
+        res.json({ ...result, message: req.body.omitir ? 'Colaborador omitido del marcador digital.' : 'Colaborador reactivado en el marcador digital.' });
+    } catch (e) {
+        res.status(500).json({ message: e.message });
+    }
+};
+
+const batchUpdateBiometricOmit = async (req, res) => {
+    try {
+        const result = await rhBiometricConfigService.batchUpdateBiometricOmit(req.company_id, req.body);
+        res.json({ ...result, message: 'Exclusiones del marcador actualizadas.' });
+    } catch (e) {
+        res.status(500).json({ message: e.message });
+    }
+};
+
 const reclassifyPunches = async (req, res) => {
     try {
         const result = await rhBiometricConfigService.reclassifyPunches(req.company_id, req.body.startDate, req.body.endDate);
@@ -154,5 +182,8 @@ module.exports = {
     getOvertimeEmployees,
     updateEmployeeOvertimeExemption,
     batchUpdateOvertimeExemptions,
+    getBiometricOmitEmployees,
+    updateEmployeeBiometricOmit,
+    batchUpdateBiometricOmit,
     reclassifyPunches
 };

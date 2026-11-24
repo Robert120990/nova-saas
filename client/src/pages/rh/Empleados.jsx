@@ -262,6 +262,7 @@ const Empleados = () => {
         data.aplica_renta = data.aplica_renta === 'on' || data.aplica_renta === '1' ? 1 : 0;
         data.en_vacaciones = data.en_vacaciones === 'on' || data.en_vacaciones === '1' ? 1 : 0;
         data.incapacitado = data.incapacitado === 'on' || data.incapacitado === '1' ? 1 : 0;
+        data.omitir_marcador_digital = data.omitir_marcador_digital === 'on' || data.omitir_marcador_digital === '1' ? 1 : 0;
 
         ['afp_id', 'cargo_id', 'departamento_personal_id', 'tipo_contrato_id', 'branch_id'].forEach(k => {
             if (data[k] === '' || data[k] === 'null') data[k] = null;
@@ -790,6 +791,10 @@ const Empleados = () => {
                                 <label className="flex items-center gap-2 p-2.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-indigo-200 transition-colors">
                                     <input type="checkbox" name="incapacitado" defaultChecked={!!selected?.incapacitado} className="rounded text-indigo-600" />
                                     <span className="text-xs font-bold text-slate-600">Incapacitado</span>
+                                </label>
+                                <label className="flex items-center gap-2 p-2.5 bg-amber-50/60 border border-amber-200/80 rounded-xl cursor-pointer hover:border-amber-300 transition-colors" title="Excluye al colaborador del Radar Diario y reportes del Marcador Biométrico (trabajo fuera de planta o sin horario fijo)">
+                                    <input type="checkbox" name="omitir_marcador_digital" defaultChecked={!!selected?.omitir_marcador_digital} className="rounded text-amber-600" />
+                                    <span className="text-xs font-bold text-amber-800">Omitir Marcador</span>
                                 </label>
                             </div>
                             <div>

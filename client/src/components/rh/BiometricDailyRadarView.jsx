@@ -1,6 +1,6 @@
 import {
     Search, Calendar, ShieldCheck, Edit3, PlusCircle,
-    AlertTriangle, FileSignature, Sun
+    AlertTriangle, FileSignature, Sun, Info
 } from 'lucide-react';
 import Table from '../ui/Table';
 import { formatDate } from '../../utils/dateUtils';
@@ -31,6 +31,9 @@ const BiometricDailyRadarView = ({
 }) => {
     const rows = Array.isArray(radarData?.rows) ? radarData.rows : [];
     const isNonWorkingDay = !!(radarData?.is_holiday || radarData?.is_sunday);
+    const isNotConfigured = radarData?.biometric_configured === false;
+    const omittedFromClock = Number(radarData?.summary?.omitidos_marcador || 0);
+    const excludedWithoutBio = Number(radarData?.summary?.excluidos_sin_bio || 0);
 
     const headers = [
         { label: 'Colaborador', sortKey: 'empleado_nombre', sortType: 'string' },
@@ -89,6 +92,31 @@ const BiometricDailyRadarView = ({
                 </div>
             </div>
 
+            {isNotConfigured && (
+                <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 flex items-center gap-2.5 text-xs text-amber-900 font-medium">
+                    <Info className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>
+                        Esta empresa aún no tiene un reloj biométrico configurado ni marcaciones registradas. Configure su dispositivo en <strong>Configurar Reloj</strong> para activar el radar de asistencia.
+                    </span>
+                </div>
+            )}
+
+            {!isNotConfigured && (omittedFromClock > 0 || excludedWithoutBio > 0) && (
+                <div className="px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center gap-2 text-[11.5px] text-slate-600 flex-wrap">
+                    <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span>
+                        Se omiten del radar:{' '}
+                        {omittedFromClock > 0 && (
+                            <><strong>{omittedFromClock}</strong> colaborador(es) configurados fuera del marcador{excludedWithoutBio > 0 ? ' y ' : ''}</>
+                        )}
+                        {excludedWithoutBio > 0 && (
+                            <><strong>{excludedWithoutBio}</strong> sin código biométrico asignado</>
+                        )}
+                        . Puede ajustarlo en <strong>Configuración → Omitir del Marcador</strong>.
+                    </span>
+                </div>
+            )}
+
             {isNonWorkingDay && (
                 <div className="p-3.5 rounded-xl bg-sky-50 border border-sky-200 flex items-center gap-2.5 text-xs text-sky-900 font-medium">
                     <Sun className="w-4 h-4 text-sky-600 shrink-0" />
@@ -116,7 +144,7 @@ const BiometricDailyRadarView = ({
                                 <td className="py-3 px-4">
                                     <span className="font-bold text-slate-800 block">{row.empleado_nombre}</span>
                                     <span className="text-[11px] text-slate-400 font-mono">
-                                        {row.codigo ? `Cód: ${row.codigo} · ` : ''}Bio: {row.codigo_biometrico}
+                                        {row.codigo ? `Cód: ${row.codigo} · ` : ''}{row.codigo_biometrico ? `Bio: ${row.codigo_biometrico}` : 'Sin código bio'}
                                     </span>
                                 </td>
                                 <td className="py-3 px-4">

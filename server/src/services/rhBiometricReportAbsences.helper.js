@@ -31,7 +31,7 @@ async function enrichReportWithAbsences(companyId, filters, reportRows, summary,
     const endDate = toDateStr(filters.endDate || filters.end_date);
     const { branchId, departamentoId, search } = filters;
 
-    const conds = ['a.company_id = ?'];
+    const conds = ['a.company_id = ?', 'COALESCE(e.omitir_marcador_digital, 0) = 0'];
     const params = [companyId];
     if (startDate) { conds.push('a.fecha_fin >= ?'); params.push(startDate); }
     if (endDate) { conds.push('a.fecha_inicio <= ?'); params.push(endDate); }

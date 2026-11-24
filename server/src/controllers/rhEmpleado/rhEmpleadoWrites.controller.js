@@ -11,7 +11,7 @@ const createEmpleado = async (req, res) => {
               cargo_id, departamento_personal_id, branch_id, num_isss, num_nup, fecha_ingreso,
               tipo_contrato_id, sueldo_base, bonificacion_fija, cuenta_planillera,
               es_activo, es_jubilado, es_jubilado_con_afp, aplica_renta, en_vacaciones, incapacitado, comentarios,
-              emergency_contacts, turno_id, exento_horas_extras } = req.body;
+              emergency_contacts, turno_id, exento_horas_extras, omitir_marcador_digital } = req.body;
 
         const jubiladoConAfpVal = (es_jubilado_con_afp === 1 || es_jubilado_con_afp === '1' || es_jubilado_con_afp === true) ? 1 : 0;
         const jubiladoVal = jubiladoConAfpVal ? 0 : ((es_jubilado === 1 || es_jubilado === '1' || es_jubilado === true) ? 1 : 0);
@@ -31,13 +31,13 @@ const createEmpleado = async (req, res) => {
         const [result] = await pool.query(
             `INSERT INTO ${TABLE} (company_id, codigo, codigo_biometrico, nombres, apellidos, fecha_nacimiento, num_dui, num_nit, afp_id,
               ocupacion, direccion, departamento, municipio, distrito, telefono, correo,
-              cargo_id, departamento_personal_id, branch_id, turno_id, exento_horas_extras, num_isss, num_nup, fecha_ingreso,
+              cargo_id, departamento_personal_id, branch_id, turno_id, exento_horas_extras, omitir_marcador_digital, num_isss, num_nup, fecha_ingreso,
               tipo_contrato_id, sueldo_base, bonificacion_fija, cuenta_planillera,
               es_activo, es_jubilado, es_jubilado_con_afp, aplica_renta, en_vacaciones, incapacitado, comentarios)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [req.company_id, codigo, cleanCodigoBio, nombres, apellidos, fecha_nacimiento || null, num_dui || null, num_nit || null, afp_id || null,
              ocupacion || null, direccion || null, departamento || null, municipio || null, distrito || null, telefono || null, correo || null,
-             cargo_id || null, departamento_personal_id || null, cleanBranchId, cleanTurnoId, exento_horas_extras ? 1 : 0, num_isss || null, num_nup || null, fecha_ingreso || null,
+             cargo_id || null, departamento_personal_id || null, cleanBranchId, cleanTurnoId, exento_horas_extras ? 1 : 0, omitir_marcador_digital ? 1 : 0, num_isss || null, num_nup || null, fecha_ingreso || null,
              tipo_contrato_id || null, sueldo_base || 0, bonificacion_fija || 0, cuenta_planillera || null,
              es_activo ?? 1, jubiladoVal, jubiladoConAfpVal, aplica_renta ?? 1, en_vacaciones ?? 0, incapacitado ?? 0, comentarios || null]
         );
@@ -129,6 +129,13 @@ const updateEmpleado = async (req, res) => {
              id, req.company_id]
         );
         if (result.affectedRows === 0) return res.status(404).json({ message: `${LABEL} no encontrado` });
+
+        if (req.body.omitir_marcador_digital !== undefined) {
+            await pool.query(
+                `UPDATE ${TABLE} SET omitir_marcador_digital = ? WHERE id = ? AND company_id = ?`,
+                [req.body.omitir_marcador_digital ? 1 : 0, id, req.company_id]
+            );
+        }
 
         if (prev) {
             const newCargoId = cargo_id && cargo_id !== '' && cargo_id !== 'null' ? parseInt(cargo_id) : null;

@@ -16,7 +16,7 @@ async function getAttendanceReportData(companyId, filters = {}) {
     const rawEnd = filters.endDate || filters.end_date;
     const { branchId, departamentoId, search } = filters;
     const settings = await getSettings(companyId);
-    const conditions = ['l.company_id = ?'];
+    const conditions = ['l.company_id = ?', '(e.id IS NULL OR COALESCE(e.omitir_marcador_digital, 0) = 0)'];
     const params = [companyId];
 
     const { startDate, endDate } = appendPunchTimeBounds(conditions, params, 'l', rawStart, rawEnd);

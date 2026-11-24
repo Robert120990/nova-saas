@@ -15,6 +15,7 @@ const INITIAL_FORM = {
     cargo_id: '',
     turno_id: '',
     exento_horas_extras: 0,
+    omitir_marcador_digital: 0,
     telefono: '',
     num_dui: '',
     sueldo_base: ''
@@ -91,6 +92,7 @@ const BiometricEmployeeModal = ({ open, onClose, onSuccess }) => {
             cargo_id: form.cargo_id || undefined,
             turno_id: form.turno_id || undefined,
             exento_horas_extras: form.exento_horas_extras ? 1 : 0,
+            omitir_marcador_digital: form.omitir_marcador_digital ? 1 : 0,
             telefono: form.telefono.trim() || undefined,
             num_dui: form.num_dui.trim() || undefined,
             sueldo_base: form.sueldo_base ? parseFloat(form.sueldo_base) : 0,
@@ -125,15 +127,16 @@ const BiometricEmployeeModal = ({ open, onClose, onSuccess }) => {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="space-y-1">
                                 <label className="text-[11px] font-bold text-slate-700 uppercase">
-                                    ID / UID en el Reloj ZKTeco <span className="text-indigo-600">*</span>
+                                    ID / UID en el Reloj ZKTeco {!form.omitir_marcador_digital && <span className="text-indigo-600">*</span>}
                                 </label>
                                 <input
                                     type="text"
-                                    required
+                                    required={!form.omitir_marcador_digital}
+                                    disabled={!!form.omitir_marcador_digital}
                                     value={form.codigo_biometrico}
                                     onChange={e => updateField('codigo_biometrico', e.target.value)}
-                                    placeholder="Ej. 10, 105, 35..."
-                                    className="w-full font-bold text-indigo-900 border border-slate-300 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500/20 bg-white"
+                                    placeholder={form.omitir_marcador_digital ? 'Omitido del marcador' : 'Ej. 10, 105, 35...'}
+                                    className="w-full font-bold text-indigo-900 border border-slate-300 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500/20 bg-white disabled:bg-slate-100 disabled:text-slate-400"
                                 />
                                 <p className="text-[10px] text-slate-500">Número de usuario asignado en el reloj ZKTeco para vincular sus huellas.</p>
                             </div>
@@ -163,7 +166,7 @@ const BiometricEmployeeModal = ({ open, onClose, onSuccess }) => {
                                     ))}
                                 </select>
                             </div>
-                            <div className="flex flex-col justify-center space-y-1 pt-2">
+                            <div className="flex flex-col justify-center space-y-2 pt-2">
                                 <label className="flex items-center gap-2 cursor-pointer select-none">
                                     <input
                                         type="checkbox"
@@ -173,7 +176,16 @@ const BiometricEmployeeModal = ({ open, onClose, onSuccess }) => {
                                     />
                                     <span className="font-bold text-slate-700">Exento de Horas Extras</span>
                                 </label>
-                                <p className="text-[10px] text-slate-400">Personal de confianza/jefatura que no devenga horas extras.</p>
+                                <label className="flex items-center gap-2 cursor-pointer select-none">
+                                    <input
+                                        type="checkbox"
+                                        checked={!!form.omitir_marcador_digital}
+                                        onChange={e => updateField('omitir_marcador_digital', e.target.checked ? 1 : 0)}
+                                        className="w-4 h-4 text-amber-600 rounded border-slate-300"
+                                    />
+                                    <span className="font-bold text-amber-800">Omitir del Marcador Digital</span>
+                                </label>
+                                <p className="text-[10px] text-slate-400">Para personal fuera de planta o contrato sin horario fijo.</p>
                             </div>
                         </div>
                     </div>

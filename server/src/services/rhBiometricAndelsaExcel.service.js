@@ -109,7 +109,7 @@ async function generateAndelsaOvertimeExcel(companyId, filters = {}) {
     const companyName = (company.razon_social || 'ANDELSA S.A DE C.V').toUpperCase();
     const settings = await getSettings(companyId);
 
-    const empConds = ['e.company_id = ?', 'e.es_activo = 1'];
+    const empConds = ['e.company_id = ?', 'e.es_activo = 1', 'COALESCE(e.omitir_marcador_digital, 0) = 0'];
     const empParams = [companyId];
     if (branchId && branchId !== 'todos') { empConds.push('e.branch_id = ?'); empParams.push(branchId); }
     if (departamentoId && departamentoId !== 'todos') { empConds.push('e.departamento_personal_id = ?'); empParams.push(departamentoId); }

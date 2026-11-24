@@ -131,10 +131,11 @@ async function deleteShift(companyId, id) {
 
 async function getEmployeeShiftAssignments(companyId) {
     const [rows] = await pool.query(
-        `SELECT e.id, e.codigo,
+        `SELECT e.id, e.codigo, e.codigo_biometrico,
                 CONCAT(COALESCE(e.nombres, ''), ' ', COALESCE(e.apellidos, '')) as nombre_completo,
                 c.descripcion as cargo_nombre,
                 dep.descripcion as departamento_nombre,
+                COALESCE(e.omitir_marcador_digital, 0) as omitir_marcador_digital,
                 e.turno_id,
                 t.nombre as turno_nombre,
                 t.hora_entrada as turno_hora_entrada,
@@ -245,6 +246,43 @@ async function batchUpdateOvertimeExemptions(companyId, { exemptIds = [], nonExe
     return { success: true, updatedCount: exemptIds.length + nonExemptIds.length };
 }
 
+async function getBiometricOmitEmployees(companyId) {
+    const [rows] = await pool.query(
+        `SELECT e.id, e.codigo, e.codigo_biometrico, e.nombres, e.apellidos,
+                CONCAT(COALESCE(e.nombres, ''), ' ', COALESCE(e.apellidos, '')) as nombre_completo,
+                c.descripcion as cargo_nombre,
+                dep.descripcion as departamento_nombre,
+                t.nombre as turno_nombre,
+                COALESCE(e.omitir_marcador_digital, 0) as omitir_marcador_digital
+         FROM rh_empleados e
+         LEFT JOIN rh_cargos c ON c.id = e.cargo_id
+         LEFT JOIN rh_departamentos dep ON dep.id = e.departamento_personal_id
+         LEFT JOIN rh_turnos t ON t.id = e.turno_id
+         WHERE e.company_id = ? AND e.es_activo = 1
+         ORDER BY COALESCE(e.omitir_marcador_digital, 0) DESC, e.nombres ASC`,
+        [companyId]
+    );
+    return rows;
+}
+
+async function updateEmployeeBiometricOmit(companyId, empleadoId, omitir) {
+    const [res] = await pool.query(
+        'UPDATE rh_empleados SET omitir_marcador_digital = ? WHERE id = ? AND company_id = ?',
+        [omitir ? 1 : 0, empleadoId, companyId]
+    );
+    return { success: res.affectedRows > 0, omitir: !!omitir };
+}
+
+async function batchUpdateBiometricOmit(companyId, { omitIds = [], includeIds = [] }) {
+    if (omitIds.length > 0) {
+        await pool.query('UPDATE rh_empleados SET omitir_marcador_digital = 1 WHERE id IN (?) AND company_id = ?', [omitIds, companyId]);
+    }
+    if (includeIds.length > 0) {
+        await pool.query('UPDATE rh_empleados SET omitir_marcador_digital = 0 WHERE id IN (?) AND company_id = ?', [includeIds, companyId]);
+    }
+    return { success: true, updatedCount: omitIds.length + includeIds.length };
+}
+
 async function reclassifyPunches(companyId, startDate = null, endDate = null) {
     const s = await getSettings(companyId);
     const toleranciaMins = parseInt(s.tolerancia_entrada_minutos, 10) || 15;
@@ -299,5 +337,6 @@ module.exports = {
     getEmployeeShiftAssignments, assignEmployeeShift,
     getHolidays, saveHoliday, deleteHoliday, toggleHoliday,
     getOvertimeEmployees, updateEmployeeOvertimeExemption,
-    batchUpdateOvertimeExemptions, reclassifyPunches
+    batchUpdateOvertimeExemptions, getBiometricOmitEmployees,
+    updateEmployeeBiometricOmit, batchUpdateBiometricOmit, reclassifyPunches
 };

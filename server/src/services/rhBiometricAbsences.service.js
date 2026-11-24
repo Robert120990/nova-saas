@@ -38,6 +38,8 @@ async function getDailyAttendanceRadar(companyId, filters = {}) {
     await ensureAbsenceSchema();
     const targetDate = toDateStr(filters.date) || getTodaySv();
     const { branchId, departamentoId, search, statusFilter = 'todos' } = filters;
+    const includeWithoutBio = filters.includeWithoutBio === '1' || filters.includeWithoutBio === true || filters.includeWithoutBio === 'true';
+    const includeOmitted = filters.includeOmitted === '1' || filters.includeOmitted === true || filters.includeOmitted === 'true';
 
     const settings = await getSettings(companyId);
     const holidays = await getHolidays(companyId, settings.pais_festivos || 'SV');
@@ -46,6 +48,21 @@ async function getDailyAttendanceRadar(companyId, filters = {}) {
         h.is_active && Number(h.mes) === mo && Number(h.dia) === dy && (!h.anio || Number(h.anio) === yr)
     );
     const isSunday = new Date(`${targetDate}T12:00:00Z`).getUTCDay() === 0;
+
+    const [[devCheck]] = await pool.query('SELECT COUNT(*) as cnt FROM rh_biometric_devices WHERE company_id = ? AND is_active = 1', [companyId]);
+    const [logCheck] = await pool.query('SELECT 1 FROM rh_biometric_attendance_logs WHERE company_id = ? LIMIT 1', [companyId]);
+    const biometricConfigured = Number(devCheck?.cnt || 0) > 0 || logCheck.length > 0;
+
+    const summary = {
+        total_activos: 0, asistieron: 0, sin_justificar: 0,
+        pendientes_autorizar: 0, autorizados_con_goce: 0,
+        autorizados_sin_goce: 0, injustificadas: 0, descanso_festivo: 0,
+        excluidos_sin_bio: 0, omitidos_marcador: 0
+    };
+
+    if (!biometricConfigured) {
+        return { date: targetDate, biometric_configured: false, is_holiday: !!matchedHoliday, holiday_name: matchedHoliday?.nombre || null, is_sunday: isSunday, summary, rows: [] };
+    }
 
     const empConds = ['e.company_id = ?', 'e.es_activo = 1'];
     const empParams = [companyId];
@@ -60,6 +77,7 @@ async function getDailyAttendanceRadar(companyId, filters = {}) {
     const [employees] = await pool.query(
         `SELECT e.id, e.codigo, e.codigo_biometrico, e.nombres, e.apellidos, e.fecha_ingreso,
                 e.en_vacaciones, e.incapacitado, e.turno_id,
+                COALESCE(e.omitir_marcador_digital, 0) AS omitir_marcador_digital,
                 c.descripcion AS cargo_nombre, dep.descripcion AS departamento_nombre, b.nombre AS branch_name,
                 t.nombre AS turno_nombre, t.hora_entrada AS turno_entrada, t.hora_salida AS turno_salida,
                 t.tolerancia_entrada_minutos AS turno_tolerancia, t.horas_jornada_diaria AS turno_jornada
@@ -118,23 +136,31 @@ async function getDailyAttendanceRadar(companyId, filters = {}) {
         }
     }
 
-    const summary = {
-        total_activos: 0, asistieron: 0, sin_justificar: 0,
-        pendientes_autorizar: 0, autorizados_con_goce: 0,
-        autorizados_sin_goce: 0, injustificadas: 0, descanso_festivo: 0
-    };
     const allRows = [];
 
     for (const emp of employees) {
         const ingresoStr = toDateStr(emp.fecha_ingreso);
         if (ingresoStr && ingresoStr > targetDate) continue;
 
-        summary.total_activos++;
-        const uidKey = emp.codigo_biometrico
+        const hasBioCode = !!(emp.codigo_biometrico && String(emp.codigo_biometrico).trim());
+        const uidKey = hasBioCode
             ? String(emp.codigo_biometrico).trim().toLowerCase().replace(/^0+/, '')
             : '';
         const empPunches = punchByEmpId.get(emp.id) || (uidKey ? punchByUid.get(uidKey) : null) || [];
         const empAbsence = absenceByEmpId.get(emp.id) || null;
+
+        // Omitir empleados configurados fuera de planta o sin horario fijo en marcador digital
+        if (!includeOmitted && Number(emp.omitir_marcador_digital) === 1) {
+            summary.omitidos_marcador++;
+            continue;
+        }
+        // Excluir por defecto empleados sin código biométrico asignado que no tienen marcas ni ausencias en la fecha
+        if (!includeWithoutBio && !hasBioCode && empPunches.length === 0 && !empAbsence) {
+            summary.excluidos_sin_bio++;
+            continue;
+        }
+
+        summary.total_activos++;
 
         const horaEsperada = emp.turno_entrada || settings.hora_entrada || '08:00:00';
         const tolerancia = parseInt(emp.turno_tolerancia ?? settings.tolerancia_entrada_minutos ?? 15, 10);
@@ -179,7 +205,7 @@ async function getDailyAttendanceRadar(companyId, filters = {}) {
         allRows.push({
             empleado_id: emp.id,
             codigo: emp.codigo || '',
-            codigo_biometrico: emp.codigo_biometrico || emp.codigo || String(emp.id),
+            codigo_biometrico: emp.codigo_biometrico ? String(emp.codigo_biometrico).trim() : null,
             nombres: emp.nombres,
             apellidos: emp.apellidos,
             empleado_nombre: `${emp.nombres || ''} ${emp.apellidos || ''}`.trim(),
@@ -213,6 +239,7 @@ async function getDailyAttendanceRadar(companyId, filters = {}) {
 
     return {
         date: targetDate,
+        biometric_configured: true,
         is_holiday: !!matchedHoliday,
         holiday_name: matchedHoliday?.nombre || null,
         is_sunday: isSunday,
