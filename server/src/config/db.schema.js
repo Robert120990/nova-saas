@@ -866,6 +866,10 @@ ORDER BY gc.fecha_turno DESC
 - id, cutoff_id, company_id, container_id, container_number, container_code, container_name, was_active_power, turned_on_at, turned_off_at, days_on, daily_rate, subtotal, iva_amount, total_with_iva, notes
 ### egg_storage_container_daily_ledger (Tabla diaria de almacenamiento en contenedor: libras ingreso/salida/saldo, contenedores activos, días $ y cargas/descargas $)
 - id, company_id, cutoff_id, entry_date DATE, lbs_in, lbs_out, lbs_balance, daily_rate, containers_count, days_amount, loading_unloading_cost, withdrawal_count, income_count, active_containers_list, notes
+### egg_industrial_supplies (Inventario de insumos de Huevo Industrial: empaques, aditivos e ingredientes, químicos CIP)
+- id, company_id, item_code, item_name, category, subcategory, unit_of_measure, current_stock, min_stock, unit_cost, product_id, costing_source_type, costing_source_id, dose_per_batch, location, status, notes
+### egg_industrial_supply_movements (Kárdex de entradas, salidas y ajustes de insumos de Huevo Industrial)
+- id, company_id, supply_id, item_code, item_name, category, movement_type, quantity, previous_stock, new_stock, unit_cost, total_cost, reference_doc, batch_id, batch_code, provider_name, notes, user_id, user_name, movement_date, created_at
 - created_at, updated_at
 
 `;

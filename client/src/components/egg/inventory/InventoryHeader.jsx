@@ -153,6 +153,19 @@ export default function InventoryHeader({ model }) {
                     <TrendingDown size={16} />
                     <span>Mermas y Desperdicios</span>
                 </button>
+
+                <button
+                    type="button"
+                    onClick={() => setActiveTab('supplies')}
+                    className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 whitespace-nowrap shrink-0 cursor-pointer ${
+                        activeTab === 'supplies'
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200/80'
+                    }`}
+                >
+                    <Boxes size={16} />
+                    <span>Insumos de Planta (Empaques, Aditivos y CIP)</span>
+                </button>
             </div>
         </div>
     );

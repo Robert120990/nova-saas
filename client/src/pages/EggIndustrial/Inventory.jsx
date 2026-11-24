@@ -7,6 +7,7 @@ import {
     RawMaterialTarimasModal,
     PackagingLotsModal
 } from '../../components/egg/inventory';
+import { SuppliesInventorySection } from '../../components/egg/supplies';
 import { RefreshCw } from 'lucide-react';
 
 export default function EggInventory() {
@@ -29,7 +30,9 @@ export default function EggInventory() {
             <InventoryHeader model={model} />
 
             {/* Contenido según la pestaña activa */}
-            {loading ? (
+            {activeTab === 'supplies' ? (
+                <SuppliesInventorySection embedded={true} />
+            ) : loading ? (
                 <div className="py-24 bg-white rounded-2xl border border-slate-200 shadow-xs flex flex-col items-center justify-center gap-3 text-slate-400">
                     <RefreshCw size={28} className="animate-spin text-blue-600" />
                     <p className="text-xs font-semibold">Cargando existencias de inventario...</p>

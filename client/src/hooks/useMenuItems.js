@@ -185,6 +185,19 @@ function buildTree(items) {
         });
     }
 
+    if (industrialRoot && !industrialRoot.children.some(c => c.path === '/industrial/insumos')) {
+        industrialRoot.children.push({
+            id: 'virtual-industrial-supplies',
+            label: 'Inventario de Insumos',
+            path: '/industrial/insumos',
+            permission: 'manage_egg_supplies',
+            permission_key: 'manage_egg_supplies',
+            hideInMenu: false,
+            icon: iconMap.Boxes || iconMap.Circle,
+            children: []
+        });
+    }
+
     // Asegurar submenú Reportes en Huevo Industrial (Página 5)
     if (industrialRoot && !industrialRoot.children.some(c => c.path === '/industrial/reportes')) {
         industrialRoot.children.push({
@@ -657,6 +670,7 @@ export function useMenuPermissions() {
             const extraIndustrialPerms = [
                 { id: 'manage_production_calendar', label: 'Calendario de Producción', isReport: false, isSpecial: false, sort_order: 3 },
                 { id: 'manage_egg_containers', label: 'Contenedores de Frío', isReport: false, isSpecial: false, sort_order: 4 },
+                { id: 'manage_egg_supplies', label: 'Inventario de Insumos', isReport: false, isSpecial: false, sort_order: 6 },
                 { id: 'view_egg_inventory', label: 'Inventario Traducido (Lbs / Kg)', isReport: false, isSpecial: false, sort_order: 25 },
                 { id: 'view_egg_reports', label: 'Reportes de Huevo Industrial', isReport: true, isSpecial: false, sort_order: 30 },
                 { id: 'edit_egg_quality', label: 'Evaluar y Editar Calidad (LAB-004)', isReport: false, isSpecial: true, sort_order: 101 },

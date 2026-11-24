@@ -293,4 +293,15 @@ router.post('/containers/:id/reset-cycle', containerPermits, eggContainersContro
 router.put('/containers/:id', containerPermits, eggContainersController.updateContainer);
 router.delete('/containers/:id', containerPermits, eggContainersController.deleteContainer);
 
+// 28. Inventario de Insumos de Huevo Industrial (Empaques, Aditivos e Ingredientes, Químicos CIP y Kárdex)
+const eggSuppliesController = require('../controllers/eggSupplies.controller');
+const suppliesPermits = permit('manage_egg_supplies', 'view_egg_inventory', 'manage_packaging', 'manage_industrial_costs', 'manage_production', 'view_industrial_dashboard');
+router.get('/supplies', suppliesPermits, eggSuppliesController.getSuppliesOverview);
+router.post('/supplies', suppliesPermits, eggSuppliesController.saveSupplyItem);
+router.post('/supplies/sync-costing', suppliesPermits, eggSuppliesController.syncSuppliesWithCosting);
+router.post('/supplies/movements', suppliesPermits, eggSuppliesController.registerSupplyMovement);
+router.get('/supplies/report', suppliesPermits, eggSuppliesController.exportSuppliesReport);
+router.put('/supplies/:id', suppliesPermits, eggSuppliesController.saveSupplyItem);
+router.delete('/supplies/:id', suppliesPermits, eggSuppliesController.deleteSupplyItem);
+
 module.exports = router;

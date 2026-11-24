@@ -201,6 +201,7 @@ const EggDispatch = lazyWithRetry(() => import('./pages/EggIndustrial/EggDispatc
 const EggReports = lazyWithRetry(() => import('./pages/EggIndustrial/Reports'));
 const EggInventory = lazyWithRetry(() => import('./pages/EggIndustrial/Inventory'));
 const EggContainers = lazyWithRetry(() => import('./pages/EggIndustrial/Containers'));
+const EggSupplies = lazyWithRetry(() => import('./pages/EggIndustrial/Supplies'));
 
 // CRM Pages
 const CustomerAgreements = lazyWithRetry(() => import('./pages/CRM/CustomerAgreements'));
@@ -465,6 +466,7 @@ function App() {
                         <Route path="/industrial/costeo-libra" element={<EggCosteoPorLibra />} />
                         <Route path="/industrial/trazabilidad" element={<EggTraceability />} />
                         <Route path="/industrial/inventario" element={<EggInventory />} />
+                        <Route path="/industrial/insumos" element={<EggSupplies />} />
                         <Route path="/industrial/reportes" element={<EggReports />} />
                         <Route path="/industrial/configuracion" element={<EggConfig />} />
                         <Route path="/egg-industrial/config" element={<Navigate to="/industrial/configuracion?tab=lot-prefixes" replace />} />
