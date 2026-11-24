@@ -5,7 +5,7 @@ const eggController = require('../controllers/eggIndustrial.controller');
 router.use(require('../middlewares/eggReferences'));
 
 // 1. Recepción de Materia Prima
-router.get('/raw-materials', permit('manage_mp_reception', 'manage_production', 'manage_egg_quality', 'view_egg_reports'), eggController.getRawMaterials);
+router.get('/raw-materials', permit('manage_mp_reception', 'manage_production', 'manage_egg_quality', 'view_egg_reports', 'manage_egg_tarima_writeoffs', 'view_egg_inventory'), eggController.getRawMaterials);
 router.post('/raw-materials', permit('manage_mp_reception'), eggController.createRawMaterial);
 router.put('/raw-materials/:id', permit('manage_mp_reception'), eggController.updateRawMaterial);
 router.put('/raw-materials/:id/quality-classification', permit('manage_egg_quality'), eggController.saveQualityClassification);
@@ -303,5 +303,12 @@ router.post('/supplies/movements', suppliesPermits, eggSuppliesController.regist
 router.get('/supplies/report', suppliesPermits, eggSuppliesController.exportSuppliesReport);
 router.put('/supplies/:id', suppliesPermits, eggSuppliesController.saveSupplyItem);
 router.delete('/supplies/:id', suppliesPermits, eggSuppliesController.deleteSupplyItem);
+
+// 29. Vinculación de Facturas y Baja de Tarimas de Materia Prima (No Producción)
+const tarimaWriteOffPermits = permit('manage_egg_tarima_writeoffs', 'manage_mp_reception', 'manage_production', 'view_egg_inventory');
+router.get('/tarima-writeoffs', tarimaWriteOffPermits, eggController.getTarimaWriteOffs);
+router.get('/tarima-writeoffs/invoices', tarimaWriteOffPermits, eggController.searchTarimaWriteOffInvoices);
+router.post('/tarima-writeoffs', permit('manage_egg_tarima_writeoffs', 'manage_mp_reception'), eggController.createTarimaWriteOff);
+router.put('/tarima-writeoffs/:id/revert', permit('manage_egg_tarima_writeoffs', 'manage_mp_reception'), eggController.revertTarimaWriteOff);
 
 module.exports = router;

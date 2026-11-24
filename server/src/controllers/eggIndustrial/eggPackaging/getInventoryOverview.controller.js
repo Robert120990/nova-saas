@@ -1,4 +1,8 @@
 const { pool, ensureEggSchema } = require('./shared');
+const {
+    getConsumedWriteOffsByCompany,
+    getProductionConsumptionByCompany
+} = require('../../../services/eggIndustrial/eggRawMaterialWriteOff.service');
 
 /**
  * Obtiene el inventario integral de Huevo Industrial:
@@ -41,6 +45,11 @@ const getInventoryOverview = async (req, res) => {
             ORDER BY rm.stock_lbs > 0 DESC, rm.id DESC
         `, [company_id]);
 
+        const [writeOffMap, prodTarimaMap] = await Promise.all([
+            getConsumedWriteOffsByCompany(company_id, pool),
+            getProductionConsumptionByCompany(company_id, pool)
+        ]);
+
         let totalRmBoxes = 0;
         let totalRmStockLbs = 0;
         let totalRmTarimas = 0;
@@ -57,13 +66,35 @@ const getInventoryOverview = async (req, res) => {
             }
             const stockLbs = parseFloat(rm.stock_lbs || 0);
             const boxes = parseInt(rm.total_boxes || 0, 10);
+            const woLot = writeOffMap[rm.id] || { tarimas: {}, totalBoxes: 0, totalLbs: 0 };
+            const prodLot = prodTarimaMap[rm.id] || {};
+            const enrichedTarimas = (Array.isArray(tarimas) ? tarimas : []).map((t, idx) => {
+                const num = parseInt(t.tarima_number, 10) || (idx + 1);
+                const origBoxes = parseInt(t.boxes_count || 0, 10);
+                const origLbs = parseFloat(t.net_weight_lbs || t.gross_weight_lbs || 0);
+                const pUsed = prodLot[num] || { boxes: 0, lbs: 0 };
+                const wUsed = woLot.tarimas[num] || { boxes: 0, lbs: 0, refs: [] };
+                const availBoxes = Math.max(0, origBoxes - pUsed.boxes - wUsed.boxes);
+                const availLbs = Math.max(0, Math.round((origLbs - pUsed.lbs - wUsed.lbs) * 100) / 100);
+                const isDepleted = (availBoxes <= 0 && availLbs <= 0.01) || stockLbs <= 0.01;
+                return {
+                    ...t,
+                    tarima_number: num,
+                    available_boxes: availBoxes,
+                    available_lbs: availLbs,
+                    prod_boxes: pUsed.boxes,
+                    writeoff_boxes: wUsed.boxes,
+                    writeoff_refs: wUsed.refs || [],
+                    is_depleted: isDepleted
+                };
+            });
+            const availableTarimasCount = enrichedTarimas.filter(t => !t.is_depleted).length;
+
             if (stockLbs > 0) {
                 activeRmLotsCount += 1;
                 totalRmBoxes += boxes;
                 totalRmStockLbs += stockLbs;
-                if (Array.isArray(tarimas)) {
-                    totalRmTarimas += tarimas.length;
-                }
+                totalRmTarimas += availableTarimasCount;
             }
             return {
                 id: rm.id,
@@ -77,6 +108,7 @@ const getInventoryOverview = async (req, res) => {
                 egg_classification: rm.egg_classification,
                 total_boxes: boxes,
                 initial_boxes: parseInt(rm.initial_boxes || 0, 10),
+                writeoff_boxes: woLot.totalBoxes || 0,
                 weight_lbs: parseFloat(rm.weight_lbs || 0),
                 stock_lbs: stockLbs,
                 stock_kg: Math.round(stockLbs * 0.453592 * 100) / 100,
@@ -87,8 +119,9 @@ const getInventoryOverview = async (req, res) => {
                 reception_date: rm.reception_date,
                 production_date: rm.production_date,
                 expiration_date: rm.expiration_date,
-                tarimas_count: Array.isArray(tarimas) ? tarimas.length : 0,
-                tarimas: Array.isArray(tarimas) ? tarimas : []
+                tarimas_count: availableTarimasCount,
+                total_tarimas_original: enrichedTarimas.length,
+                tarimas: enrichedTarimas
             };
         });
 

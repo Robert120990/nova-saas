@@ -11,6 +11,7 @@ const eggPlanning = require('./eggPlanning.controller');
 const eggQualityLab = require('./eggQualityLab.controller');
 const eggTraceability = require('./eggTraceability.controller');
 const eggReports = require('./eggReports.controller');
+const eggRawMaterialWriteOff = require('./eggRawMaterialWriteOff.controller');
 
 module.exports = {
     ...eggReception,
@@ -20,5 +21,6 @@ module.exports = {
     ...eggPlanning,
     ...eggQualityLab,
     ...eggTraceability,
-    ...eggReports
+    ...eggReports,
+    ...eggRawMaterialWriteOff
 };

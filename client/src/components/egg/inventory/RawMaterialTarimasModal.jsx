@@ -114,10 +114,22 @@ export default function RawMaterialTarimasModal({ open, onClose, lot }) {
                                         return (
                                             <tr key={t.id || idx} className="hover:bg-amber-50/40 transition-colors">
                                                 <td className="p-3">
-                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg font-bold text-xs">
-                                                        <Layers size={13} />
-                                                        Tarima #{t.tarima_number || idx + 1}
-                                                    </span>
+                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg font-bold text-xs">
+                                                            <Layers size={13} />
+                                                            Tarima #{t.tarima_number || idx + 1}
+                                                        </span>
+                                                        {t.writeoff_boxes > 0 && (
+                                                            <span className="px-1.5 py-0.5 rounded bg-violet-50 border border-violet-200 text-violet-700 text-[10px] font-bold">
+                                                                Baja: {t.writeoff_boxes} cjs
+                                                            </span>
+                                                        )}
+                                                        {t.is_depleted && (
+                                                            <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px] font-bold">
+                                                                Agotada
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="p-3 text-center font-bold text-slate-800">
                                                     {t.boxes_count || 0} cjs

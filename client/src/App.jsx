@@ -201,6 +201,7 @@ const EggDispatch = lazyWithRetry(() => import('./pages/EggIndustrial/EggDispatc
 const EggReports = lazyWithRetry(() => import('./pages/EggIndustrial/Reports'));
 const EggInventory = lazyWithRetry(() => import('./pages/EggIndustrial/Inventory'));
 const EggContainers = lazyWithRetry(() => import('./pages/EggIndustrial/Containers'));
+const RawMaterialInvoiceWriteOff = lazyWithRetry(() => import('./pages/EggIndustrial/RawMaterialInvoiceWriteOff'));
 const EggSupplies = lazyWithRetry(() => import('./pages/EggIndustrial/Supplies'));
 
 // CRM Pages
@@ -457,6 +458,7 @@ function App() {
                         {/* Huevo Industrial / Ovoproductos (ANDELSA) */}
                         <Route path="/industrial/planta" element={<EggDashboard />} />
                         <Route path="/industrial/recepcion" element={<EggReception />} />
+                        <Route path="/industrial/baja-tarimas" element={<RawMaterialInvoiceWriteOff />} />
                         <Route path="/industrial/produccion" element={<EggProduction />} />
                         <Route path="/industrial/calendario" element={<EggProductionCalendar />} />
                         <Route path="/industrial/despachos" element={<EggDispatch />} />

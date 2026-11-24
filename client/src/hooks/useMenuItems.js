@@ -127,6 +127,21 @@ function buildTree(items) {
         }
     }
 
+    // Asegurar submenú Facturas y Baja de Tarimas en Huevo Industrial
+    if (industrialRoot && !industrialRoot.children.some(c => c.path === '/industrial/baja-tarimas')) {
+        industrialRoot.children.splice(2, 0, {
+            id: 'virtual-industrial-tarima-writeoffs',
+            label: 'Facturas y Baja de Tarimas',
+            path: '/industrial/baja-tarimas',
+            permission: 'manage_egg_tarima_writeoffs',
+            permission_key: 'manage_egg_tarima_writeoffs',
+            hideInMenu: false,
+            sort_order: 1,
+            icon: iconMap.Receipt || iconMap.Circle,
+            children: []
+        });
+    }
+
     // Asegurar submenú Calendario en Huevo Industrial
     if (industrialRoot && !industrialRoot.children.some(c => c.path === '/industrial/calendario')) {
         industrialRoot.children.splice(3, 0, {
@@ -668,6 +683,7 @@ export function useMenuPermissions() {
         const indGroup = Object.values(groups).find(g => g.label?.includes('Industrial') || g.label?.includes('Huevo'));
         if (indGroup) {
             const extraIndustrialPerms = [
+                { id: 'manage_egg_tarima_writeoffs', label: 'Facturas y Baja de Tarimas', isReport: false, isSpecial: false, sort_order: 1 },
                 { id: 'manage_production_calendar', label: 'Calendario de Producción', isReport: false, isSpecial: false, sort_order: 3 },
                 { id: 'manage_egg_containers', label: 'Contenedores de Frío', isReport: false, isSpecial: false, sort_order: 4 },
                 { id: 'manage_egg_supplies', label: 'Inventario de Insumos', isReport: false, isSpecial: false, sort_order: 6 },

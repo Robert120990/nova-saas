@@ -1,4 +1,5 @@
 const { owned, fail, number, pool } = require('./shared');
+const { getConsumedWriteOffsByCompany } = require('../../../services/eggIndustrial/eggRawMaterialWriteOff.service');
 
 // Asegurar existencia de columna initial_boxes en egg_raw_materials de forma auto-migrable
 pool.query("SHOW COLUMNS FROM egg_raw_materials LIKE 'initial_boxes'")
@@ -62,8 +63,12 @@ const getRawMaterials = async (req, res) => {
             }
         }
 
+        // Consultar bajas activas (no producción: ventas facturadas / mermas / ajustes) por lote y tarima
+        const writeOffMap = await getConsumedWriteOffsByCompany(req.company_id, pool);
+
         const enrichedRows = rows.map(rm => {
             const consumed = consumedMap[rm.id] || { tarimas: {}, totalBoxes: 0, totalLbs: 0 };
+            const writeOffs = writeOffMap[rm.id] || { tarimas: {}, totalBoxes: 0, totalLbs: 0, count: 0 };
             let originalTarimas = [];
             if (rm.tarimas_json) {
                 try {
@@ -75,7 +80,7 @@ const getRawMaterials = async (req, res) => {
 
             // Si no tiene desglose de tarimas pero tiene peso/cajas, crear tarima default #1
             if (!Array.isArray(originalTarimas) || originalTarimas.length === 0) {
-                const origBoxes = parseInt(rm.total_boxes) || 0;
+                const origBoxes = parseInt(rm.initial_boxes || rm.total_boxes) || 0;
                 const origLbs = parseFloat(rm.weight_lbs) || 0;
                 originalTarimas = [{
                     tarima_number: 1,
@@ -90,9 +95,12 @@ const getRawMaterials = async (req, res) => {
                 const origBoxes = parseInt(t.boxes_count) || 0;
                 const origLbs = parseFloat(t.net_weight_lbs || t.gross_weight_lbs) || 0;
 
-                const used = consumed.tarimas[tarimaNum] || { boxes: 0, lbs: 0 };
-                const availBoxes = Math.max(0, origBoxes - used.boxes);
-                const availLbs = Math.max(0, Math.round((origLbs - used.lbs) * 100) / 100);
+                const prodUsed = consumed.tarimas[tarimaNum] || { boxes: 0, lbs: 0 };
+                const woUsed = writeOffs.tarimas[tarimaNum] || { boxes: 0, lbs: 0, refs: [] };
+                const totalUsedBoxes = prodUsed.boxes + woUsed.boxes;
+                const totalUsedLbs = Math.round((prodUsed.lbs + woUsed.lbs) * 100) / 100;
+                const availBoxes = Math.max(0, origBoxes - totalUsedBoxes);
+                const availLbs = Math.max(0, Math.round((origLbs - totalUsedLbs) * 100) / 100);
 
                 const barcode = `TAR-${lotCode}-${String(tarimaNum).padStart(2, '0')}`;
                 const isDepleted = (availBoxes <= 0 && availLbs <= 0.01) || parseFloat(rm.stock_lbs) <= 0.01;
@@ -101,8 +109,13 @@ const getRawMaterials = async (req, res) => {
                     tarima_number: tarimaNum,
                     original_boxes: origBoxes,
                     original_lbs: origLbs,
-                    consumed_boxes: used.boxes,
-                    consumed_lbs: used.lbs,
+                    prod_boxes: prodUsed.boxes,
+                    prod_lbs: Math.round(prodUsed.lbs * 100) / 100,
+                    writeoff_boxes: woUsed.boxes,
+                    writeoff_lbs: Math.round(woUsed.lbs * 100) / 100,
+                    writeoff_refs: woUsed.refs || [],
+                    consumed_boxes: totalUsedBoxes,
+                    consumed_lbs: totalUsedLbs,
                     available_boxes: availBoxes,
                     available_lbs: availLbs,
                     barcode: barcode,
@@ -112,11 +125,13 @@ const getRawMaterials = async (req, res) => {
             });
 
             const isDepleted = parseFloat(rm.stock_lbs) <= 0.01 || (tarimasAvailable.length > 0 && tarimasAvailable.every(t => t.is_depleted));
+            const availableTarimasCount = tarimasAvailable.filter(t => !t.is_depleted).length;
 
             const tarimaBoxes = Array.isArray(originalTarimas) && originalTarimas.length > 0
                 ? originalTarimas.reduce((acc, t) => acc + (parseInt(t.boxes_count) || 0), 0)
                 : 0;
-            const initialBoxes = rm.initial_boxes || tarimaBoxes || ((parseInt(rm.total_boxes) || 0) + (consumed.totalBoxes || 0));
+            const totalConsumedBoxes = (consumed.totalBoxes || 0) + (writeOffs.totalBoxes || 0);
+            const initialBoxes = rm.initial_boxes || tarimaBoxes || ((parseInt(rm.total_boxes) || 0) + totalConsumedBoxes);
             const stockBoxes = parseInt(rm.total_boxes) || 0;
             const initialWeight = parseFloat(rm.weight_lbs) || 0;
             const avgWeightPerBox = initialBoxes > 0 && initialWeight > 0 ? Math.round((initialWeight / initialBoxes) * 100) / 100 : null;
@@ -125,7 +140,11 @@ const getRawMaterials = async (req, res) => {
                 ...rm,
                 initial_boxes: initialBoxes,
                 stock_boxes: stockBoxes,
-                consumed_boxes: consumed.totalBoxes || 0,
+                prod_consumed_boxes: consumed.totalBoxes || 0,
+                writeoff_boxes: writeOffs.totalBoxes || 0,
+                writeoff_lbs: writeOffs.totalLbs || 0,
+                consumed_boxes: totalConsumedBoxes,
+                available_tarimas_count: availableTarimasCount,
                 avg_weight_per_box: avgWeightPerBox,
                 tarimas_available: tarimasAvailable,
                 is_depleted: isDepleted
