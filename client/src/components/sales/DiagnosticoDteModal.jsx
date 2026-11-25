@@ -1,23 +1,37 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import Modal from '../ui/Modal';
-import { 
-    Sparkles, 
-    AlertTriangle, 
-    Scale, 
-    Wrench, 
-    RefreshCcw, 
-    ChevronDown, 
-    ChevronUp, 
-    User, 
-    FileText, 
-    Zap,
-    Cpu
+import {
+    Sparkles, AlertTriangle, Scale, Wrench, RefreshCcw,
+    ChevronDown, ChevronUp, User, FileText, Zap, Cpu, RotateCw
 } from 'lucide-react';
 import { toast } from 'sonner';
 import EditarClienteDteModal from './EditarClienteDteModal';
 
-export default function DiagnosticoDteModal({ isOpen, onClose, sale, onRetransmit }) {
+function detectRecommendedTab(diagnosis, sale) {
+    const text = `${diagnosis?.codigo_msg || ''} ${diagnosis?.error_raw || ''} ${typeof sale?.dte_error === 'string' ? sale.dte_error : JSON.stringify(sale?.dte_error || {})}`.toLowerCase();
+    const tipo = String(sale?.tipo_documento || '');
+    if (text.includes('documentorelacionado') || text.includes('cuerpodocumento/0/numerodocumento') || text.includes('018') || text.includes('fecha fuera de plazo') || (['05', '06', '07'].includes(tipo) && !text.includes('receptor'))) {
+        return 'documentos';
+    }
+    if (text.includes('recintofiscal') || text.includes('tipoitemexpor') || text.includes('tiporegimen') || text.includes('codpais') || tipo === '11') {
+        return 'exportacion';
+    }
+    if ((String(diagnosis?.codigo_msg) === '003' && !text.includes('receptor')) || text.includes('cuerpodocumento.item') || text.includes('resumen') || text.includes('aproxim') || text.includes('totalpagar')) {
+        return 'montos';
+    }
+    return 'cliente';
+}
+
+export default function DiagnosticoDteModal({
+    isOpen,
+    onClose,
+    sale,
+    onRetransmit,
+    onOpenCorrection,
+    onOpenRegenerate,
+    canRegenerateDTE = false
+}) {
     const [loading, setLoading] = useState(false);
     const [forceReloading, setForceReloading] = useState(false);
     const [diagnosis, setDiagnosis] = useState(null);
@@ -28,27 +42,20 @@ export default function DiagnosticoDteModal({ isOpen, onClose, sale, onRetransmi
 
     const fetchDiagnosis = async (force = false) => {
         if (!sale?.id) return;
-        if (force) {
-            setForceReloading(true);
-        } else {
-            setLoading(true);
-        }
+        if (force) setForceReloading(true);
+        else setLoading(true);
         setErrorMsg(null);
-
         try {
             const url = `/api/sales/${sale.id}/dte-diagnosis${force ? '?force=true' : ''}`;
             const res = await axios.get(url);
             if (res.data?.success && res.data?.data) {
                 setDiagnosis(res.data.data);
                 setIsCached(Boolean(res.data.cached));
-                if (force) {
-                    toast.success('Diagnóstico actualizado con IA');
-                }
+                if (force) toast.success('Diagnóstico actualizado con IA');
             } else {
                 setErrorMsg('No se recibió información de diagnóstico.');
             }
         } catch (err) {
-            console.error('Error fetching DTE diagnosis:', err);
             const msg = err.response?.data?.message || err.message || 'Error al obtener diagnóstico con IA';
             setErrorMsg(msg);
             toast.error(msg);
@@ -70,52 +77,35 @@ export default function DiagnosticoDteModal({ isOpen, onClose, sale, onRetransmi
 
     if (!isOpen || !sale) return null;
 
-    const getTipoCorreccionBadge = (tipo) => {
-        switch (tipo) {
-            case 'CLIENTE':
-                return {
-                    label: 'Corrección de Datos del Cliente',
-                    color: 'bg-blue-50 text-blue-700 border-blue-200',
-                    icon: <User size={13} className="text-blue-600" />
-                };
-            case 'PRODUCTO':
-                return {
-                    label: 'Revisión de Ítems / Productos',
-                    color: 'bg-purple-50 text-purple-700 border-purple-200',
-                    icon: <FileText size={13} className="text-purple-600" />
-                };
-            case 'EMISOR':
-                return {
-                    label: 'Configuración de Emisor / Firma',
-                    color: 'bg-amber-50 text-amber-700 border-amber-200',
-                    icon: <AlertTriangle size={13} className="text-amber-600" />
-                };
-            case 'SISTEMA_MH':
-                return {
-                    label: 'Intermitencia de Servidores Hacienda',
-                    color: 'bg-rose-50 text-rose-700 border-rose-200',
-                    icon: <AlertTriangle size={13} className="text-rose-600" />
-                };
-            default:
-                return {
-                    label: 'Revisión General de la Venta',
-                    color: 'bg-slate-100 text-slate-700 border-slate-200',
-                    icon: <Wrench size={13} className="text-slate-600" />
-                };
-        }
+    const badgeMap = {
+        CLIENTE: { label: 'Corrección de Datos del Cliente', color: 'bg-blue-50 text-blue-700 border-blue-200', icon: <User size={13} className="text-blue-600" /> },
+        PRODUCTO: { label: 'Revisión de Ítems / Productos', color: 'bg-purple-50 text-purple-700 border-purple-200', icon: <FileText size={13} className="text-purple-600" /> },
+        EMISOR: { label: 'Configuración de Emisor / Firma', color: 'bg-amber-50 text-amber-700 border-amber-200', icon: <AlertTriangle size={13} className="text-amber-600" /> },
+        SISTEMA_MH: { label: 'Intermitencia de Servidores Hacienda', color: 'bg-rose-50 text-rose-700 border-rose-200', icon: <AlertTriangle size={13} className="text-rose-600" /> }
     };
+    const tipoBadge = badgeMap[diagnosis?.tipo_correccion] || { label: 'Corrección de Datos de la Venta', color: 'bg-slate-100 text-slate-700 border-slate-200', icon: <Wrench size={13} className="text-slate-600" /> };
 
-    const tipoBadge = getTipoCorreccionBadge(diagnosis?.tipo_correccion);
+    const suggestedTab = detectRecommendedTab(diagnosis, sale);
+    const isDuplicateControl = String(diagnosis?.codigo_msg || '') === '004' ||
+        String(diagnosis?.error_raw || '').toLowerCase().includes('numerocontrol');
 
-    const handleOpenCustomer = () => {
-        setIsEditCustomerOpen(true);
+    const handleOpenSolver = () => {
+        if (onOpenCorrection) {
+            onClose();
+            onOpenCorrection(sale, suggestedTab);
+        } else {
+            setIsEditCustomerOpen(true);
+        }
     };
 
     const handleRetry = () => {
         onClose();
-        if (onRetransmit) {
-            onRetransmit(sale);
-        }
+        if (onRetransmit) onRetransmit(sale);
+    };
+
+    const handleRegen = () => {
+        onClose();
+        if (onOpenRegenerate) onOpenRegenerate(sale);
     };
 
     return (
@@ -227,87 +217,48 @@ export default function DiagnosticoDteModal({ isOpen, onClose, sale, onRetransmi
                     </div>
                 )}
 
-                {/* Loading Skeleton */}
                 {loading && (
-                    <div className="p-8 bg-slate-50/60 rounded-3xl border border-slate-200/60 text-center space-y-4">
+                    <div className="p-8 bg-slate-50/60 rounded-3xl border border-slate-200/60 text-center space-y-3">
                         <div className="inline-flex p-3 bg-indigo-50 rounded-2xl text-indigo-600 animate-pulse">
-                            <Sparkles size={28} className="animate-spin text-indigo-600" />
+                            <Sparkles size={26} className="animate-spin text-indigo-600" />
                         </div>
-                        <div className="space-y-1">
-                            <p className="text-sm font-bold text-slate-800">Consultando especialista DTE con IA...</p>
-                            <p className="text-xs text-slate-500">
-                                Analizando el motivo de rechazo según las normativas y catálogos de Hacienda
-                            </p>
-                        </div>
-                        <div className="w-48 h-1.5 bg-indigo-100 rounded-full mx-auto overflow-hidden">
-                            <div className="w-full h-full bg-indigo-600 animate-progress origin-left" />
-                        </div>
+                        <p className="text-sm font-bold text-slate-800">Consultando especialista DTE con IA...</p>
+                        <p className="text-xs text-slate-500">Analizando el motivo de rechazo según normativas y catálogos de Hacienda</p>
                     </div>
                 )}
 
-                {/* Error State */}
                 {errorMsg && !loading && (
                     <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-700 flex items-start gap-3">
                         <AlertTriangle size={18} className="text-rose-600 shrink-0 mt-0.5" />
                         <div className="space-y-1 flex-1">
                             <p className="font-bold">No se pudo obtener el diagnóstico</p>
                             <p>{errorMsg}</p>
-                            <button
-                                type="button"
-                                onClick={() => fetchDiagnosis(true)}
-                                className="mt-2 text-indigo-600 font-bold hover:underline inline-flex items-center gap-1 cursor-pointer"
-                            >
+                            <button type="button" onClick={() => fetchDiagnosis(true)} className="mt-1 text-indigo-600 font-bold hover:underline inline-flex items-center gap-1 cursor-pointer">
                                 <RefreshCcw size={12} /> Reintentar análisis
                             </button>
                         </div>
                     </div>
                 )}
 
-                {/* Main Diagnosis Content (3 Structured Cards) */}
                 {diagnosis && !loading && (
-                    <div className="space-y-3.5">
-                        {/* Tipo de corrección Badge */}
+                    <div className="space-y-3">
                         <div className="flex items-center justify-between gap-2">
-                            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                                Diagnóstico Tributario y Solución
-                            </span>
+                            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Diagnóstico Tributario y Solución</span>
                             <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${tipoBadge.color}`}>
-                                {tipoBadge.icon}
-                                <span>{tipoBadge.label}</span>
+                                {tipoBadge.icon}<span>{tipoBadge.label}</span>
                             </div>
                         </div>
-
-                        {/* Card 1: ¿Qué pasó? */}
-                        <div className="p-4 bg-gradient-to-br from-rose-50/70 to-orange-50/50 rounded-2xl border border-rose-200/80 shadow-2xs space-y-1.5">
-                            <div className="flex items-center gap-2 text-rose-800">
-                                <AlertTriangle size={16} className="text-rose-600 shrink-0" />
-                                <h4 className="text-xs font-black uppercase tracking-wider">1. ¿Qué causó el rechazo?</h4>
-                            </div>
-                            <p className="text-[13px] text-slate-800 leading-relaxed font-medium pl-6">
-                                {diagnosis.que_paso}
-                            </p>
+                        <div className="p-3.5 bg-gradient-to-br from-rose-50/70 to-orange-50/50 rounded-2xl border border-rose-200/80 space-y-1">
+                            <div className="flex items-center gap-2 text-rose-800"><AlertTriangle size={15} className="text-rose-600 shrink-0" /><h4 className="text-xs font-black uppercase tracking-wider">1. ¿Qué causó el rechazo?</h4></div>
+                            <p className="text-[13px] text-slate-800 leading-relaxed font-medium pl-6">{diagnosis.que_paso}</p>
                         </div>
-
-                        {/* Card 2: Normativa SVFE */}
-                        <div className="p-4 bg-gradient-to-br from-indigo-50/70 to-sky-50/50 rounded-2xl border border-indigo-200/80 shadow-2xs space-y-1.5">
-                            <div className="flex items-center gap-2 text-indigo-900">
-                                <Scale size={16} className="text-indigo-600 shrink-0" />
-                                <h4 className="text-xs font-black uppercase tracking-wider">2. Normativa y Base Legal SVFE</h4>
-                            </div>
-                            <p className="text-[12.5px] text-slate-700 leading-relaxed pl-6 font-medium">
-                                {diagnosis.normativa}
-                            </p>
+                        <div className="p-3.5 bg-gradient-to-br from-indigo-50/70 to-sky-50/50 rounded-2xl border border-indigo-200/80 space-y-1">
+                            <div className="flex items-center gap-2 text-indigo-900"><Scale size={15} className="text-indigo-600 shrink-0" /><h4 className="text-xs font-black uppercase tracking-wider">2. Normativa y Base Legal SVFE</h4></div>
+                            <p className="text-[12.5px] text-slate-700 leading-relaxed pl-6 font-medium">{diagnosis.normativa}</p>
                         </div>
-
-                        {/* Card 3: Solución Paso a Paso */}
-                        <div className="p-4 bg-gradient-to-br from-emerald-50/80 to-teal-50/50 rounded-2xl border border-emerald-200/90 shadow-2xs space-y-2">
-                            <div className="flex items-center gap-2 text-emerald-900">
-                                <Wrench size={16} className="text-emerald-600 shrink-0" />
-                                <h4 className="text-xs font-black uppercase tracking-wider">3. Solución Paso a Paso en Sipe Web SaaS</h4>
-                            </div>
-                            <div className="pl-6 space-y-1 text-[13px] text-slate-800 font-medium whitespace-pre-line leading-relaxed">
-                                {diagnosis.solucion}
-                            </div>
+                        <div className="p-3.5 bg-gradient-to-br from-emerald-50/80 to-teal-50/50 rounded-2xl border border-emerald-200/90 space-y-1.5">
+                            <div className="flex items-center gap-2 text-emerald-900"><Wrench size={15} className="text-emerald-600 shrink-0" /><h4 className="text-xs font-black uppercase tracking-wider">3. Solución Paso a Paso en Sipe Web SaaS</h4></div>
+                            <div className="pl-6 space-y-1 text-[13px] text-slate-800 font-medium whitespace-pre-line leading-relaxed">{diagnosis.solucion}</div>
                         </div>
                     </div>
                 )}
@@ -323,15 +274,39 @@ export default function DiagnosticoDteModal({ isOpen, onClose, sale, onRetransmi
                     </button>
 
                     <div className="w-full sm:w-auto flex flex-wrap items-center gap-2 justify-end">
-                        <button
-                            type="button"
-                            onClick={handleOpenCustomer}
-                            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
-                            title="Abrir formulario para corregir datos fiscales del cliente de esta venta"
-                        >
-                            <User size={13} className="text-indigo-600" />
-                            <span>Corregir Cliente</span>
-                        </button>
+                        {!onOpenCorrection && (
+                            <button
+                                type="button"
+                                onClick={() => setIsEditCustomerOpen(true)}
+                                className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                            >
+                                <User size={13} className="text-indigo-600" />
+                                <span>Corregir Cliente</span>
+                            </button>
+                        )}
+
+                        {onOpenCorrection && (
+                            <button
+                                type="button"
+                                onClick={handleOpenSolver}
+                                className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition-all cursor-pointer active:scale-95"
+                                title="Corregir cliente, aproximación/montos, documentos relacionados o exportación y reintentar aquí mismo"
+                            >
+                                <Wrench size={13} />
+                                <span>Solventar / Corregir Datos DTE</span>
+                            </button>
+                        )}
+
+                        {isDuplicateControl && canRegenerateDTE && onOpenRegenerate && (
+                            <button
+                                type="button"
+                                onClick={handleRegen}
+                                className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-sm transition-all cursor-pointer"
+                            >
+                                <RotateCw size={13} />
+                                <span>Regenerar (Nuevo Control)</span>
+                            </button>
+                        )}
 
                         <button
                             type="button"

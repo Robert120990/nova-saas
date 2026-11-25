@@ -10,7 +10,7 @@ import {
     Search, FileText, Eye, Printer, Trash2,
     Mail, Terminal, Code, CheckCircle2, XCircle, AlertCircle, Info, Clock, Send, Ban, RefreshCcw,
     BarChart3, Filter, RotateCcw, X, Sparkles, User, MoreVertical, ShieldCheck,
-    ArrowUpDown, ArrowUp, ArrowDown, Truck
+    ArrowUpDown, ArrowUp, ArrowDown, Truck, Wrench
 } from 'lucide-react';
 import Money from '../components/ui/Money';
 import { formatDateTime } from '../utils/dateUtils';
@@ -20,7 +20,8 @@ import {
     DiagnosticoDteModal, 
     EditarClienteDteModal, 
     SalesIntegrityAuditModal,
-    RegenerateDteModal
+    RegenerateDteModal,
+    CorregirDteModal
 } from '../components/sales';
 import { useAuth } from '../context/AuthContext';
 
@@ -118,6 +119,7 @@ const SalesHistory = () => {
     const [selectedSaleForDiag, setSelectedSaleForDiag] = useState(null);
     const [isEditCustomerModalOpen, setIsEditCustomerModalOpen] = useState(false);
     const [selectedSaleForCustomerEdit, setSelectedSaleForCustomerEdit] = useState(null);
+    const [corregirDteState, setCorregirDteState] = useState({ isOpen: false, saleId: null, initialTab: null });
     const [editableItems, setEditableItems] = useState([]);
     const [editDTESaving, setEditDTESaving] = useState(false);
     const [sortBy, setSortBy] = useState('fecha');
@@ -1187,6 +1189,21 @@ const SalesHistory = () => {
                                                         </button>
                                                     )}
 
+                                                    {['REJECTED', 'RECHAZADO', 'ERROR', 'ERROR_ENVIO', 'PENDING', 'PENDIENTE'].includes(String(sale.dte_status || '').toUpperCase()) && (
+                                                        <button
+                                                            onClick={() => {
+                                                                setCorregirDteState({ isOpen: true, saleId: sale.id, initialTab: null });
+                                                                setMenuState(null);
+                                                            }}
+                                                            className="flex items-center gap-2 w-full px-2 py-1 text-left hover:bg-emerald-50 rounded-lg transition-all text-emerald-700 group"
+                                                        >
+                                                            <div className="p-1 bg-emerald-50 text-emerald-600 rounded-md group-hover:scale-105 transition-transform shrink-0">
+                                                                <Wrench size={12} />
+                                                            </div>
+                                                            <span className="text-[11.5px] font-bold">Solventar / Corregir DTE</span>
+                                                        </button>
+                                                    )}
+
                                                     {(sale.dte_status === 'REJECTED' || sale.dte_status === 'RECHAZADO') && (
                                                         <>
                                                             <button 
@@ -1588,6 +1605,19 @@ const SalesHistory = () => {
                 }} 
                 sale={selectedSaleForDiag}
                 onRetransmit={(sale) => handleOpenRetransmitModal(sale)}
+                onOpenCorrection={(sale, tab) => setCorregirDteState({ isOpen: true, saleId: sale.id, initialTab: tab })}
+                onOpenRegenerate={(sale) => handleRegenerateDTE(sale)}
+                canRegenerateDTE={canRegenerateDTE}
+            />
+
+            {/* Modal Integral para Solventar / Corregir DTE */}
+            <CorregirDteModal
+                isOpen={corregirDteState.isOpen}
+                onClose={() => setCorregirDteState({ isOpen: false, saleId: null, initialTab: null })}
+                saleId={corregirDteState.saleId}
+                initialTab={corregirDteState.initialTab}
+                canRegenerateDTE={canRegenerateDTE}
+                onSuccess={() => queryClient.invalidateQueries(['sales-history'])}
             />
 
             {/* Modal para Corregir Datos de Cliente DTE */}

@@ -583,11 +583,56 @@ Responde ÚNICAMENTE con un objeto JSON estricto:
         const str = typeof errorData === 'object' ? JSON.stringify(errorData) : String(errorData || '');
         const lower = str.toLowerCase();
 
+        if (lower.includes('"codigomsg":"004"') || lower.includes('numerocontrol') || lower.includes('ya existe')) {
+            return {
+                quePaso: 'El número de control o código de generación ya fue utilizado o existe previamente en Hacienda.',
+                normativa: 'Normativa SVFE - Identificación única de Documento Tributario Electrónico (codigoMsg 004).',
+                solucion: '1. Haga clic en "Solventar / Corregir Datos DTE".\n2. Use la acción "Guardar y Regenerar (Nuevo Control)" para generar un nuevo UUID y Número de Control correlativo y transmitirlo.',
+                tipoCorreccion: 'DATOS_VENTA'
+            };
+        }
+
+        if (lower.includes('fecemi') || lower.includes('fecha de envío') || lower.includes('fecha de envio')) {
+            return {
+                quePaso: 'La fecha de emisión (fecEmi) del DTE difiere de la fecha actual de transmisión esperada por Hacienda.',
+                normativa: 'Validaciones de Tiempo y Fecha de Emisión SVFE (codigoMsg 005 / 020).',
+                solucion: '1. Abra "Solventar / Corregir Datos DTE".\n2. Marque la casilla "Actualizar fecha/hora de emisión a hoy".\n3. Pulse "Guardar y Reintentar Envío" (o Regenerar si aplica).',
+                tipoCorreccion: 'DATOS_VENTA'
+            };
+        }
+
+        if (lower.includes('documentorelacionado') || lower.includes('cuerpodocumento/0/numerodocumento') || lower.includes('018') || lower.includes('fecha fuera de plazo')) {
+            return {
+                quePaso: 'El documento relacionado (Nota de Crédito, Nota de Débito, Retención o Remisión) tiene un número o fecha que no cumple el formato o plazo de Hacienda.',
+                normativa: 'Esquemas SVFE de Documentos Relacionados (UUID 36 caracteres para DTE electrónico o correlativo válido y período tributario vigente).',
+                solucion: '1. Abra "Solventar / Corregir Datos DTE" en la pestaña "Docs. Relacionados".\n2. Busque y vincule el DTE aceptado (UUID oficial) o corrija el número y la fecha de emisión.\n3. Guarde y reintente la transmisión.',
+                tipoCorreccion: 'DATOS_VENTA'
+            };
+        }
+
+        if (lower.includes('recintofiscal') || lower.includes('tipoitemexpor') || lower.includes('tiporegimen') || lower.includes('codpais') || lower.includes('incoterms')) {
+            return {
+                quePaso: 'Faltan campos obligatorios de Exportación (FEX-11) o contienen un valor inválido según los catálogos aduaneros.',
+                normativa: 'Esquema fe-fex-v3 y Catálogos CAT-011, CAT-020, CAT-027 y CAT-033 del Ministerio de Hacienda.',
+                solucion: '1. Abra "Solventar / Corregir Datos DTE" en la pestaña "Exportación / Remisión".\n2. Verifique Tipo de Ítem, Recinto Fiscal, Régimen y País de Destino (ISO 2 letras).\n3. Guarde y reintente la transmisión.',
+                tipoCorreccion: 'DATOS_VENTA'
+            };
+        }
+
+        if ((lower.includes('"codigomsg":"003"') && !lower.includes('receptor')) || lower.includes('cuerpodocumento.item') || lower.includes('resumen.') || lower.includes('aproxim') || lower.includes('totalpagar') || lower.includes('totaliva')) {
+            return {
+                quePaso: 'Existe una diferencia de cálculo, aproximación o redondeo entre los ítems, impuestos (IVA/Retención) o pagos y el resumen del DTE.',
+                normativa: 'Reglas de Cuadre Aritmético y Aproximación DTE v2.0 del Ministerio de Hacienda.',
+                solucion: '1. Abra "Solventar / Corregir Datos DTE" en la pestaña "Montos / Aproximación".\n2. Pulse "Recalcular y Cuadrar Automáticamente" para alinear precio, gravado, IVA, retención y pagos al centavo.\n3. Pulse "Guardar y Reintentar Envío".',
+                tipoCorreccion: 'DATOS_VENTA'
+            };
+        }
+
         if (lower.includes('014') || lower.includes('nit') || lower.includes('nrc') || lower.includes('padron') || lower.includes('padrón')) {
             return {
                 quePaso: 'El NIT o NRC del cliente receptor no concuerda con los registros activos en el padrón tributario de Hacienda.',
                 normativa: 'Código Tributario de El Salvador Art. 86 y Guía de Orientación SVFE sobre identificación de contribuyentes.',
-                solucion: '1. Ingrese a Clientes y verifique que el NIT tenga 14 dígitos (o 9 si es DUI homologado).\n2. Valide que el NRC coincida exactamente con la tarjeta de IVA del cliente.\n3. Guarde los cambios y pulse Reintentar Transmisión.',
+                solucion: '1. Abra "Solventar / Corregir Datos DTE" > pestaña Cliente.\n2. Valide que el NIT (14 o 9 dígitos) y el NRC coincidan con la tarjeta de IVA del cliente.\n3. Guarde los cambios y pulse "Guardar y Reintentar Envío".',
                 tipoCorreccion: 'CLIENTE'
             };
         }
@@ -596,16 +641,16 @@ Responde ÚNICAMENTE con un objeto JSON estricto:
             return {
                 quePaso: 'El código de actividad económica asignado al cliente receptor no es válido según el catálogo oficial de Hacienda.',
                 normativa: 'Catálogo Oficial CAT-019 (Actividades Económicas) del Ministerio de Hacienda.',
-                solucion: '1. Vaya al perfil del cliente y asigne un código de actividad económica válido de 5 o 6 dígitos del catálogo oficial.\n2. Guarde los datos del cliente.\n3. Pulse Reintentar Transmisión en esta venta.',
+                solucion: '1. Abra "Solventar / Corregir Datos DTE" > pestaña Cliente.\n2. Asigne un código de actividad económica válido del catálogo CAT-019.\n3. Guarde y reintente el envío.',
                 tipoCorreccion: 'CLIENTE'
             };
         }
 
-        if (lower.includes('017') || lower.includes('018') || lower.includes('direccion') || lower.includes('municipio') || lower.includes('departamento')) {
+        if (lower.includes('017') || lower.includes('018') || lower.includes('distrito') || lower.includes('direccion') || lower.includes('municipio') || lower.includes('departamento')) {
             return {
-                quePaso: 'La dirección del cliente está incompleta o los códigos de departamento y municipio no coinciden con la división política.',
-                normativa: 'Catálogo Oficial CAT-012 (Departamentos) y CAT-013 (Municipios) del SVFE.',
-                solucion: '1. Edite el cliente y asegúrese de que el Departamento y Municipio estén seleccionados de la lista oficial.\n2. Ingrese una dirección con calle, número y colonia completa.\n3. Vuelva a transmitir el DTE.',
+                quePaso: 'La dirección del cliente está incompleta o la combinación de departamento, municipio y distrito no coincide con el catálogo CAT-008.',
+                normativa: 'Catálogos Oficiales CAT-012 (Departamentos), CAT-013 (Municipios) y CAT-008 (Distritos) del SVFE.',
+                solucion: '1. Abra "Solventar / Corregir Datos DTE" > pestaña Cliente.\n2. Seleccione Departamento, Municipio y Distrito válidos e ingrese una dirección completa.\n3. Guarde y reintente el envío.',
                 tipoCorreccion: 'CLIENTE'
             };
         }
@@ -613,8 +658,8 @@ Responde ÚNICAMENTE con un objeto JSON estricto:
         return {
             quePaso: 'El Ministerio de Hacienda rechazó la recepción del documento electrónico según las validaciones de esquema o negocio.',
             normativa: 'Manual de Especificaciones Técnicas de Transmisión DTE versión 2.0 (Ministerio de Hacienda).',
-            solucion: '1. Revise los datos generales del cliente y los ítems facturados.\n2. Si el problema es de cliente, actualícelo en el catálogo.\n3. Pulse el botón "Reintentar Transmisión".',
-            tipoCorreccion: 'CLIENTE'
+            solucion: '1. Pulse "Solventar / Corregir Datos DTE" para revisar Cliente, Montos/Aproximación, Documentos Relacionados o Exportación.\n2. Aplique las correcciones necesarias.\n3. Pulse "Guardar y Reintentar Envío".',
+            tipoCorreccion: 'DATOS_VENTA'
         };
     }
 }

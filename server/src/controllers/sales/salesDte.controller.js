@@ -109,7 +109,8 @@ const resendDTEEmail = async (req, res) => {
  */
 const retransmitSaleDTE = async (req, res) => {
     const { id } = req.params;
-    const { newReceptor } = req.body;
+    const { newReceptor, receptor, updateDateTime = false } = req.body || {};
+    const effectiveReceptor = newReceptor || receptor || null;
 
     try {
         // 1. Obtener la venta y verificar que tenga un DTE rechazado
@@ -144,7 +145,7 @@ const retransmitSaleDTE = async (req, res) => {
 
         // 2. Llamar al servicio de retransmisión
         console.log(`[SalesController] Re-intentando DTE ${sale.codigo_generacion} para venta ${id}`);
-        const result = await dteService.retransmitDTE(sale, sale.codigo_generacion, newReceptor);
+        const result = await dteService.retransmitDTE(sale, sale.codigo_generacion, effectiveReceptor, { updateDateTime });
 
         if (result.success) {
             // 3. Actualizar la venta (sello/fecha en cabecera) y el estado en la tabla dtes

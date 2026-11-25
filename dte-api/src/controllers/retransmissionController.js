@@ -79,7 +79,10 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
     let customerBranch = null;
     if (sale.customer_id) {
         const [custRows] = await pool.query(
-            'SELECT * FROM customers WHERE id = ? AND company_id = ?',
+            `SELECT c.*, cat.description as actividad_economica
+             FROM customers c
+             LEFT JOIN cat_019_actividad_economica cat ON c.codigo_actividad = cat.code
+             WHERE c.id = ? AND c.company_id = ?`,
             [sale.customer_id, companyId]
         );
         if (custRows.length > 0) customer = custRows[0];
@@ -135,6 +138,10 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
     const distReceptor = (customerBranch?.distrito && String(customerBranch.distrito).trim()) || customer?.distrito || origReceptor?.direccion?.distrito || '01';
     const dirComplemento = (customerBranch?.direccion && String(customerBranch.direccion).trim()) || customer?.direccion || origReceptor?.direccion?.complemento || 'Direccion de entrega';
 
+    const effectiveCountry = (dteRecord.tipo_dte === '11' && sale.dest_country_code && String(sale.dest_country_code).trim())
+        ? String(sale.dest_country_code).trim().toUpperCase()
+        : (customer?.pais || customer?.pais_code || newReceptor?.pais_code || origReceptor?.pais_code || null);
+
     const mergedRec = {
         nombre: customer?.nombre || newReceptor?.nombre || origReceptor?.nombre || sale.cliente_nombre || 'Consumidor Final',
         nit: customer?.nit || newReceptor?.nit || origReceptor?.nit || null,
@@ -145,12 +152,12 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
         telefono: customerBranch?.telefono || customer?.telefono || newReceptor?.telefono || origReceptor?.telefono || null,
         nombreComercial: customer?.nombre_comercial || newReceptor?.nombreComercial || origReceptor?.nombreComercial || null,
         tipo_persona: parseInt(customer?.tipo_persona || newReceptor?.tipo_persona || origReceptor?.tipo_persona) || 1,
-        pais_code: customer?.pais || customer?.pais_code || newReceptor?.pais_code || origReceptor?.pais_code || null,
-        pais: customer?.pais || origReceptor?.pais || null,
+        pais_code: effectiveCountry,
+        pais: effectiveCountry,
         pais_name: customer?.pais_name || newReceptor?.pais_name || origReceptor?.pais_name || null,
         codActividad: customer?.codigo_actividad || newReceptor?.codActividad || origReceptor?.codActividad || '10005',
         descActividad: customer?.actividad_economica || newReceptor?.descActividad || origReceptor?.descActividad || 'Otros',
-        bienTitulo: newReceptor?.bienTitulo || origReceptor?.bienTitulo || '01',
+        bienTitulo: sale.remission_type || newReceptor?.bienTitulo || origReceptor?.bienTitulo || '01',
         direccion: customer ? {
             departamento: deptoReceptor,
             municipio: muniReceptor,
@@ -261,24 +268,33 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
             descActividad: company?.actividad_economica || 'Actividad no definida',
             codPuntoVentaMH: pos.length > 0 ? pos[0].codigo : null
         },
-        exportacion: dteRecord.tipo_dte === '11' ? {
-            tipoItemExpor: sale.export_item_type || 1,
-            recintoFiscal: sale.fiscal_enclosure || '00',
-            tipoRegimen: (sale.export_regime && String(sale.export_regime).toUpperCase().startsWith('EX')) ? 'EX-1' : (sale.export_regime || 'EX-1'),
-            regimen: null,
-            codPaisDestino: customer?.pais || customer?.pais_code || sale.dest_country_code || '',
-            incoterms: sale.incoterms || '01',
-            descIncoterms: sale.desc_incoterms || 'EXW- En fabrica',
-            flete: sale.flete || 0,
-            seguro: sale.seguro || 0,
-            observaciones: sale.observaciones || ''
-        } : null
+        exportacion: dteRecord.tipo_dte === '11' ? (() => {
+            const expItemType = [1, 2, 3].includes(parseInt(sale.export_item_type, 10)) ? parseInt(sale.export_item_type, 10) : 1;
+            const validRegimes = ['EX-1', 'EX-2', 'EX-3', 'TA-1'];
+            const rawRegime = String(sale.export_regime || '').trim().toUpperCase();
+            const resolvedTipoRegimen = validRegimes.includes(rawRegime) ? rawRegime : (expItemType === 2 ? null : 'EX-1');
+            const resolvedRecinto = expItemType === 2
+                ? null
+                : ((sale.fiscal_enclosure && String(sale.fiscal_enclosure).trim().length === 2) ? String(sale.fiscal_enclosure).trim() : '00');
+            return {
+                tipoItemExpor: expItemType,
+                recintoFiscal: resolvedRecinto,
+                tipoRegimen: resolvedTipoRegimen,
+                regimen: null,
+                codPaisDestino: effectiveCountry || sale.dest_country_code || '',
+                incoterms: sale.incoterms || '01',
+                descIncoterms: sale.desc_incoterms || 'EXW- En fabrica',
+                flete: sale.flete || 0,
+                seguro: sale.seguro || 0,
+                observaciones: sale.observaciones || ''
+            };
+        })() : null
     };
 }
 
 async function retransmit(req, res) {
     try {
-        const { codigoGeneracion, receptor: newReceptor } = req.body;
+        const { codigoGeneracion, receptor: newReceptor, updateDateTime = false } = req.body;
 
         // 1. Get existing DTE record
         const [rows] = await pool.query(
@@ -298,8 +314,8 @@ async function retransmit(req, res) {
             // Preservar datos de identificación originales (Hacienda espera los mismos)
             dteJson.identificacion.codigoGeneracion = dteRecord.codigo_generacion;
             dteJson.identificacion.numeroControl = dteRecord.numero_control;
-            // Mantener fecEmi/horEmi originales si existen
-            if (dteRecord.json_original) {
+            // Mantener fecEmi/horEmi originales salvo que el operador pida actualizar fecha/hora a hoy
+            if (!updateDateTime && dteRecord.json_original) {
                 const origJson = typeof dteRecord.json_original === 'string'
                     ? JSON.parse(dteRecord.json_original)
                     : dteRecord.json_original;

@@ -118,10 +118,45 @@ const saleCustomerUpdateSchema = z.object({
     codigo_actividad: optionalString,
     departamento: optionalString,
     municipio: optionalString,
+    distrito: optionalString,
+    pais: optionalString,
+    tipo_persona: z.union([z.string(), z.number()]).nullable().optional(),
+    condicion_fiscal: optionalString,
+    exento_iva: z.union([z.boolean(), z.number()]).optional(),
+    aplica_fovial: z.union([z.boolean(), z.number()]).optional(),
+    aplica_cotrans: z.union([z.boolean(), z.number()]).optional(),
+    dias_credito: z.coerce.number().int().min(0).max(365).nullable().optional(),
+    sync_branch_address: z.boolean().optional(),
     direccion: optionalString,
     telefono: optionalString,
     correo: z.string().trim().email('Correo electrónico no válido').nullable().optional().or(z.literal('')),
     retransmit: z.boolean().optional()
+}).passthrough();
+
+const dteRecalculatePreviewSchema = z.object({
+    items: z.array(z.record(z.string(), z.any())).optional(),
+    header: z.record(z.string(), z.any()).optional(),
+    payments: z.array(z.record(z.string(), z.any())).optional(),
+    linkedDocuments: z.array(z.record(z.string(), z.any())).optional(),
+    customer: z.record(z.string(), z.any()).nullable().optional(),
+    autoFixApproximation: z.boolean().optional(),
+    recalcRetencionPercepcion: z.boolean().optional()
+}).passthrough();
+
+const dteCorrectionSchema = z.object({
+    action: z.enum(['save_only', 'retransmit']).optional().default('save_only'),
+    updateDateTime: z.boolean().optional().default(false),
+    syncBranchAddress: z.boolean().optional().default(true),
+    syncCustomerCountry: z.boolean().optional().default(true),
+    recalcRetencionPercepcion: z.boolean().optional().default(false),
+    customer: z.record(z.string(), z.any()).nullable().optional(),
+    items: z.array(z.record(z.string(), z.any())).optional(),
+    header: z.record(z.string(), z.any()).optional(),
+    payments: z.array(z.record(z.string(), z.any())).optional(),
+    linkedDocuments: z.array(z.record(z.string(), z.any())).optional(),
+    exportacion: z.record(z.string(), z.any()).nullable().optional(),
+    remision: z.record(z.string(), z.any()).nullable().optional(),
+    observaciones: z.string().nullable().optional()
 }).passthrough();
 
 const salesSettingsSchema = z.record(z.string(), z.any());
@@ -172,5 +207,7 @@ module.exports = {
     salesRemesaDeliverySchema,
     salesRemesaDeliveryUpdateSchema,
     salesTiendaRrsSchema,
-    editDTEItemsSchema
+    editDTEItemsSchema,
+    dteRecalculatePreviewSchema,
+    dteCorrectionSchema
 };

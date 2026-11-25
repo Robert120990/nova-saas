@@ -652,8 +652,14 @@ router.get('/sales/audit-integrity', salesController.getSalesIntegrityAudit);
 router.get('/sales/audit-integrity/pdf', salesController.exportSalesIntegrityAuditPDF);
 router.post('/sales/audit-integrity/sync-stamps', salesController.syncUnsyncedDteStamps);
 
+// Corrección Integral de DTE rechazados/pendientes (buscador antes de /sales/:id)
+router.get('/sales/dte-correction/search-docs', salesController.searchRelatedDteDocuments);
+
 router.get('/sales/:id', salesController.getSaleById);
 router.get('/sales/:id/dte-diagnosis', salesController.getDteDiagnosis);
+router.get('/sales/:id/dte-correction-context', salesController.getDteCorrectionContext);
+router.post('/sales/:id/dte-correction/recalculate', validate(dteRecalculatePreviewSchema), salesController.previewDteRecalculation);
+router.put('/sales/:id/dte-correction', validate(dteCorrectionSchema), salesController.applyDteCorrection);
 router.post('/sales/:id/void', salesController.voidSale);
 router.post('/sales/:id/retransmit', salesController.retransmitSaleDTE);
 router.get('/sales/:id/regenerate-preview', checkPermission('regenerate_dte'), salesController.getRegenerateDTEPreview);

@@ -1243,6 +1243,15 @@ const updateSaleCustomer = async (req, res) => {
         codigo_actividad,
         departamento,
         municipio,
+        distrito,
+        pais,
+        tipo_persona,
+        condicion_fiscal,
+        exento_iva,
+        aplica_fovial,
+        aplica_cotrans,
+        dias_credito,
+        sync_branch_address = true,
         direccion,
         telefono,
         correo,
@@ -1251,7 +1260,7 @@ const updateSaleCustomer = async (req, res) => {
 
     try {
         const [sales] = await pool.query(
-            'SELECT id, customer_id, company_id, codigo_generacion FROM sales_headers WHERE id = ? AND company_id = ?',
+            'SELECT id, customer_id, customer_branch_id, company_id, codigo_generacion FROM sales_headers WHERE id = ? AND company_id = ?',
             [id, req.company_id]
         );
 
@@ -1286,14 +1295,39 @@ const updateSaleCustomer = async (req, res) => {
             codigo_actividad: codigo_actividad ? String(codigo_actividad).trim() : null,
             departamento: departamento || null,
             municipio: municipio || null,
+            distrito: distrito ? String(distrito).trim() : null,
             direccion: direccion ? String(direccion).trim() : null,
             telefono: telefono ? String(telefono).trim() : null,
             correo: correo ? String(correo).trim() : null
         };
+        if (pais !== undefined) customerPayload.pais = pais ? String(pais).trim().toUpperCase() : null;
+        if (tipo_persona !== undefined) customerPayload.tipo_persona = tipo_persona ? String(tipo_persona).trim() : null;
+        if (condicion_fiscal !== undefined) customerPayload.condicion_fiscal = condicion_fiscal || 'otro';
+        if (exento_iva !== undefined) customerPayload.exento_iva = exento_iva ? 1 : 0;
+        if (aplica_fovial !== undefined) customerPayload.aplica_fovial = aplica_fovial ? 1 : 0;
+        if (aplica_cotrans !== undefined) customerPayload.aplica_cotrans = aplica_cotrans ? 1 : 0;
+        if (dias_credito !== undefined && dias_credito !== null && dias_credito !== '') {
+            customerPayload.dias_credito = parseInt(dias_credito, 10) || 15;
+        }
 
         if (customerId) {
             // Actualizar cliente existente
             await pool.query('UPDATE customers SET ? WHERE id = ? AND company_id = ?', [customerPayload, customerId, req.company_id]);
+            if (sale.customer_branch_id && sync_branch_address) {
+                const branchPayload = {};
+                if (departamento) branchPayload.departamento = departamento;
+                if (municipio) branchPayload.municipio = municipio;
+                if (distrito) branchPayload.distrito = String(distrito).trim();
+                if (direccion) branchPayload.direccion = String(direccion).trim();
+                if (telefono) branchPayload.telefono = String(telefono).trim();
+                if (correo) branchPayload.correo = String(correo).trim();
+                if (Object.keys(branchPayload).length > 0) {
+                    await pool.query(
+                        'UPDATE customer_branches SET ? WHERE id = ? AND customer_id = ?',
+                        [branchPayload, sale.customer_branch_id, customerId]
+                    ).catch(() => {});
+                }
+            }
         } else {
             // Crear cliente nuevo y asociarlo a la venta
             const [insertResult] = await pool.query('INSERT INTO customers SET ?', [customerPayload]);

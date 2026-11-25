@@ -1,72 +1,61 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import Modal from '../ui/Modal';
 import { UserCheck, Save, Send, AlertCircle, RefreshCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { validateDocumentNumber, formatNRC } from '../../utils/svfeValidators';
+import { unwrapList } from '../../utils/apiUtils';
+import { validateDocumentNumber, formatDocumentNumber, formatNRC } from '../../utils/svfeValidators';
+
+const inputCls = 'w-full text-[13px] font-medium px-3 py-2 rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none';
+const labelCls = 'block text-[11px] font-bold text-slate-500 uppercase mb-1';
 
 export default function EditarClienteDteModal({ isOpen, onClose, sale, onSaved }) {
     const queryClient = useQueryClient();
-
     const [loading, setLoading] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [formData, setFormData] = useState({
-        nombre: '',
-        nombre_comercial: '',
-        tipo_documento: 'DUI',
-        numero_documento: '',
-        nit: '',
-        nrc: '',
-        codigo_actividad: '',
-        departamento: '06',
-        municipio: '14',
-        direccion: '',
-        telefono: '',
-        correo: ''
+        nombre: '', nombre_comercial: '', tipo_documento: 'DUI', numero_documento: '',
+        nit: '', nrc: '', codigo_actividad: '', departamento: '06', municipio: '14',
+        distrito: '', direccion: '', telefono: '', correo: ''
     });
 
-    // Cargar catálogos
     const { data: departments = [] } = useQuery({
         queryKey: ['catalogs', 'departments'],
-        queryFn: async () => (await axios.get('/api/catalogs/departments')).data,
+        queryFn: async () => unwrapList(await axios.get('/api/catalogs/departments')),
         enabled: isOpen
     });
 
     const { data: municipalities = [] } = useQuery({
         queryKey: ['catalogs', 'municipalities', formData.departamento],
-        queryFn: async () => (await axios.get(`/api/catalogs/municipalities?dep_code=${formData.departamento}`)).data,
-        enabled: isOpen && !!formData.departamento
+        queryFn: async () => unwrapList(await axios.get(`/api/catalogs/municipalities?dep_code=${formData.departamento}`)),
+        enabled: isOpen && Boolean(formData.departamento)
+    });
+
+    const { data: allDistricts = [] } = useQuery({
+        queryKey: ['catalogs', 'districts', formData.departamento],
+        queryFn: async () => unwrapList(await axios.get(`/api/catalogs/districts?dep_code=${formData.departamento}`)),
+        enabled: isOpen && Boolean(formData.departamento)
     });
 
     const { data: activities = [] } = useQuery({
         queryKey: ['catalogs', 'actividades'],
-        queryFn: async () => (await axios.get('/api/catalogs/actividades')).data,
+        queryFn: async () => unwrapList(await axios.get('/api/catalogs/actividades')),
         enabled: isOpen
     });
 
-    // Formato NIT / DUI
-    const formatDocNumber = (value, type) => {
-        const digits = value.replace(/\D/g, '');
-        if (type === 'DUI') {
-            if (digits.length <= 8) return digits;
-            return `${digits.slice(0, 8)}-${digits.slice(8, 9)}`;
-        } else if (type === 'NIT') {
-            if (digits.length <= 4) return digits;
-            if (digits.length <= 10) return `${digits.slice(0, 4)}-${digits.slice(4, 10)}`;
-            if (digits.length <= 13) return `${digits.slice(0, 4)}-${digits.slice(4, 10)}-${digits.slice(10, 13)}`;
-            return `${digits.slice(0, 4)}-${digits.slice(4, 10)}-${digits.slice(10, 13)}-${digits.slice(13, 14)}`;
-        }
-        return value;
-    };
+    const filteredDistricts = useMemo(() => {
+        const list = Array.isArray(allDistricts) ? allDistricts : [];
+        if (!formData.municipio) return list;
+        const byMuni = list.filter(d => String(d.muni_code) === String(formData.municipio));
+        return byMuni.length > 0 ? byMuni : list;
+    }, [allDistricts, formData.municipio]);
 
     useEffect(() => {
         if (!isOpen || !sale) return;
-
         const loadCustomerData = async () => {
             setLoading(true);
             try {
-                // Si la venta tiene customer_id, consultar el registro de cliente
                 if (sale.customer_id) {
                     const res = await axios.get(`/api/customers/${sale.customer_id}`);
                     const c = res.data;
@@ -81,6 +70,7 @@ export default function EditarClienteDteModal({ isOpen, onClose, sale, onSaved }
                             codigo_actividad: c.codigo_actividad || '',
                             departamento: c.departamento || '06',
                             municipio: c.municipio || '14',
+                            distrito: c.distrito || '',
                             direccion: c.direccion || '',
                             telefono: c.telefono || '',
                             correo: c.correo || ''
@@ -88,8 +78,6 @@ export default function EditarClienteDteModal({ isOpen, onClose, sale, onSaved }
                         return;
                     }
                 }
-
-                // Si no tiene customer_id o falló la consulta, inicializar con lo que tenga la venta
                 setFormData({
                     nombre: sale.customer_name || '',
                     nombre_comercial: '',
@@ -100,12 +88,12 @@ export default function EditarClienteDteModal({ isOpen, onClose, sale, onSaved }
                     codigo_actividad: '',
                     departamento: '06',
                     municipio: '14',
+                    distrito: '',
                     direccion: sale.customer_address || '',
                     telefono: '',
                     correo: sale.customer_email || ''
                 });
-            } catch (err) {
-                console.error('Error loading customer details:', err);
+            } catch {
                 setFormData(prev => ({
                     ...prev,
                     nombre: sale.customer_name || '',
@@ -117,86 +105,49 @@ export default function EditarClienteDteModal({ isOpen, onClose, sale, onSaved }
                 setLoading(false);
             }
         };
-
         loadCustomerData();
     }, [isOpen, sale]);
 
     if (!isOpen || !sale) return null;
 
     const handleSubmit = async (retransmit = false) => {
-        if (!formData.nombre.trim()) {
-            toast.warning('El nombre o razón social es obligatorio');
-            return;
-        }
-
-        if (formData.nit && String(formData.nit).trim()) {
+        if (!formData.nombre.trim()) return toast.warning('El nombre o razón social es obligatorio');
+        if (formData.nit?.trim()) {
             const nitCheck = validateDocumentNumber(formData.nit, 'NIT');
-            if (!nitCheck.isValid) {
-                toast.error(`NIT no válido: ${nitCheck.error}`);
-                return;
-            }
+            if (!nitCheck.isValid) return toast.error(`NIT no válido: ${nitCheck.error}`);
         }
-
-        if (formData.numero_documento && String(formData.numero_documento).trim()) {
+        if (formData.numero_documento?.trim()) {
             const docCheck = validateDocumentNumber(formData.numero_documento, formData.tipo_documento);
-            if (!docCheck.isValid) {
-                toast.error(`Documento no válido: ${docCheck.error}`);
-                return;
-            }
+            if (!docCheck.isValid) return toast.error(`Documento no válido: ${docCheck.error}`);
         }
-
-        // Validación específica según el tipo de documento de la venta
         if (sale?.tipo_documento === '03') {
-            const rawNit = formData.nit || formData.numero_documento;
-            const nitCheck = validateDocumentNumber(rawNit, 'NIT');
-            if (!nitCheck.isValid) {
-                toast.error(`Para Crédito Fiscal se requiere NIT válido: ${nitCheck.error || 'campo requerido'}`);
-                return;
-            }
+            const nitCheck = validateDocumentNumber(formData.nit || formData.numero_documento, 'NIT');
+            if (!nitCheck.isValid) return toast.error(`Para CCF se requiere NIT válido: ${nitCheck.error || 'requerido'}`);
             const cleanNrc = String(formData.nrc || '').replace(/\D/g, '');
-            if (!cleanNrc || /^0+$/.test(cleanNrc)) {
-                toast.error('Para Crédito Fiscal se requiere NRC válido');
-                return;
-            }
-        } else if (sale?.tipo_documento === '01') {
-            const isOver200 = parseFloat(sale?.total_pagar || 0) >= 200;
-            const hasDoc = (formData.numero_documento && String(formData.numero_documento).trim()) ||
-                           (formData.nit && String(formData.nit).trim());
-            if (isOver200 && !hasDoc) {
-                toast.error('Facturas mayores o iguales a $200.00 requieren DUI o NIT del cliente');
-                return;
+            if (!cleanNrc || /^0+$/.test(cleanNrc)) return toast.error('Para Crédito Fiscal se requiere NRC válido');
+        } else if (sale?.tipo_documento === '01' && parseFloat(sale?.total_pagar || 0) >= 200) {
+            if (!formData.numero_documento?.trim() && !formData.nit?.trim()) {
+                return toast.error('Facturas mayores o iguales a $200.00 requieren DUI o NIT del cliente');
             }
         }
-
         const correoTrimmed = (formData.correo || '').trim();
-        if (correoTrimmed) {
-            const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-            if (!emailRegex.test(correoTrimmed)) {
-                toast.error('El correo electrónico no tiene un formato válido');
-                return;
-            }
+        if (correoTrimmed && !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(correoTrimmed)) {
+            return toast.error('El correo electrónico no tiene un formato válido');
         }
 
         setSubmitting(true);
         try {
-            const res = await axios.put(`/api/sales/${sale.id}/customer`, {
-                ...formData,
-                retransmit
-            });
-
+            const res = await axios.put(`/api/sales/${sale.id}/customer`, { ...formData, retransmit });
             if (res.data?.success) {
                 toast.success(res.data.message || 'Datos de cliente actualizados');
                 queryClient.invalidateQueries(['sales-history']);
                 queryClient.invalidateQueries(['customers']);
-                if (onSaved) {
-                    onSaved({ retransmitted: retransmit, result: res.data });
-                }
+                if (onSaved) onSaved({ retransmitted: retransmit, result: res.data });
                 onClose();
             } else {
                 toast.error(res.data?.message || 'Error al actualizar');
             }
         } catch (err) {
-            console.error('Error updating customer for sale:', err);
             toast.error(err.response?.data?.message || 'Error al guardar datos del cliente');
         } finally {
             setSubmitting(false);
@@ -207,18 +158,16 @@ export default function EditarClienteDteModal({ isOpen, onClose, sale, onSaved }
         <Modal
             isOpen={isOpen}
             onClose={onClose}
+            maxWidth="max-w-2xl"
             title={
                 <div className="flex items-center gap-2.5">
-                    <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
-                        <UserCheck size={20} />
-                    </div>
+                    <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl"><UserCheck size={20} /></div>
                     <div>
                         <h3 className="text-base font-bold text-slate-900">Corregir Datos del Cliente</h3>
                         <p className="text-xs text-slate-500">Actualizar datos fiscales para transmisión DTE</p>
                     </div>
                 </div>
             }
-            maxWidth="max-w-2xl"
         >
             {loading ? (
                 <div className="py-12 text-center space-y-3">
@@ -229,54 +178,27 @@ export default function EditarClienteDteModal({ isOpen, onClose, sale, onSaved }
                 <form onSubmit={(e) => { e.preventDefault(); handleSubmit(false); }} className="space-y-4">
                     <div className="bg-indigo-50/70 p-3 rounded-2xl border border-indigo-100 flex items-center gap-2 text-xs text-indigo-900">
                         <AlertCircle size={16} className="text-indigo-600 shrink-0" />
-                        <span>
-                            Los cambios se aplicarán al cliente en la base de datos y a esta venta, permitiendo retransmitir a Hacienda sin rechazos.
-                        </span>
+                        <span>Los cambios se aplicarán al cliente y a esta venta para permitir retransmitir a Hacienda.</span>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                         <div className="sm:col-span-2">
-                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                                Nombre o Razón Social <span className="text-rose-500">*</span>
-                            </label>
-                            <input
-                                type="text"
-                                required
-                                value={formData.nombre}
-                                onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                                placeholder="Ej: Comercializadora San Salvador S.A. de C.V."
-                                className="w-full text-[13px] font-medium px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
-                            />
+                            <label className={labelCls}>Nombre o Razón Social <span className="text-rose-500">*</span></label>
+                            <input type="text" required value={formData.nombre} onChange={(e) => setFormData({ ...formData, nombre: e.target.value })} className={inputCls} />
                         </div>
-
                         <div>
-                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                                Nombre Comercial
-                            </label>
-                            <input
-                                type="text"
-                                value={formData.nombre_comercial}
-                                onChange={(e) => setFormData({ ...formData, nombre_comercial: e.target.value })}
-                                placeholder="Ej: Supertienda Central"
-                                className="w-full text-[13px] font-medium px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
-                            />
+                            <label className={labelCls}>Nombre Comercial</label>
+                            <input type="text" value={formData.nombre_comercial} onChange={(e) => setFormData({ ...formData, nombre_comercial: e.target.value })} className={inputCls} />
                         </div>
-
                         <div>
-                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                                Tipo de Documento
-                            </label>
+                            <label className={labelCls}>Tipo de Documento</label>
                             <select
                                 value={formData.tipo_documento}
                                 onChange={(e) => {
                                     const nextType = e.target.value;
-                                    setFormData({
-                                        ...formData,
-                                        tipo_documento: nextType,
-                                        numero_documento: formatDocNumber(formData.numero_documento, nextType)
-                                    });
+                                    setFormData({ ...formData, tipo_documento: nextType, numero_documento: formatDocumentNumber(formData.numero_documento, nextType) });
                                 }}
-                                className="w-full text-[13px] font-medium px-3 py-2 rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                                className={inputCls}
                             >
                                 <option value="DUI">DUI (Consumidor Final)</option>
                                 <option value="NIT">NIT (Contribuyente / Empresa)</option>
@@ -285,166 +207,82 @@ export default function EditarClienteDteModal({ isOpen, onClose, sale, onSaved }
                                 <option value="Otro">Otro Documento</option>
                             </select>
                         </div>
-
                         <div>
-                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                                Número de Documento (DUI / NIT)
-                            </label>
+                            <label className={labelCls}>Número de Documento (DUI / NIT)</label>
                             <input
                                 type="text"
                                 value={formData.numero_documento}
                                 onChange={(e) => {
-                                    const formatted = formatDocNumber(e.target.value, formData.tipo_documento);
-                                    setFormData({
-                                        ...formData,
-                                        numero_documento: formatted,
-                                        nit: formData.tipo_documento === 'NIT' ? formatted : formData.nit
-                                    });
+                                    const formatted = formatDocumentNumber(e.target.value, formData.tipo_documento);
+                                    setFormData({ ...formData, numero_documento: formatted, nit: formData.tipo_documento === 'NIT' ? formatted : formData.nit });
                                 }}
-                                placeholder={formData.tipo_documento === 'DUI' ? '00000000-0' : '0000-000000-000-0'}
-                                className="w-full font-mono text-[13px] font-medium px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                                className={`${inputCls} font-mono`}
                             />
                         </div>
-
                         <div>
-                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                                NRC (Registro de Contribuyente)
-                            </label>
-                            <input
-                                type="text"
-                                value={formData.nrc}
-                                onChange={(e) => setFormData({ ...formData, nrc: formatNRC(e.target.value) })}
-                                placeholder="000000-0"
-                                maxLength={10}
-                                className="w-full font-mono text-[13px] font-medium px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
-                            />
+                            <label className={labelCls}>NRC (Registro de Contribuyente)</label>
+                            <input type="text" value={formData.nrc} onChange={(e) => setFormData({ ...formData, nrc: formatNRC(e.target.value) })} maxLength={10} className={`${inputCls} font-mono`} />
                         </div>
-
                         <div className="sm:col-span-2">
-                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                                Actividad Económica (Giro - Catálogo CAT-019)
-                            </label>
-                            <select
-                                value={formData.codigo_actividad}
-                                onChange={(e) => setFormData({ ...formData, codigo_actividad: e.target.value })}
-                                className="w-full text-[12px] font-medium px-3 py-2 rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
-                            >
+                            <label className={labelCls}>Actividad Económica (Giro - CAT-019)</label>
+                            <select value={formData.codigo_actividad} onChange={(e) => setFormData({ ...formData, codigo_actividad: e.target.value })} className={inputCls}>
                                 <option value="">-- Seleccionar Actividad Económica --</option>
-                                {activities.map((a) => (
-                                    <option key={a.code} value={a.code}>
-                                        {a.code} - {a.description}
-                                    </option>
+                                {(Array.isArray(activities) ? activities : []).map((a) => (
+                                    <option key={a.code} value={a.code}>{a.code} - {a.description}</option>
                                 ))}
                             </select>
                         </div>
-
                         <div>
-                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                                Departamento
-                            </label>
-                            <select
-                                value={formData.departamento}
-                                onChange={(e) => setFormData({ ...formData, departamento: e.target.value, municipio: '' })}
-                                className="w-full text-[13px] font-medium px-3 py-2 rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
-                            >
-                                {departments.map((d) => (
-                                    <option key={d.code} value={d.code}>
-                                        {d.description}
-                                    </option>
-                                ))}
+                            <label className={labelCls}>Departamento</label>
+                            <select value={formData.departamento} onChange={(e) => setFormData({ ...formData, departamento: e.target.value, municipio: '', distrito: '' })} className={inputCls}>
+                                {(Array.isArray(departments) ? departments : []).map((d) => <option key={d.code} value={d.code}>{d.description}</option>)}
                             </select>
                         </div>
-
                         <div>
-                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                                Municipio
-                            </label>
-                            <select
-                                value={formData.municipio}
-                                onChange={(e) => setFormData({ ...formData, municipio: e.target.value })}
-                                className="w-full text-[13px] font-medium px-3 py-2 rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
-                            >
+                            <label className={labelCls}>Municipio</label>
+                            <select value={formData.municipio} onChange={(e) => setFormData({ ...formData, municipio: e.target.value, distrito: '' })} className={inputCls}>
                                 <option value="">-- Seleccionar Municipio --</option>
-                                {municipalities.map((m) => (
-                                    <option key={m.code} value={m.code}>
-                                        {m.description}
-                                    </option>
-                                ))}
+                                {(Array.isArray(municipalities) ? municipalities : []).map((m) => <option key={m.code} value={m.code}>{m.description}</option>)}
                             </select>
                         </div>
-
                         <div className="sm:col-span-2">
-                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                                Dirección Completa
-                            </label>
-                            <input
-                                type="text"
-                                value={formData.direccion}
-                                onChange={(e) => setFormData({ ...formData, direccion: e.target.value })}
-                                placeholder="Calle, número de casa, colonia, barrio o punto de referencia"
-                                className="w-full text-[13px] font-medium px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
-                            />
+                            <label className={labelCls}>Distrito (CAT-008)</label>
+                            <select
+                                value={formData.distrito}
+                                onChange={(e) => {
+                                    const picked = filteredDistricts.find(d => String(d.code) === String(e.target.value));
+                                    setFormData({ ...formData, distrito: e.target.value, ...(picked?.muni_code ? { municipio: picked.muni_code } : {}) });
+                                }}
+                                className={inputCls}
+                            >
+                                <option value="">-- Seleccionar Distrito --</option>
+                                {filteredDistricts.map((d) => <option key={`${d.muni_code}-${d.code}`} value={d.code}>{d.code} - {d.description}</option>)}
+                            </select>
                         </div>
-
-                        <div>
-                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                                Teléfono
-                            </label>
-                            <input
-                                type="text"
-                                value={formData.telefono}
-                                onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
-                                placeholder="2200-0000 o 7000-0000"
-                                className="w-full text-[13px] font-medium px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
-                            />
+                        <div className="sm:col-span-2">
+                            <label className={labelCls}>Dirección Completa</label>
+                            <input type="text" value={formData.direccion} onChange={(e) => setFormData({ ...formData, direccion: e.target.value })} className={inputCls} />
                         </div>
-
                         <div>
-                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                                Correo Electrónico
-                            </label>
-                            <input
-                                type="email"
-                                value={formData.correo}
-                                onChange={(e) => setFormData({ ...formData, correo: e.target.value })}
-                                placeholder="cliente@ejemplo.com"
-                                className="w-full text-[13px] font-medium px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
-                            />
+                            <label className={labelCls}>Teléfono</label>
+                            <input type="text" value={formData.telefono} onChange={(e) => setFormData({ ...formData, telefono: e.target.value })} className={inputCls} />
+                        </div>
+                        <div>
+                            <label className={labelCls}>Correo Electrónico</label>
+                            <input type="email" value={formData.correo} onChange={(e) => setFormData({ ...formData, correo: e.target.value })} className={inputCls} />
                         </div>
                     </div>
 
                     <div className="pt-3 flex flex-col sm:flex-row items-center justify-between gap-2 border-t border-slate-100">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            disabled={submitting}
-                            className="w-full sm:w-auto px-4 py-2.5 text-slate-500 hover:text-slate-800 font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-slate-100 transition-colors"
-                        >
+                        <button type="button" onClick={onClose} disabled={submitting} className="w-full sm:w-auto px-4 py-2.5 text-slate-500 hover:text-slate-800 font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-slate-100">
                             Cancelar
                         </button>
-
                         <div className="w-full sm:w-auto flex flex-wrap items-center gap-2 justify-end">
-                            <button
-                                type="button"
-                                onClick={() => handleSubmit(false)}
-                                disabled={submitting}
-                                className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all"
-                            >
-                                <Save size={14} />
-                                <span>Solo Guardar</span>
+                            <button type="button" onClick={() => handleSubmit(false)} disabled={submitting} className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl">
+                                <Save size={14} /><span>Solo Guardar</span>
                             </button>
-
-                            <button
-                                type="button"
-                                onClick={() => handleSubmit(true)}
-                                disabled={submitting}
-                                className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-bold text-xs rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-50"
-                            >
-                                {submitting ? (
-                                    <RefreshCcw size={14} className="animate-spin" />
-                                ) : (
-                                    <Send size={14} />
-                                )}
+                            <button type="button" onClick={() => handleSubmit(true)} disabled={submitting} className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-bold text-xs rounded-xl shadow-md disabled:opacity-50">
+                                {submitting ? <RefreshCcw size={14} className="animate-spin" /> : <Send size={14} />}
                                 <span>Guardar y Reintentar Envío</span>
                             </button>
                         </div>

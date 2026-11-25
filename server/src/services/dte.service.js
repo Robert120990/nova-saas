@@ -160,18 +160,33 @@ class DteService {
                 totalLetras: payload.header.total_letras || '',
                 taxes: [...(payload.header.taxes || []), ...extraTaxes],
                 // Datos adicionales para Multi-DTE
-                exportacion: payload.header.dte_type === '11' ? {
-                    tipoItemExpor: payload.header.export_item_type || 1,
-                    recintoFiscal: payload.header.fiscal_enclosure || '00',
-                    tipoRegimen: (payload.header.export_regime && String(payload.header.export_regime).toUpperCase().startsWith('EX')) ? 'EX-1' : (payload.header.export_regime || 'EX-1'),
-                    regimen: (payload.header.export_customs_regime || (payload.header.export_regime && !String(payload.header.export_regime).toUpperCase().startsWith('EX') ? payload.header.export_regime : null)),
-                    codPaisDestino: payload.header.dest_country_code,
-                    incoterms: payload.header.incoterms || '01',
-                    descIncoterms: payload.header.desc_incoterms || 'EXW- En fabrica',
-                    flete: payload.header.flete || 0,
-                    seguro: payload.header.seguro || 0,
-                    observaciones: payload.header.observaciones || 'Exportación'
-                } : null,
+                exportacion: payload.header.dte_type === '11' ? (() => {
+                    const expItemType = [1, 2, 3].includes(parseInt(payload.header.export_item_type, 10))
+                        ? parseInt(payload.header.export_item_type, 10)
+                        : 1;
+                    const validRegimes = ['EX-1', 'EX-2', 'EX-3', 'TA-1'];
+                    const rawRegime = String(payload.header.export_regime || '').trim().toUpperCase();
+                    const resolvedTipoRegimen = validRegimes.includes(rawRegime)
+                        ? rawRegime
+                        : (expItemType === 2 ? null : 'EX-1');
+                    const resolvedRecinto = expItemType === 2
+                        ? null
+                        : ((payload.header.fiscal_enclosure && String(payload.header.fiscal_enclosure).trim().length === 2)
+                            ? String(payload.header.fiscal_enclosure).trim()
+                            : '00');
+                    return {
+                        tipoItemExpor: expItemType,
+                        recintoFiscal: resolvedRecinto,
+                        tipoRegimen: resolvedTipoRegimen,
+                        regimen: (payload.header.export_customs_regime || (payload.header.export_regime && !validRegimes.includes(rawRegime) ? payload.header.export_regime : null)),
+                        codPaisDestino: payload.header.dest_country_code,
+                        incoterms: payload.header.incoterms || '01',
+                        descIncoterms: payload.header.desc_incoterms || 'EXW- En fabrica',
+                        flete: payload.header.flete || 0,
+                        seguro: payload.header.seguro || 0,
+                        observaciones: payload.header.observaciones || 'Exportación'
+                    };
+                })() : null,
                 transporte: payload.header.dte_type === '04' ? {
                     bienTitulo: payload.header.remission_type || '02',
                     nombreChofer: payload.header.transporter_name,
@@ -239,7 +254,7 @@ class DteService {
         }
     }
 
-    async retransmitDTE(company, codigoGeneracion, newReceptor = null) {
+    async retransmitDTE(company, codigoGeneracion, newReceptor = null, options = {}) {
         if (!company.dte_active) {
             return { success: false, skip: true };
         }
@@ -262,7 +277,8 @@ class DteService {
                 },
                 body: JSON.stringify({
                     codigoGeneracion,
-                    receptor: newReceptor
+                    receptor: newReceptor,
+                    updateDateTime: Boolean(options?.updateDateTime)
                 })
             });
 
