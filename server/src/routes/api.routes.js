@@ -170,7 +170,9 @@ const {
     salesRemesaDeliverySchema,
     salesRemesaDeliveryUpdateSchema,
     salesTiendaRrsSchema,
-    editDTEItemsSchema
+    editDTEItemsSchema,
+    dteRecalculatePreviewSchema,
+    dteCorrectionSchema
 } = require('../schemas/salesSchemas');
 const {
     posSchema,
