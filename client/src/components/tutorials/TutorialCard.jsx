@@ -9,7 +9,6 @@ export default function TutorialCard({
 }) {
     const [imgFailed, setImgFailed] = useState(false);
     const isPista = tutorial.category === 'pista';
-    const roles = Array.isArray(tutorial.roles) ? tutorial.roles : [];
     const stepsCount = Array.isArray(tutorial.steps) ? tutorial.steps.length : 0;
 
     return (
@@ -65,17 +64,6 @@ export default function TutorialCard({
                     <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
                         {tutorial.summary}
                     </p>
-
-                    <div className="flex flex-wrap gap-1 pt-0.5">
-                        {roles.slice(0, 4).map((r) => (
-                            <span
-                                key={r}
-                                className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-semibold"
-                            >
-                                {r}
-                            </span>
-                        ))}
-                    </div>
                 </div>
 
                 <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">

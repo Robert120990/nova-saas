@@ -439,6 +439,26 @@ function buildTree(items) {
         });
     }
 
+    // Garantizar acceso visible al Centro de Tutoriales en el menú superior aunque el seed/migración falte
+    const hasTutorialsItem = Object.values(itemMap).some(i => i.path === '/tutoriales')
+        || roots.some(r => r.path === '/tutoriales');
+    if (!hasTutorialsItem) {
+        roots.push({
+            id: 'virtual-tutorials-center',
+            label: 'Centro de Tutoriales',
+            path: '/tutoriales',
+            permission: 'view_tutorials',
+            permission_key: 'view_tutorials',
+            parent_id: null,
+            sort_order: 2,
+            is_active: 1,
+            hide_in_menu: 0,
+            hideInMenu: false,
+            icon: iconMap.GraduationCap || iconMap.BookOpen || iconMap.Circle,
+            children: [],
+        });
+    }
+
     // Ordenar de forma determinista por sort_order
     Object.values(itemMap).forEach(node => {
         if (node.children && node.children.length > 0) {

@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useUpdate } from '../../context/UpdateContext';
 import { useTickets } from '../../context/TicketContext';
 import { useSafeNavigate } from '../../hooks/useSafeNavigate';
-import { LogOut, Building2, GitBranch, ChevronRight, ChevronDown, Check, X, Save, Eye, EyeOff, Menu, Sparkles, Ticket } from 'lucide-react';
+import { LogOut, Building2, GitBranch, ChevronRight, ChevronDown, Check, X, Save, Eye, EyeOff, Menu, Sparkles, Ticket, GraduationCap } from 'lucide-react';
 import NotificationBell from '../ui/NotificationBell';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
@@ -13,7 +14,8 @@ const Navbar = ({ onToggleMobileMenu }) => {
     const { logout, user, selectContext, updateUser } = useAuth();
     const { updateAvailable, updateInfo, openModal } = useUpdate();
     const { openQuickTicket } = useTickets();
-    const { confirmAction } = useSafeNavigate();
+    const { confirmAction, safeNavigate } = useSafeNavigate();
+    const location = useLocation();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
 
     // Profile modal state
@@ -217,6 +219,20 @@ const Navbar = ({ onToggleMobileMenu }) => {
                         <span className="font-mono text-[11px]">{updateInfo?.version || ''}</span>
                     </button>
                 )}
+
+                <button
+                    type="button"
+                    onClick={() => safeNavigate('/tutoriales')}
+                    className={`h-10 px-2.5 sm:px-3 flex items-center justify-center gap-1.5 rounded-xl border transition-all cursor-pointer shrink-0 ${
+                        location.pathname === '/tutoriales'
+                            ? 'bg-indigo-600/25 text-indigo-300 border-indigo-500/40'
+                            : 'text-slate-300 hover:text-indigo-300 bg-slate-800/30 hover:bg-indigo-500/15 border-slate-700/40'
+                    }`}
+                    title="Centro de Tutoriales de tu rol"
+                >
+                    <GraduationCap size={17} />
+                    <span className="hidden sm:inline text-xs font-bold">Tutoriales</span>
+                </button>
 
                 <button
                     type="button"

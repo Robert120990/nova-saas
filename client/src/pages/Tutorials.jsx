@@ -17,8 +17,6 @@ export default function Tutorials() {
 
     const [search, setSearch] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('all');
-    const [selectedRole, setSelectedRole] = useState('all');
-    const [showAllForAdmin, setShowAllForAdmin] = useState(true);
     const [activeTutorial, setActiveTutorial] = useState(null);
     const [exportingPack, setExportingPack] = useState(false);
 
@@ -33,24 +31,29 @@ export default function Tutorials() {
     });
 
     const { data, isLoading } = useQuery({
-        queryKey: ['tutorials', showAllForAdmin],
-        queryFn: async () => (await axios.get(`/api/tutorials?includeAll=${showAllForAdmin ? 'true' : 'false'}`)).data
+        queryKey: ['tutorials', user?.id, user?.company_id, user?.role],
+        queryFn: async () => (await axios.get('/api/tutorials')).data
     });
 
     const tutorials = useMemo(() => unwrapList(data?.tutorials), [data]);
     const categories = useMemo(() => unwrapList(data?.categories), [data]);
-    const roleGuides = useMemo(() => unwrapList(data?.roleGuides), [data]);
+    const activeRole = data?.userRole || user?.role || 'Usuario';
+    const roleGuide = useMemo(
+        () => data?.roleGuide || (Array.isArray(data?.roleGuides) ? data.roleGuides[0] : null),
+        [data]
+    );
+
+    const effectiveCategory = categories.length <= 1 ? 'all' : selectedCategory;
 
     const filteredTutorials = useMemo(() => {
         const q = search.trim().toLowerCase();
         return tutorials.filter((t) => {
-            if (selectedCategory !== 'all' && t.category !== selectedCategory) return false;
-            if (selectedRole !== 'all' && !(Array.isArray(t.roles) && t.roles.includes(selectedRole))) return false;
+            if (effectiveCategory !== 'all' && t.category !== effectiveCategory) return false;
             if (!q) return true;
             const hay = `${t.title} ${t.summary} ${(t.steps || []).map(s => `${s.title} ${s.description}`).join(' ')}`.toLowerCase();
             return hay.includes(q);
         });
-    }, [tutorials, selectedCategory, selectedRole, search]);
+    }, [tutorials, effectiveCategory, search]);
 
     const completedCount = useMemo(
         () => tutorials.filter(t => completedSlugs.includes(t.slug)).length,
@@ -80,9 +83,7 @@ export default function Tutorials() {
         setExportingPack(true);
         try {
             const params = new URLSearchParams({
-                category: selectedCategory,
-                role: selectedRole,
-                includeAll: showAllForAdmin ? 'true' : 'false'
+                category: effectiveCategory
             });
             const res = await axios.get(`/api/tutorials/pack/pdf?${params.toString()}`, { responseType: 'blob' });
             const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
@@ -110,11 +111,11 @@ export default function Tutorials() {
                                 Centro de Tutoriales Operativos
                             </h2>
                             <span className="px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold">
-                                Rol activo: {data?.userRole || user?.role || 'Usuario'}
+                                Rol activo: {activeRole}
                             </span>
                         </div>
                         <p className="text-xs sm:text-sm text-slate-500 font-medium">
-                            Guías paso a paso con capturas reales del sistema, anotaciones y manual descargable en PDF para Tienda y Pista.
+                            Guías paso a paso exclusivas para tu rol activo ({activeRole}) con capturas reales del sistema y manual descargable en PDF.
                         </p>
                     </div>
                 </div>
@@ -142,70 +143,62 @@ export default function Tutorials() {
                 </div>
             </div>
 
-            {/* Tarjetas por Rol */}
+            {/* Tarjeta exclusiva del Rol Conectado */}
             <RoleGuideCards
-                roleGuides={roleGuides}
+                roleGuide={roleGuide}
                 tutorials={tutorials}
-                selectedRole={selectedRole}
-                activeUserRole={data?.userRole || user?.role}
-                onSelectRole={setSelectedRole}
             />
 
             {/* Barra de Filtros y Búsqueda */}
             <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-1.5">
-                    <button
-                        type="button"
-                        onClick={() => setSelectedCategory('all')}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer ${
-                            selectedCategory === 'all' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                        }`}
-                    >
-                        <Layers size={13} />
-                        <span>Todos ({tutorials.length})</span>
-                    </button>
-                    {categories.map((c) => {
-                        const Icon = c.id === 'pista' ? Fuel : Store;
-                        const cnt = tutorials.filter(t => t.category === c.id).length;
-                        return (
+                    {categories.length > 1 ? (
+                        <>
                             <button
-                                key={c.id}
                                 type="button"
-                                onClick={() => setSelectedCategory(c.id)}
+                                onClick={() => setSelectedCategory('all')}
                                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer ${
-                                    selectedCategory === c.id ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                    effectiveCategory === 'all' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                                 }`}
                             >
-                                <Icon size={13} />
-                                <span>{c.label} ({cnt})</span>
+                                <Layers size={13} />
+                                <span>Todos ({tutorials.length})</span>
                             </button>
-                        );
-                    })}
+                            {categories.map((c) => {
+                                const Icon = c.id === 'pista' ? Fuel : Store;
+                                const cnt = tutorials.filter(t => t.category === c.id).length;
+                                return (
+                                    <button
+                                        key={c.id}
+                                        type="button"
+                                        onClick={() => setSelectedCategory(c.id)}
+                                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer ${
+                                            effectiveCategory === c.id ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                        }`}
+                                    >
+                                        <Icon size={13} />
+                                        <span>{c.label} ({cnt})</span>
+                                    </button>
+                                );
+                            })}
+                        </>
+                    ) : categories.length === 1 ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200/80 text-xs font-bold">
+                            {categories[0].id === 'pista' ? <Fuel size={13} /> : <Store size={13} />}
+                            <span>{categories[0].label} ({tutorials.length})</span>
+                        </span>
+                    ) : null}
                 </div>
 
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-                    {data?.isAdminViewer && (
-                        <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 cursor-pointer whitespace-nowrap">
-                            <input
-                                type="checkbox"
-                                checked={showAllForAdmin}
-                                onChange={(e) => setShowAllForAdmin(e.target.checked)}
-                                className="rounded border-slate-300 text-indigo-600"
-                            />
-                            <span>Ver todos los roles</span>
-                        </label>
-                    )}
-
-                    <div className="relative w-full sm:w-72">
-                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                        <input
-                            type="text"
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            placeholder="Buscar factura, DTE, corte, lecturas..."
-                            className="w-full pl-9 pr-3 py-2 text-[13px] font-medium rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
-                        />
-                    </div>
+                <div className="relative w-full md:w-80">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                        type="text"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder="Buscar tutorial por tema o paso..."
+                        className="w-full pl-9 pr-3 py-2 text-[13px] font-medium rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                    />
                 </div>
             </div>
 
@@ -217,14 +210,20 @@ export default function Tutorials() {
                 </div>
             ) : filteredTutorials.length === 0 ? (
                 <div className="py-14 bg-white rounded-3xl border border-slate-200 text-center space-y-2 px-4">
-                    <p className="text-sm font-bold text-slate-700">No se encontraron tutoriales con esos filtros</p>
-                    <button
-                        type="button"
-                        onClick={() => { setSearch(''); setSelectedCategory('all'); setSelectedRole('all'); }}
-                        className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer"
-                    >
-                        Restablecer filtros
-                    </button>
+                    <p className="text-sm font-bold text-slate-700">
+                        {tutorials.length === 0
+                            ? `Aún no hay tutoriales operativos asignados al rol ${activeRole}.`
+                            : 'No se encontraron tutoriales con esos filtros'}
+                    </p>
+                    {tutorials.length > 0 && (
+                        <button
+                            type="button"
+                            onClick={() => { setSearch(''); setSelectedCategory('all'); }}
+                            className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer"
+                        >
+                            Restablecer filtros
+                        </button>
+                    )}
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">

@@ -49,6 +49,83 @@ const ROLE_GUIDES = [
             'Liquidar remesas, tarjetas, créditos, vales, cupones, adelantos y lubricantes.',
             'Actualizar precios de combustible y consultar reportes de Galonaje, Inventario y Trupput.'
         ]
+    },
+    {
+        role: 'SuperAdmin',
+        badge: 'Control Total',
+        color: 'indigo',
+        summary: 'Acceso completo a todas las guías operativas de Tienda, POS, Pista y supervisión financiera.',
+        highlights: [
+            'Supervisar facturación POS, resolución de rechazos DTE y catálogos multicompañía.',
+            'Auditar cortes de caja de Tienda, entregas de remesas y promociones vigentes.',
+            'Controlar cierres de lecturas de Pista, precios de combustible, cupones y trupput.'
+        ]
+    },
+    {
+        role: 'Admin',
+        badge: 'Administración General',
+        color: 'indigo',
+        summary: 'Administra integralmente los procesos de Tienda, facturación DTE, catálogos, cortes y operación de Pista.',
+        highlights: [
+            'Configurar productos, categorías, clientes, combos y promociones en todas las sucursales.',
+            'Supervisar turnos de POS, arqueos de caja, entregas de remesas y corrección de DTE.',
+            'Validar cierres de lecturas de Pista, precios de combustibles, anticipos y convenios.'
+        ]
+    },
+    {
+        role: 'Supervisor',
+        badge: 'Supervisión Operativa',
+        color: 'emerald',
+        summary: 'Supervisa la operación diaria de Tienda y Pista, validando arqueos, lecturas y cumplimiento DTE.',
+        highlights: [
+            'Verificar aperturas y cortes de caja en Tienda junto con la entrega de remesas.',
+            'Revisar rechazos DTE, clientes fiscales y aplicación correcta de combos/promociones.',
+            'Controlar cierres de lecturas de Pista, precios vigentes y liquidación de cupones.'
+        ]
+    },
+    {
+        role: 'Gerencia',
+        badge: 'Dirección y Auditoría',
+        color: 'emerald',
+        summary: 'Consulta reportes ejecutivos, supervisa cierres de Tienda y Pista y audita indicadores de ventas.',
+        highlights: [
+            'Auditar DTE emitidos, combos/promociones, cortes de caja y remesas de Tienda.',
+            'Revisar cierres de lecturas de Pista, historial con bitácora de cambios y precios.',
+            'Monitorear liquidaciones de cupones, anticipos de combustible y convenios Trupput.'
+        ]
+    },
+    {
+        role: 'Contador',
+        badge: 'Control Fiscal y Contable',
+        color: 'indigo',
+        summary: 'Verifica documentos tributarios electrónicos (DTE), fichas fiscales de clientes y cierres para conciliación.',
+        highlights: [
+            'Consultar y descargar PDF/JSON DTE en Historial de Ventas y validar respuestas MH.',
+            'Revisar datos fiscales obligatorios de clientes (NIT, NRC, Distrito y Giro).',
+            'Conciliar historial de lecturas de Pista, diferencias de cierre y reportes contables.'
+        ]
+    },
+    {
+        role: 'Auxiliar',
+        badge: 'Apoyo Administrativo',
+        color: 'amber',
+        summary: 'Apoya en registro de remesas, seguimiento de lecturas de pista, liquidación de cupones y anticipos.',
+        highlights: [
+            'Registrar entregas de remesas de Tienda y consultar reportes por turno.',
+            'Apoyar en cierres de lecturas de Pista y verificación en Historial de Lecturas.',
+            'Gestionar remesas de pista, conciliación de cupones, anticipos y Trupput.'
+        ]
+    },
+    {
+        role: 'Operaciones',
+        badge: 'Operación Comercial',
+        color: 'emerald',
+        summary: 'Coordina la oferta comercial de combos, promociones vigentes y acuerdos de descuento para Tienda y POS.',
+        highlights: [
+            'Estructurar combos de productos y vigencias promocionales por sucursal.',
+            'Mantener acuerdos de precios y descuentos corporativos en POS.',
+            'Coordinar con Tienda la correcta ejecución de campañas comerciales.'
+        ]
     }
 ];
 
@@ -123,7 +200,7 @@ const TUTORIALS_CATALOG = [
         summary: 'Consulta documentos emitidos, visualiza o descarga la Representación Gráfica (PDF), inspecciona el JSON/respuesta MH, reenvía correos y resuelve rechazos en el mismo historial.',
         duration: '5 min',
         modulePath: '/ventas',
-        roles: ['Vendedor', 'Jefe Tienda', 'Jefe Pista', 'Supervisor', 'Contador', 'Admin'],
+        roles: ['Vendedor', 'Jefe Tienda', 'Jefe Pista', 'Supervisor', 'Gerencia', 'Contador', 'Admin'],
         requiredPermissions: ['view_sales_history'],
         coverImage: 'sales-history.png',
         prerequisites: [
@@ -221,7 +298,7 @@ const TUTORIALS_CATALOG = [
         summary: 'Configura paquetes (combos) que descargan múltiples ítems de inventario, ofertas comerciales por fecha (2x1, paquetes, escalas) y descuentos específicos por cliente.',
         duration: '5 min',
         modulePath: '/ventas/combos',
-        roles: ['Jefe Tienda', 'Operaciones', 'Supervisor', 'Admin'],
+        roles: ['Jefe Tienda', 'Operaciones', 'Supervisor', 'Gerencia', 'Admin'],
         requiredPermissions: ['manage_combos', 'manage_sales_promotions', 'manage_customer_discounts', 'manage_discount_rules'],
         coverImage: 'combos-list.png',
         prerequisites: [
@@ -317,7 +394,7 @@ const TUTORIALS_CATALOG = [
         summary: 'Flujo paso a paso para abrir turno por punto de venta, supervisar turnos activos, registrar el arqueo detallado y emitir el cierre financiero.',
         duration: '5 min',
         modulePath: '/ventas/cierre',
-        roles: ['Jefe Tienda', 'Jefe Pista', 'Supervisor', 'Admin'],
+        roles: ['Jefe Tienda', 'Jefe Pista', 'Supervisor', 'Gerencia', 'Admin'],
         requiredPermissions: ['manage_cash_closure'],
         coverImage: 'cash-closing.png',
         prerequisites: [
@@ -369,7 +446,7 @@ const TUTORIALS_CATALOG = [
         summary: 'Registra depósitos bancarios/remesas entregadas desde Tienda y genera reportes oficiales en PDF y Excel por turno.',
         duration: '4 min',
         modulePath: '/ventas/entrega-remesas',
-        roles: ['Vendedor', 'Jefe Tienda', 'Auxiliar', 'Supervisor', 'Admin'],
+        roles: ['Vendedor', 'Jefe Tienda', 'Auxiliar', 'Supervisor', 'Gerencia', 'Admin'],
         requiredPermissions: ['manage_sales_remesa_delivery', 'view_sales_tienda_shift_report', 'view_arqueos_report'],
         coverImage: 'sales-remesas.png',
         prerequisites: [

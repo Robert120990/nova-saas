@@ -63,6 +63,9 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
 
     const hasPermission = (item) => {
         if (isSuperAdmin) return true;
+        if (item.permission === 'view_tutorials' || item.path === '/tutoriales') {
+            return true;
+        }
         if (!item.permission) {
             // Si es un contenedor con subelementos, verificar si tiene al menos un hijo accesible
             if (item.children && item.children.length > 0) {

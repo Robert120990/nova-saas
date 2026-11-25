@@ -30,6 +30,9 @@ const CommandPalette = ({ isOpen, onClose }) => {
 
     const hasPermission = (item) => {
         if (isSuperAdmin || !item.permission_key) return true;
+        if (item.permission_key === 'view_tutorials' || item.path === '/tutoriales') {
+            return true;
+        }
         if (item.permission_key === 'manage_company_modules') {
             return permissions.includes('manage_company_modules') || permissions.includes('manage_system_settings');
         }
@@ -89,6 +92,16 @@ const CommandPalette = ({ isOpen, onClose }) => {
 
             results.push({ id: item.id, label: item.label, path: item.path, group: groupLabel, permission_key: item.permission_key });
         });
+
+        if (!results.some(r => r.path === '/tutoriales')) {
+            results.push({
+                id: 'virtual-tutorials-center',
+                label: 'Centro de Tutoriales',
+                path: '/tutoriales',
+                group: 'Ayuda',
+                permission_key: 'view_tutorials'
+            });
+        }
 
         return results;
     }, [flatItems, permissions, isSuperAdmin, user?.enabled_modules, user?.company_id, user?.company_name]);
