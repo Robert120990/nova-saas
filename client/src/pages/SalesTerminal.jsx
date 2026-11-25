@@ -2679,7 +2679,8 @@ const SalesTerminal = () => {
                 finishBarcodeLookup(product, false, autoAdd);
             } catch {
                 // Si no es producto, buscar en combos
-                const combo = combos.find(c => c.barcode === code);
+                const normalizedCode = String(code || '').trim().toUpperCase();
+                const combo = combos.find(c => String(c.barcode || '').trim().toUpperCase() === normalizedCode);
                 if (combo) {
                     if (combo.status === 'inactive') {
                         setQuickBarcode('');
