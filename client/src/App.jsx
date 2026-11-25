@@ -83,6 +83,7 @@ const ServerMetrics = lazyWithRetry(() => import('./pages/ServerMetrics'));
 const ConnectedUsers = lazyWithRetry(() => import('./pages/ConnectedUsers'));
 const Changelog = lazyWithRetry(() => import('./pages/Changelog'));
 const KeyboardShortcuts = lazyWithRetry(() => import('./pages/KeyboardShortcuts'));
+const Tutorials = lazyWithRetry(() => import('./pages/Tutorials'));
 const CashClosing = lazyWithRetry(() => import('./pages/CashClosing'));
 const Combos = lazyWithRetry(() => import('./pages/Combos'));
 const CustomerStatement = lazyWithRetry(() => import('./pages/CustomerStatement'));
@@ -346,6 +347,7 @@ function App() {
                         <Route path="/seguridad/conectados" element={<ConnectedUsers />} />
                         <Route path="/seguridad/atajos" element={<KeyboardShortcuts />} />
                         <Route path="/soporte/tickets" element={<SupportTickets />} />
+                        <Route path="/tutoriales" element={<Tutorials />} />
                         <Route path="/changelog" element={<Changelog />} />
                         <Route path="/notificaciones" element={<NotificacionesLista />} />
 

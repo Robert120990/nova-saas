@@ -210,6 +210,7 @@ const smtpController = require('../controllers/smtp.controller');
 const settingsController = require('../controllers/settings.controller');
 const systemMetricsController = require('../controllers/systemMetrics.controller');
 const aiRoutes = require('./ai.routes');
+const tutorialController = require('../controllers/tutorial.controller');
 const inventoryController = require('../controllers/inventory.controller');
 const inventoryAdjustmentController = require('../controllers/inventoryAdjustment.controller');
 const inventoryScanController = require('../controllers/inventoryScan.controller');
@@ -411,6 +412,11 @@ router.post('/menu-items', verifyToken, checkPermission('manage_menu'), menuItem
 router.put('/menu-items/reorder', verifyToken, checkPermission('manage_menu'), menuItemController.reorderMenuItems);
 router.put('/menu-items/:id', verifyToken, checkPermission('manage_menu'), menuItemController.updateMenuItem);
 router.delete('/menu-items/:id', verifyToken, checkPermission('manage_menu'), menuItemController.deleteMenuItem);
+
+// Centro de Tutoriales Operativos (filtrados por rol y permisos + exportación PDF)
+router.get('/tutorials', tutorialController.getTutorials);
+router.get('/tutorials/pack/pdf', tutorialController.getTutorialPackPdf);
+router.get('/tutorials/:slug/pdf', tutorialController.getTutorialPdf);
 
 // Audit Log (Bitácora del Sistema)
 router.get('/audit-log', auditController.getLogs);
