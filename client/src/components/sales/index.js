@@ -4,4 +4,5 @@ export { default as DiagnosticoDteModal } from './DiagnosticoDteModal';
 export { default as EditarClienteDteModal } from './EditarClienteDteModal';
 export { default as SalesIntegrityAuditModal } from './SalesIntegrityAuditModal';
 export { default as ShiftSalesByCategoryModal } from './ShiftSalesByCategoryModal';
+export { default as RegenerateDteModal } from './RegenerateDteModal';
 export * from './audit';

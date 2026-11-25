@@ -23,6 +23,7 @@ const {
     resolveActividadOficial
 } = require('./salesUtils');
 const { formatDeliveryDteJson } = require('../../utils/dteDeliveryHelper');
+const dteRegenerateFiscal = require('../../services/sales/dteRegenerateFiscal.service');
 
 
 // --- GESTIÓN, TRANSMISIÓN Y CONSULTA DE DOCUMENTOS TRIBUTARIOS ELECTRÓNICOS (DTE) ---
@@ -228,9 +229,30 @@ const checkExistingCR = async (req, res) => {
 const DTE_API_URL = process.env.DTE_API_URL || 'http://localhost:5000/api';
 const DTE_JWT_SECRET = process.env.DTE_JWT_SECRET || process.env.JWT_SECRET;
 
+const getRegenerateDTEPreview = async (req, res) => {
+    try {
+        const stripIvaOnExempt = req.query.stripIvaOnExempt !== 'false';
+        const addIvaFromExempt = req.query.addIvaFromExempt === 'true';
+        const preview = await dteRegenerateFiscal.buildRegeneratePreview(pool, req.params.id, req.company_id, {
+            stripIvaOnExempt,
+            addIvaFromExempt
+        });
+        res.json(preview);
+    } catch (error) {
+        console.error('Error en getRegenerateDTEPreview:', error);
+        res.status(error.status || 500).json({ message: error.message || 'Error al obtener previsualización fiscal' });
+    }
+};
+
 const regenerateDTE = async (req, res) => {
     const { id } = req.params;
-    const { updateDateTime, target_shift_id } = req.body;
+    const {
+        updateDateTime,
+        target_shift_id,
+        useCurrentCustomerState = false,
+        stripIvaOnExempt = true,
+        addIvaFromExempt = false
+    } = req.body;
     let connection;
 
     try {
@@ -255,8 +277,8 @@ const regenerateDTE = async (req, res) => {
             return res.status(400).json({ message: 'La empresa no tiene activado el módulo DTE' });
         }
 
-        const [items] = await connection.query('SELECT * FROM sales_items WHERE sale_id = ?', [id]);
-        const [payments] = await connection.query('SELECT * FROM sales_payments WHERE sale_id = ?', [id]);
+        const [origItems] = await connection.query('SELECT * FROM sales_items WHERE sale_id = ? ORDER BY id ASC', [id]);
+        const [origPayments] = await connection.query('SELECT * FROM sales_payments WHERE sale_id = ?', [id]);
         const [linkedDocs] = await connection.query('SELECT * FROM sales_linked_documents WHERE sale_id = ?', [id]);
 
         let codPuntoVentaMH = null;
@@ -279,6 +301,38 @@ const regenerateDTE = async (req, res) => {
 
         const company = { ...sale, id: sale.company_id };
 
+        // Recalcular con estado fiscal actual del cliente si el usuario lo solicitó
+        let effectiveTotals = {
+            total_gravado: sale.total_gravado || 0,
+            total_exento: sale.total_exento || 0,
+            total_nosujetas: sale.total_nosujetas || 0,
+            fovial: sale.fovial || 0,
+            cotrans: sale.cotrans || 0,
+            total_iva: sale.total_iva || 0,
+            descuento_general: sale.descuento_general || 0,
+            iva_percibido: sale.iva_percibido || 0,
+            iva_retenido: sale.iva_retenido || 0,
+            total_pagar: sale.total_pagar || 0
+        };
+        let items = origItems;
+        let payments = origPayments;
+        let customerForPayload = null;
+        let appliedCurrentFiscalState = false;
+
+        if (useCurrentCustomerState && sale.customer_id) {
+            const fiscalPreview = await dteRegenerateFiscal.buildRegeneratePreview(connection, id, req.company_id, {
+                stripIvaOnExempt,
+                addIvaFromExempt
+            });
+            if (fiscalPreview.fiscal_recalc_supported && fiscalPreview.customer_current) {
+                effectiveTotals = fiscalPreview.recalculated_header;
+                items = fiscalPreview.recalculated_items;
+                payments = fiscalPreview.recalculated_payments;
+                customerForPayload = fiscalPreview.customer_current;
+                appliedCurrentFiscalState = fiscalPreview.has_fiscal_changes;
+            }
+        }
+
         // Días de crédito si aplica
         let diasCredito = 15;
         if (sale.customer_id) {
@@ -290,6 +344,95 @@ const regenerateDTE = async (req, res) => {
                 diasCredito = parseInt(custDias[0].dias_credito) || 15;
             }
         }
+
+        const buildEmitPayload = (targetSaleId, targetShiftId, obsText) => ({
+            header: {
+                dte_type: sale.dte_type || sale.tipo_documento,
+                customer_id: sale.customer_id,
+                cliente_nombre: sale.cliente_nombre || null,
+                customer_branch_id: sale.customer_branch_id || null,
+                customer_fleet_id: sale.customer_fleet_id || null,
+                seller_id: sale.seller_id,
+                pos_id: sale.pos_id,
+                shift_id: targetShiftId || null,
+                branch_id: sale.branch_id,
+                user_id: req.user.id,
+                condicion_operacion: sale.condicion_operacion || 1,
+                dias_credito: diasCredito,
+                total_gravado: effectiveTotals.total_gravado || 0,
+                total_exento: effectiveTotals.total_exento || 0,
+                total_nosujetas: effectiveTotals.total_nosujetas || 0,
+                fovial: effectiveTotals.fovial || 0,
+                total_fovial: effectiveTotals.fovial || 0,
+                cotrans: effectiveTotals.cotrans || 0,
+                total_cotrans: effectiveTotals.cotrans || 0,
+                total_iva: effectiveTotals.total_iva || 0,
+                descuento_general: effectiveTotals.descuento_general || 0,
+                total_descuento: effectiveTotals.descuento_general || 0,
+                iva_percibido: effectiveTotals.iva_percibido || 0,
+                total_percepcion: effectiveTotals.iva_percibido || 0,
+                iva_retenido: effectiveTotals.iva_retenido || 0,
+                total_retencion: effectiveTotals.iva_retenido || 0,
+                total_pagar: effectiveTotals.total_pagar || 0,
+                payment_condition: sale.payment_condition || 1,
+                observaciones: obsText,
+                export_item_type: sale.export_item_type || null,
+                fiscal_enclosure: sale.fiscal_enclosure || null,
+                export_regime: sale.export_regime || null,
+                dest_country_code: sale.dest_country_code || null,
+                remission_type: sale.remission_type || null,
+                transporter_name: sale.transporter_name || null,
+                vehicle_plate: sale.vehicle_plate || null,
+                incoterms: sale.incoterms || '01',
+                desc_incoterms: sale.desc_incoterms || 'EXW- En fabrica',
+                flete: sale.flete || 0,
+                seguro: sale.seguro || 0,
+                total_letras: sale.total_letras || ''
+            },
+            sale_id: targetSaleId,
+            customer: customerForPayload || undefined,
+            dias_credito: diasCredito,
+            items: items.map(item => {
+                const parsedTributos = typeof item.tributos === 'string' ? JSON.parse(item.tributos) : (item.tributos || []);
+                const itemExento = item.exento !== undefined
+                    ? Boolean(item.exento)
+                    : (Number(item.venta_gravada || 0) === 0 && Number(item.venta_exenta || 0) > 0);
+                return {
+                    product_id: item.product_id,
+                    combo_id: item.combo_id || null,
+                    codigo: item.codigo || null,
+                    descripcion: item.descripcion,
+                    nombre: item.descripcion,
+                    cantidad: item.cantidad,
+                    precio_unitario: item.precio_unitario,
+                    precio: item.precio_unitario,
+                    monto_descuento: item.monto_descuento || 0,
+                    descuento: item.monto_descuento || 0,
+                    venta_gravada: item.venta_gravada || 0,
+                    venta_exenta: item.venta_exenta || 0,
+                    exento: itemExento,
+                    tributos: parsedTributos
+                };
+            }),
+            payments: payments.map(p => ({
+                codigo: p.metodo_pago || '01',
+                monto: p.monto,
+                referencia: p.referencia || null
+            })),
+            linkedDocuments: linkedDocs.map(d => ({
+                doc_type: d.doc_type || d.tipo_documento || '03',
+                generation_type: d.generation_type || 1,
+                doc_number: d.doc_number || d.numero_documento || '',
+                emission_date: d.emission_date || d.fecha_emision || '',
+                montoSujeto: d.monto_sujeto || 0,
+                ivaRetenido: d.iva_retenido || 0,
+                descripcion: d.descripcion || ''
+            })),
+            emisor_adicional: {
+                descActividad: sale.actividad_economica || 'Actividad no definida',
+                codPuntoVentaMH: codPuntoVentaMH
+            }
+        });
 
         // =====================================================================
         // CASO B: DTE YA ACEPTADO POR HACIENDA -> CREAR NUEVA VENTA Y EMITIR DTE
@@ -317,9 +460,10 @@ const regenerateDTE = async (req, res) => {
             const now = new Date();
             const horaEmision = now.toTimeString().split(' ')[0];
             const origControl = sale.numero_control || activeDte?.numero_control || `VTA-${sale.id}`;
-            const nuevaObservacion = sale.observaciones 
+            const fiscalSuffix = appliedCurrentFiscalState ? ' | Recalculado con estado fiscal actual del cliente' : '';
+            const nuevaObservacion = (sale.observaciones
                 ? `${sale.observaciones} | Regenerado a partir de venta #${sale.id} (DTE previo: ${origControl})`
-                : `Regenerado a partir de venta #${sale.id} (DTE previo: ${origControl})`;
+                : `Regenerado a partir de venta #${sale.id} (DTE previo: ${origControl})`) + fiscalSuffix;
 
             // 1. Insertar nueva cabecera de venta
             const [newSaleResult] = await connection.query('INSERT INTO sales_headers SET ?', [{
@@ -337,16 +481,16 @@ const regenerateDTE = async (req, res) => {
                 fecha_emision: now,
                 hora_emision: horaEmision,
                 estado: 'emitido',
-                total_gravado: sale.total_gravado || 0,
-                total_exento: sale.total_exento || 0,
-                total_nosujetas: sale.total_nosujetas || 0,
-                fovial: sale.fovial || 0,
-                cotrans: sale.cotrans || 0,
-                total_iva: sale.total_iva || 0,
-                descuento_general: sale.descuento_general || 0,
-                iva_percibido: sale.iva_percibido || 0,
-                iva_retenido: sale.iva_retenido || 0,
-                total_pagar: sale.total_pagar || 0,
+                total_gravado: effectiveTotals.total_gravado || 0,
+                total_exento: effectiveTotals.total_exento || 0,
+                total_nosujetas: effectiveTotals.total_nosujetas || 0,
+                fovial: effectiveTotals.fovial || 0,
+                cotrans: effectiveTotals.cotrans || 0,
+                total_iva: effectiveTotals.total_iva || 0,
+                descuento_general: effectiveTotals.descuento_general || 0,
+                iva_percibido: effectiveTotals.iva_percibido || 0,
+                iva_retenido: effectiveTotals.iva_retenido || 0,
+                total_pagar: effectiveTotals.total_pagar || 0,
                 payment_condition: sale.payment_condition || 1,
                 observaciones: nuevaObservacion,
                 export_item_type: sale.export_item_type || null,
@@ -460,86 +604,7 @@ const regenerateDTE = async (req, res) => {
             }
 
             // 5. Construir payload y emitir DTE (tiempo real)
-            const dtePayload = {
-                header: {
-                    dte_type: sale.dte_type || sale.tipo_documento,
-                    customer_id: sale.customer_id,
-                    cliente_nombre: sale.cliente_nombre || null,
-                    customer_branch_id: sale.customer_branch_id || null,
-                    customer_fleet_id: sale.customer_fleet_id || null,
-                    seller_id: sale.seller_id,
-                    pos_id: sale.pos_id,
-                    shift_id: target_shift_id,
-                    branch_id: sale.branch_id,
-                    user_id: req.user.id,
-                    condicion_operacion: sale.condicion_operacion || 1,
-                    dias_credito: diasCredito,
-                    total_gravado: sale.total_gravado || 0,
-                    total_exento: sale.total_exento || 0,
-                    total_nosujetas: sale.total_nosujetas || 0,
-                    fovial: sale.fovial || 0,
-                    total_fovial: sale.fovial || 0,
-                    cotrans: sale.cotrans || 0,
-                    total_cotrans: sale.cotrans || 0,
-                    total_iva: sale.total_iva || 0,
-                    descuento_general: sale.descuento_general || 0,
-                    total_descuento: sale.descuento_general || 0,
-                    iva_percibido: sale.iva_percibido || 0,
-                    total_percepcion: sale.iva_percibido || 0,
-                    iva_retenido: sale.iva_retenido || 0,
-                    total_retencion: sale.iva_retenido || 0,
-                    total_pagar: sale.total_pagar || 0,
-                    payment_condition: sale.payment_condition || 1,
-                    observaciones: nuevaObservacion,
-                    export_item_type: sale.export_item_type || null,
-                    fiscal_enclosure: sale.fiscal_enclosure || null,
-                    export_regime: sale.export_regime || null,
-                    dest_country_code: sale.dest_country_code || null,
-                    remission_type: sale.remission_type || null,
-                    transporter_name: sale.transporter_name || null,
-                    vehicle_plate: sale.vehicle_plate || null,
-                    incoterms: sale.incoterms || '01',
-                    desc_incoterms: sale.desc_incoterms || 'EXW- En fabrica',
-                    flete: sale.flete || 0,
-                    seguro: sale.seguro || 0,
-                    total_letras: sale.total_letras || ''
-                },
-                dias_credito: diasCredito,
-                items: items.map(item => ({
-                    product_id: item.product_id,
-                    combo_id: item.combo_id || null,
-                    codigo: item.codigo || null,
-                    descripcion: item.descripcion,
-                    nombre: item.descripcion,
-                    cantidad: item.cantidad,
-                    precio_unitario: item.precio_unitario,
-                    precio: item.precio_unitario,
-                    monto_descuento: item.monto_descuento || 0,
-                    descuento: item.monto_descuento || 0,
-                    venta_gravada: item.venta_gravada || 0,
-                    venta_exenta: item.venta_exenta || 0,
-                    exento: item.venta_gravada === 0 && item.venta_exenta > 0,
-                    tributos: typeof item.tributos === 'string' ? JSON.parse(item.tributos) : (item.tributos || [])
-                })),
-                payments: payments.map(p => ({
-                    codigo: p.metodo_pago || '01',
-                    monto: p.monto,
-                    referencia: p.referencia || null
-                })),
-                linkedDocuments: linkedDocs.map(d => ({
-                    doc_type: d.doc_type || d.tipo_documento || '03',
-                    generation_type: d.generation_type || 1,
-                    doc_number: d.doc_number || d.numero_documento || '',
-                    emission_date: d.emission_date || d.fecha_emision || '',
-                    montoSujeto: d.monto_sujeto || 0,
-                    ivaRetenido: d.iva_retenido || 0,
-                    descripcion: d.descripcion || ''
-                })),
-                emisor_adicional: {
-                    descActividad: sale.actividad_economica || 'Actividad no definida',
-                    codPuntoVentaMH: codPuntoVentaMH
-                }
-            };
+            const dtePayload = buildEmitPayload(newSaleId, target_shift_id, nuevaObservacion);
 
             console.log(`[SalesController] Regenerando como NUEVA VENTA #${newSaleId} a partir de venta #${id}`);
             const dteResult = await dteService.emitDTE(company, dtePayload, newSaleId);
@@ -585,6 +650,7 @@ const regenerateDTE = async (req, res) => {
                 success: true,
                 isNewSale: true,
                 newSaleId,
+                recalculatedWithCurrentCustomer: appliedCurrentFiscalState,
                 codigoGeneracion: dteInfo.codigo_generacion,
                 numeroControl: dteInfo.numero_control,
                 ambiente: sale.ambiente || 'test',
@@ -604,86 +670,11 @@ const regenerateDTE = async (req, res) => {
         connection.release();
         connection = null;
 
-        const dtePayload = {
-            header: {
-                dte_type: sale.dte_type || sale.tipo_documento,
-                customer_id: sale.customer_id,
-                cliente_nombre: sale.cliente_nombre || null,
-                customer_branch_id: sale.customer_branch_id || null,
-                customer_fleet_id: sale.customer_fleet_id || null,
-                seller_id: sale.seller_id,
-                pos_id: sale.pos_id,
-                shift_id: sale.shift_id || null,
-                branch_id: sale.branch_id,
-                user_id: req.user.id,
-                condicion_operacion: sale.condicion_operacion || 1,
-                dias_credito: diasCredito,
-                total_gravado: sale.total_gravado || 0,
-                total_exento: sale.total_exento || 0,
-                total_nosujetas: sale.total_nosujetas || 0,
-                fovial: sale.fovial || 0,
-                total_fovial: sale.fovial || 0,
-                cotrans: sale.cotrans || 0,
-                total_cotrans: sale.cotrans || 0,
-                total_iva: sale.total_iva || 0,
-                descuento_general: sale.descuento_general || 0,
-                total_descuento: sale.descuento_general || 0,
-                iva_percibido: sale.iva_percibido || 0,
-                total_percepcion: sale.iva_percibido || 0,
-                iva_retenido: sale.iva_retenido || 0,
-                total_retencion: sale.iva_retenido || 0,
-                total_pagar: sale.total_pagar || 0,
-                payment_condition: sale.payment_condition || 1,
-                observaciones: sale.observaciones || null,
-                export_item_type: sale.export_item_type || null,
-                fiscal_enclosure: sale.fiscal_enclosure || null,
-                export_regime: sale.export_regime || null,
-                dest_country_code: sale.dest_country_code || null,
-                remission_type: sale.remission_type || null,
-                transporter_name: sale.transporter_name || null,
-                vehicle_plate: sale.vehicle_plate || null,
-                incoterms: sale.incoterms || '01',
-                desc_incoterms: sale.desc_incoterms || 'EXW- En fabrica',
-                flete: sale.flete || 0,
-                seguro: sale.seguro || 0,
-                total_letras: sale.total_letras || ''
-            },
-            dias_credito: diasCredito,
-            items: items.map(item => ({
-                product_id: item.product_id,
-                combo_id: item.combo_id || null,
-                codigo: item.codigo || null,
-                descripcion: item.descripcion,
-                nombre: item.descripcion,
-                cantidad: item.cantidad,
-                precio_unitario: item.precio_unitario,
-                precio: item.precio_unitario,
-                monto_descuento: item.monto_descuento || 0,
-                descuento: item.monto_descuento || 0,
-                venta_gravada: item.venta_gravada || 0,
-                venta_exenta: item.venta_exenta || 0,
-                exento: item.venta_gravada === 0 && item.venta_exenta > 0,
-                tributos: typeof item.tributos === 'string' ? JSON.parse(item.tributos) : (item.tributos || [])
-            })),
-            payments: payments.map(p => ({
-                codigo: p.metodo_pago || '01',
-                monto: p.monto,
-                referencia: p.referencia || null
-            })),
-            linkedDocuments: linkedDocs.map(d => ({
-                doc_type: d.doc_type || d.tipo_documento || '03',
-                generation_type: d.generation_type || 1,
-                doc_number: d.doc_number || d.numero_documento || '',
-                emission_date: d.emission_date || d.fecha_emision || '',
-                montoSujeto: d.monto_sujeto || 0,
-                ivaRetenido: d.iva_retenido || 0,
-                descripcion: d.descripcion || ''
-            })),
-            emisor_adicional: {
-                descActividad: sale.actividad_economica || 'Actividad no definida',
-                codPuntoVentaMH: codPuntoVentaMH
-            }
-        };
+        const obsCaseA = appliedCurrentFiscalState
+            ? ((sale.observaciones ? `${sale.observaciones} | ` : '') + 'Recalculado con estado fiscal actual del cliente')
+            : (sale.observaciones || null);
+
+        const dtePayload = buildEmitPayload(id, sale.shift_id || null, obsCaseA);
 
         // Preservar fecha/hora original del DTE si el usuario no solicita actualizarlas
         if (!updateDateTime && activeDte?.json_original) {
@@ -710,6 +701,58 @@ const regenerateDTE = async (req, res) => {
         const dteInfo = dteResult.data;
 
         connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        // Actualizar montos/ítems/pagos in-situ solo tras emisión DTE exitosa si se aplicó recálculo fiscal
+        if (appliedCurrentFiscalState) {
+            await connection.query(
+                `UPDATE sales_headers
+                 SET total_gravado = ?, total_exento = ?, total_nosujetas = ?, fovial = ?, cotrans = ?,
+                     total_iva = ?, descuento_general = ?, iva_percibido = ?, iva_retenido = ?, total_pagar = ?,
+                     observaciones = ?
+                 WHERE id = ? AND company_id = ?`,
+                [
+                    effectiveTotals.total_gravado,
+                    effectiveTotals.total_exento,
+                    effectiveTotals.total_nosujetas,
+                    effectiveTotals.fovial,
+                    effectiveTotals.cotrans,
+                    effectiveTotals.total_iva,
+                    effectiveTotals.descuento_general,
+                    effectiveTotals.iva_percibido,
+                    effectiveTotals.iva_retenido,
+                    effectiveTotals.total_pagar,
+                    obsCaseA,
+                    id,
+                    req.company_id
+                ]
+            );
+            for (const item of items) {
+                if (!item.id) continue;
+                await connection.query(
+                    `UPDATE sales_items
+                     SET precio_unitario = ?, monto_descuento = ?, venta_gravada = ?, venta_exenta = ?, tributos = ?
+                     WHERE id = ? AND sale_id = ?`,
+                    [
+                        item.precio_unitario,
+                        item.monto_descuento || 0,
+                        item.venta_gravada || 0,
+                        item.venta_exenta || 0,
+                        typeof item.tributos === 'string' ? item.tributos : JSON.stringify(item.tributos || []),
+                        item.id,
+                        id
+                    ]
+                );
+            }
+            for (const pay of payments) {
+                if (!pay.id) continue;
+                await connection.query(
+                    'UPDATE sales_payments SET monto = ? WHERE id = ? AND sale_id = ?',
+                    [pay.monto, pay.id, id]
+                );
+            }
+        }
+
         // 2. Desvincular cualquier intento anterior y vincular exclusivamente el nuevo DTE a la venta
         await connection.query(
             'UPDATE dtes SET venta_id = NULL WHERE venta_id = ? AND codigo_generacion != ? AND company_id = ?',
@@ -731,18 +774,24 @@ const regenerateDTE = async (req, res) => {
                 [dteInfo.codigo_generacion, id]
             );
         } catch (_) {}
+
+        await connection.commit();
         connection.release();
         connection = null;
 
         res.json({
             success: true,
             isNewSale: false,
+            recalculatedWithCurrentCustomer: appliedCurrentFiscalState,
             message: 'DTE regenerado exitosamente',
             codigoGeneracion: dteInfo.codigo_generacion,
             numeroControl: dteInfo.numero_control,
             ambiente: sale.ambiente || 'test'
         });
     } catch (error) {
+        if (connection) {
+            try { await connection.rollback(); } catch (_) {}
+        }
         console.error('Error en regenerateDTE:', error);
         res.status(500).json({ message: 'Error al regenerar DTE', error: error.message });
     } finally {
@@ -1215,6 +1264,7 @@ const getDteDiagnosis = async (req, res) => {
 module.exports = {
     notifyDTEAccepted,
     retransmitSaleDTE,
+    getRegenerateDTEPreview,
     regenerateDTE,
     getDTEJson,
     resendDTEEmail,

@@ -656,6 +656,7 @@ router.get('/sales/:id', salesController.getSaleById);
 router.get('/sales/:id/dte-diagnosis', salesController.getDteDiagnosis);
 router.post('/sales/:id/void', salesController.voidSale);
 router.post('/sales/:id/retransmit', salesController.retransmitSaleDTE);
+router.get('/sales/:id/regenerate-preview', checkPermission('regenerate_dte'), salesController.getRegenerateDTEPreview);
 router.post('/sales/:id/regenerate-dte', checkPermission('regenerate_dte'), salesController.regenerateDTE);
 router.put('/sales/:id/edit-dte-items', validate(editDTEItemsSchema), salesController.editDTEItems);
 router.put('/sales/:id/customer', validate(saleCustomerUpdateSchema), salesController.updateSaleCustomer);
