@@ -22,6 +22,7 @@ const ComboModal = ({
     const confirm = useConfirm();
 
     const [selectedBranch, setSelectedBranch] = useState('');
+    const [barcode, setBarcode] = useState('');
     const [comboItems, setComboItems] = useState([]);
     const [productSearch, setProductSearch] = useState('');
     const [foundProducts, setFoundProducts] = useState([]);
@@ -50,6 +51,7 @@ const ComboModal = ({
     useEffect(() => {
         if (selectedCombo) {
             setSelectedBranch(selectedCombo.branch_id || '');
+            setBarcode(String(selectedCombo.barcode || '').trim().toUpperCase());
             setComboItems((Array.isArray(selectedCombo.items) ? selectedCombo.items : []).map(item => ({
                 product_id: item.product_id,
                 name: item.product_name,
@@ -58,6 +60,7 @@ const ComboModal = ({
             })));
         } else {
             setSelectedBranch('');
+            setBarcode('');
             setComboItems([]);
         }
         setProductSearch('');
@@ -114,6 +117,12 @@ const ComboModal = ({
         e.preventDefault();
         const formData = new FormData(e.target);
         const data = Object.fromEntries(formData.entries());
+        const normalizedBarcode = String(barcode || '').trim().toUpperCase();
+        if (!normalizedBarcode) {
+            toast.error('El código de barras es obligatorio');
+            return;
+        }
+        data.barcode = normalizedBarcode;
         data.items = comboItems;
         data.price = parseFloat(data.price);
         data.branch_id = selectedBranch;
@@ -166,7 +175,15 @@ const ComboModal = ({
 
                     <div>
                         <label className={labelCls}>Código de Barras (Único)</label>
-                        <input name="barcode" defaultValue={selectedCombo?.barcode} required placeholder="COMB-001" className={fieldCls} />
+                        <input
+                            name="barcode"
+                            value={barcode}
+                            onChange={(e) => setBarcode(e.target.value.toUpperCase())}
+                            required
+                            placeholder="COMB-001"
+                            className={`${fieldCls} uppercase font-mono`}
+                        />
+                        <p className="mt-1 text-[10px] text-slate-400">Solo mayúsculas y números (se convierte automáticamente para coincidir con POS).</p>
                     </div>
 
                     <div>

@@ -16,7 +16,7 @@ const comboItemSchema = z.object({
 const comboShape = {
     name: z.string({ required_error: 'El nombre del combo es requerido' })
         .trim().min(1, 'El nombre no puede estar vacío'),
-    barcode: optionalString,
+    barcode: optionalString.transform((val) => (typeof val === 'string' ? val.trim().toUpperCase() : val)),
     description: optionalString,
     price: z.coerce.number({ required_error: 'El precio es requerido' })
         .min(0, 'El precio no puede ser negativo'),

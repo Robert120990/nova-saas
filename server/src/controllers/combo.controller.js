@@ -64,7 +64,8 @@ const getCombos = async (req, res) => {
  */
 const createCombo = async (req, res) => {
     const { name, barcode, description, price, items, status, branch_id } = req.body;
-    
+    const normalizedBarcode = typeof barcode === 'string' ? barcode.trim().toUpperCase() : barcode;
+
     if (!items || !Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ message: 'El combo debe tener al menos un producto' });
     }
@@ -76,7 +77,7 @@ const createCombo = async (req, res) => {
         const [result] = await connection.query('INSERT INTO product_combos SET ?', {
             company_id: req.company_id,
             branch_id: branch_id || null,
-            barcode,
+            barcode: normalizedBarcode,
             name,
             description,
             price,
@@ -91,6 +92,9 @@ const createCombo = async (req, res) => {
         res.status(201).json({ id: comboId, message: 'Combo creado con éxito' });
     } catch (error) {
         await connection.rollback();
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(400).json({ message: 'Ya existe un combo con ese código de barras' });
+        }
         console.error('[Combos] Error al crear combo:', error);
         res.status(500).json({ message: 'Error al crear combo', details: error.message });
     } finally {
@@ -104,13 +108,14 @@ const createCombo = async (req, res) => {
 const updateCombo = async (req, res) => {
     const { id } = req.params;
     const { name, barcode, description, price, items, status, branch_id } = req.body;
+    const normalizedBarcode = typeof barcode === 'string' ? barcode.trim().toUpperCase() : barcode;
 
     const connection = await pool.getConnection();
     await connection.beginTransaction();
 
     try {
         await connection.query('UPDATE product_combos SET ? WHERE id = ? AND company_id = ?', [
-            { name, barcode, description, price, status, branch_id },
+            { name, barcode: normalizedBarcode, description, price, status, branch_id },
             id,
             req.company_id
         ]);
@@ -127,6 +132,9 @@ const updateCombo = async (req, res) => {
         res.json({ message: 'Combo actualizado con éxito' });
     } catch (error) {
         await connection.rollback();
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(400).json({ message: 'Ya existe un combo con ese código de barras' });
+        }
         console.error('[Combos] Error al actualizar combo:', error);
         res.status(500).json({ message: 'Error al actualizar combo' });
     } finally {
