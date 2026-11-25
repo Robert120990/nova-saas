@@ -32,13 +32,17 @@ const SearchableSelect = ({
     dropdownWidth = null,
     debounceMs = 500,
     isClearable = false,
+    allowClear = false,
     onSelect = null,
     onPressEnter = null,
     className = ''
 }) => {
+    const canClear = Boolean(isClearable || allowClear);
     const [isOpen, setIsOpen] = useState(false);
     const [search, setSearch] = useState('');
     const [focusIdx, setFocusIdx] = useState(-1);
+    const [isMobileViewport, setIsMobileViewport] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 640 : false));
+    const [mobileViewportHeight, setMobileViewportHeight] = useState(() => (typeof window !== 'undefined' ? (window.visualViewport?.height || window.innerHeight) : 640));
     const containerRef = useRef(null);
     const triggerRef = useRef(null);
     const dropdownRef = useRef(null);
@@ -156,16 +160,25 @@ const SearchableSelect = ({
         .map(x => x.opt);
 
     const computePanelPos = useCallback(() => {
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.visualViewport?.height || window.innerHeight;
+        const mobile = viewportWidth < 640;
+        if (mobile) {
+            return {
+                mobile: true,
+                viewportHeight,
+                maxHeight: Math.max(200, Math.min(440, Math.round(viewportHeight * 0.72))),
+                placement: 'mobile'
+            };
+        }
+
         const rect = triggerRef.current?.getBoundingClientRect();
         if (!rect) return null;
 
         // Si el elemento está completamente fuera del viewport o invisible
-        if (rect.bottom < 0 || rect.top > window.innerHeight || rect.right < 0 || rect.left > window.innerWidth) {
+        if (rect.bottom < 0 || rect.top > viewportHeight || rect.right < 0 || rect.left > viewportWidth) {
             return null;
         }
-
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
 
         const targetWidth = dropdownWidth ? Math.max(dropdownWidth, rect.width) : Math.max(rect.width, 220);
         const width = Math.min(targetWidth, viewportWidth - 16);
@@ -217,7 +230,11 @@ const SearchableSelect = ({
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        document.addEventListener('touchstart', handleClickOutside, { passive: true });
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('touchstart', handleClickOutside);
+        };
     }, []);
 
     useEffect(() => {
@@ -238,20 +255,40 @@ const SearchableSelect = ({
     // Reposicionar panel dinámicamente al hacer scroll o resize
     useEffect(() => {
         if (!isOpen) return;
-        const onScrollResize = () => {
+        const updateViewportMetrics = () => {
+            const mobile = window.innerWidth < 640;
+            const vh = window.visualViewport?.height || window.innerHeight;
+            setIsMobileViewport(mobile);
+            setMobileViewportHeight(vh);
+        };
+        const onScrollResize = (event) => {
+            // Nunca cerrar ni recalcular por scroll interno del listado de opciones
+            if (event?.type === 'scroll' && dropdownRef.current && event.target && dropdownRef.current.contains(event.target)) {
+                return;
+            }
+            updateViewportMetrics();
+            const mobile = window.innerWidth < 640;
             const pos = computePanelPos();
+            if (mobile) {
+                // En móvil, evitar cerrar al abrir teclado virtual o desplazar viewport
+                if (pos) setPanelPos(pos);
+                return;
+            }
             if (pos) {
                 setPanelPos(pos);
-            } else {
+            } else if (event?.type !== 'resize') {
                 setIsOpen(false);
             }
         };
+        updateViewportMetrics();
         onScrollResize();
         window.addEventListener('scroll', onScrollResize, true);
         window.addEventListener('resize', onScrollResize);
+        window.visualViewport?.addEventListener('resize', onScrollResize);
         return () => {
             window.removeEventListener('scroll', onScrollResize, true);
             window.removeEventListener('resize', onScrollResize);
+            window.visualViewport?.removeEventListener('resize', onScrollResize);
         };
     }, [isOpen, computePanelPos]);
 
@@ -391,23 +428,27 @@ const SearchableSelect = ({
 
     const pos = panelPos || computePanelPos();
     const isTop = pos?.placement === 'top';
+    const showMobileSheet = Boolean(isOpen && (pos?.mobile || isMobileViewport));
 
-    const dropdownPanel = (isOpen && pos) ? (
-        <div 
-            ref={dropdownRef}
-            className={`z-[9999] bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in duration-150 ${
-                isTop ? 'slide-in-from-bottom-2' : 'slide-in-from-top-2'
-            }`}
-            style={{
-                position: 'fixed',
-                left: `${pos.left}px`,
-                width: `${pos.width}px`,
-                maxHeight: `${pos.maxHeight}px`,
-                ...(isTop ? { bottom: `${pos.bottom}px` } : { top: `${pos.top}px` })
-            }}
-        >
+    const searchPanelContent = (
+        <>
+            {showMobileSheet && (
+                <div className="px-3 py-2 border-b border-slate-200 bg-slate-900 text-white flex items-center justify-between gap-2 shrink-0">
+                    <span className="text-xs font-black uppercase tracking-wide truncate">
+                        {placeholder || 'Seleccionar opción'}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={() => setIsOpen(false)}
+                        className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                        aria-label="Cerrar selector"
+                    >
+                        <X size={16} />
+                    </button>
+                </div>
+            )}
             <div className="p-2 border-b border-slate-100 bg-slate-50 flex items-center gap-2 shrink-0">
-                <Search size={14} className="text-slate-400 ml-2" />
+                <Search size={14} className="text-slate-400 ml-2 shrink-0" />
                 <input 
                     ref={searchInputRef}
                     autoFocus
@@ -416,11 +457,11 @@ const SearchableSelect = ({
                     onChange={(e) => setSearch(e.target.value.toUpperCase())}
                     onKeyDown={handleKeyDown}
                     placeholder="Buscar..."
-                    className="w-full bg-transparent border-none outline-none py-1 text-sm text-slate-700 placeholder:text-slate-400 focus:ring-0 uppercase"
+                    className="w-full bg-transparent border-none outline-none py-1.5 sm:py-1 text-sm text-slate-700 placeholder:text-slate-400 focus:ring-0 uppercase"
                     onClick={(e) => e.stopPropagation()}
                 />
                 {search && (
-                    <button onClick={() => setSearch('')} className="p-1 hover:text-slate-600 rounded text-slate-400 transition-colors">
+                    <button type="button" onClick={() => setSearch('')} className="p-1.5 sm:p-1 hover:text-slate-600 rounded text-slate-400 transition-colors">
                         <X size={14} />
                     </button>
                 )}
@@ -428,7 +469,7 @@ const SearchableSelect = ({
                     <Loader2 size={14} className="text-indigo-500 animate-spin shrink-0" />
                 )}
             </div>
-            <div ref={listRef} onScroll={handleListScroll} className="flex-1 min-h-0 overflow-y-auto">
+            <div ref={listRef} onScroll={handleListScroll} className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y">
                 {filteredOptions.length > 0 ? (
                     filteredOptions.map((opt, i) => {
                         const optCode = getOptionCode(opt);
@@ -438,7 +479,7 @@ const SearchableSelect = ({
                                 key={opt[valueKey] || opt.id || i}
                                 onClick={() => handleSelect(opt)}
                                 onMouseEnter={() => setFocusIdx(i)}
-                                className={`px-4 py-2.5 text-sm cursor-pointer flex items-center justify-between hover:bg-indigo-50 transition-colors ${
+                                className={`px-4 py-3 sm:py-2.5 text-sm cursor-pointer flex items-center justify-between hover:bg-indigo-50 active:bg-indigo-100 transition-colors ${
                                     focusIdx === i ? 'bg-indigo-50' : ''
                                 } ${
                                     isSelected(opt) ? 'text-indigo-700 font-bold' : 'text-slate-600'
@@ -449,7 +490,7 @@ const SearchableSelect = ({
                                         {optCode ? (
                                             <span className="text-[9px] font-mono text-slate-400 uppercase">{codeLabel}: {optCode}</span>
                                         ) : null}
-                                        <span className="truncate text-[10px] font-bold text-slate-700">{optLabel}</span>
+                                        <span className="truncate text-xs sm:text-[10px] font-bold text-slate-700">{optLabel}</span>
                                     </div>
                                     {opt.precio_unitario !== undefined && opt.precio_unitario !== null && (
                                         <span className="text-[11px] font-bold text-emerald-600 font-mono shrink-0 ml-2">
@@ -472,7 +513,45 @@ const SearchableSelect = ({
                     Deslice para cargar más...
                 </div>
             )}
-        </div>
+        </>
+    );
+
+    const dropdownPanel = (isOpen && (pos || showMobileSheet)) ? (
+        showMobileSheet ? (
+            <div
+                className="fixed inset-0 z-[99999] bg-slate-950/50 backdrop-blur-xs flex items-start justify-center p-2 pt-3"
+                onClick={(e) => {
+                    if (e.target === e.currentTarget) setIsOpen(false);
+                }}
+            >
+                <div
+                    ref={dropdownRef}
+                    className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+                    style={{
+                        maxHeight: `${Math.max(200, Math.min(440, Math.round((pos?.viewportHeight || mobileViewportHeight || window.innerHeight) * 0.72)))}px`
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    {searchPanelContent}
+                </div>
+            </div>
+        ) : (
+            <div 
+                ref={dropdownRef}
+                className={`z-[9999] bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in duration-150 ${
+                    isTop ? 'slide-in-from-bottom-2' : 'slide-in-from-top-2'
+                }`}
+                style={{
+                    position: 'fixed',
+                    left: `${pos.left}px`,
+                    width: `${pos.width}px`,
+                    maxHeight: `${pos.maxHeight}px`,
+                    ...(isTop ? { bottom: `${pos.bottom}px` } : { top: `${pos.top}px` })
+                }}
+            >
+                {searchPanelContent}
+            </div>
+        )
     ) : null;
 
     return (
@@ -497,9 +576,9 @@ const SearchableSelect = ({
                     )}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                    {isClearable && rawValue !== undefined && rawValue !== null && rawValue !== '' && !disabled && (
-                        <span
-                            role="button"
+                    {canClear && rawValue !== undefined && rawValue !== null && rawValue !== '' && !disabled && (
+                        <button
+                            type="button"
                             onClick={(e) => {
                                 e.stopPropagation();
                                 const syntheticClear = {
@@ -515,9 +594,10 @@ const SearchableSelect = ({
                             }}
                             className="p-0.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
                             title="Limpiar selección"
+                            aria-label="Limpiar selección"
                         >
                             <X size={13} />
-                        </span>
+                        </button>
                     )}
                     <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[8px] font-mono font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/80 rounded" title="Presione Flecha Abajo o F4 para desplegar">
                         ↓ F4

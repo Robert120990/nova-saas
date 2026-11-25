@@ -958,13 +958,31 @@ const SalesTerminal = () => {
 
     const { data: customerBranches = [] } = useQuery({
         queryKey: ['customer-branches', customerId],
-        queryFn: async () => (await axios.get('/api/customer-branches', { params: { customer_id: customerId } })).data,
+        queryFn: async () => unwrapList(await axios.get('/api/customer-branches', { params: { customer_id: customerId } })),
         enabled: !!customerId
     });
 
+    const customerBranchOptions = useMemo(() => {
+        return (Array.isArray(customerBranches) ? customerBranches : []).map(b => {
+            const ubicacion = [
+                (b.distrito_nombre || b.distrito) ? `Dist. ${b.distrito_nombre || b.distrito}` : '',
+                b.municipio_nombre || b.municipio || '',
+                b.departamento_nombre || b.departamento || ''
+            ].filter(Boolean).join(', ');
+            const nombre = b.nombre || `Sucursal #${b.id}`;
+            return {
+                id: String(b.id),
+                nombre,
+                ubicacion,
+                direccion: b.direccion || '',
+                label: ubicacion ? `${nombre} — ${ubicacion}` : nombre
+            };
+        });
+    }, [customerBranches]);
+
     // Helper: Find selected branch data if any
     const selectedBranchData = useMemo(() => {
-        if (!customerBranchId || !customerBranches.length) return null;
+        if (!customerBranchId || !Array.isArray(customerBranches) || !customerBranches.length) return null;
         return customerBranches.find(b => String(b.id) === String(customerBranchId)) || null;
     }, [customerBranchId, customerBranches]);
 
@@ -2698,6 +2716,14 @@ const SalesTerminal = () => {
         }
     };
 
+    const handleOpenProductSearchFromBar = () => {
+        const term = String(quickBarcode || '').trim();
+        setProductSearch(term);
+        setModalPage(1);
+        if (term) setQuickBarcode('');
+        setIsProductModalOpen(true);
+    };
+
     const handleBarcodeSubmit = async (e) => {
         recordBarcodeKeystroke();
         if (e.key === 'Enter') {
@@ -3112,21 +3138,26 @@ const SalesTerminal = () => {
                                     )}
                                 </div>
                             )}
-                            {selectedCustomerData && customerBranches.length > 0 && (
-                                <div className="flex items-center gap-2 p-2 bg-amber-50/50 rounded-xl border border-amber-100/50">
+                            {selectedCustomerData && Array.isArray(customerBranches) && customerBranches.length > 0 && (
+                                <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 p-2 bg-amber-50/50 rounded-xl border border-amber-100/50">
                                     <label className="text-[10px] font-black text-amber-600 uppercase whitespace-nowrap">Sucursal</label>
-                                    <select 
-                                        value={customerBranchId} 
-                                        onChange={(e) => setCustomerBranchId(e.target.value)}
-                                        className="flex-1 px-2 py-1.5 bg-white border border-amber-200 rounded-lg text-[11px] font-medium text-slate-700 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-400 transition-all"
-                                    >
-                                        <option value="">Principal</option>
-                                        {customerBranches.map(b => (
-                                            <option key={b.id} value={b.id}>
-                                                {b.nombre} — Dist. {b.distrito_nombre || b.distrito || '01'}, {b.municipio_nombre || b.municipio}, {b.departamento_nombre || b.departamento}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <div className="flex-1 min-w-0">
+                                        <SearchableSelect
+                                            options={customerBranchOptions}
+                                            value={customerBranchId ? String(customerBranchId) : ''}
+                                            onChange={(e) => setCustomerBranchId(e.target.value || '')}
+                                            placeholder="Principal (Buscar sucursal...)"
+                                            valueKey="id"
+                                            labelKey="label"
+                                            displayKey="nombre"
+                                            codeKey="ubicacion"
+                                            codeLabel="UBICACIÓN"
+                                            searchKeys={['nombre', 'ubicacion', 'direccion', 'label']}
+                                            isClearable={true}
+                                            dropdownWidth={380}
+                                            className="border-amber-200 focus:border-amber-400"
+                                        />
+                                    </div>
                                 </div>
                             )}
                             {selectedCustomerData && Array.isArray(customerFleets) && customerFleets.length > 0 && (
@@ -3328,8 +3359,11 @@ const SalesTerminal = () => {
                                             className="w-full pl-7 pr-8 py-1.5 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-mono text-[10px] font-bold transition-all" 
                                         />
                                         <button 
-                                            onClick={() => performBarcodeLookup(false)} 
-                                            className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-slate-600 hover:text-indigo-600 transition-colors"
+                                            type="button"
+                                            onClick={handleOpenProductSearchFromBar} 
+                                            title="Buscar productos en catálogo (F3)"
+                                            aria-label="Buscar productos"
+                                            className="absolute right-1 top-1/2 -translate-y-1/2 min-w-[28px] min-h-[28px] flex items-center justify-center rounded-md text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
                                         >
                                             <Search size={14} />
                                         </button>

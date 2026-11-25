@@ -99,8 +99,8 @@ const PosProductCatalogModal = ({
                 {/* Barra de Búsqueda y Filtros Compacta */}
                 <div className="px-3.5 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-col gap-2 shrink-0">
                     {/* Fila 1: Input de búsqueda + Dropdown de Categoría + Toggle de Vista */}
-                    <div className="flex items-center gap-2">
-                        <div className="relative flex-1 min-w-0">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <div className="relative w-full sm:flex-1 min-w-0">
                             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
                             <input 
                                 autoFocus
@@ -115,10 +115,11 @@ const PosProductCatalogModal = ({
                                         onClose?.();
                                     }
                                 }}
-                                className="w-full pl-8 pr-7 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-xs"
+                                className="w-full pl-8 pr-7 py-2 sm:py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-xs"
                             />
                             {productSearch && (
                                 <button 
+                                    type="button"
                                     onClick={() => setProductSearch('')}
                                     className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full"
                                     title="Limpiar búsqueda"
@@ -128,45 +129,47 @@ const PosProductCatalogModal = ({
                             )}
                         </div>
 
-                        <div className="w-40 sm:w-52 shrink-0 relative">
-                            <select 
-                                value={selectedCategoryFilter}
-                                onChange={(e) => {
-                                    setSelectedCategoryFilter(e.target.value);
-                                    setModalPage(1);
-                                }}
-                                className="w-full py-1.5 pl-2.5 pr-7 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all appearance-none cursor-pointer truncate shadow-xs"
-                            >
-                                <option value="">📁 Todas las categorías</option>
-                                {combos.length > 0 && (
-                                    <option value="combos">⚡ Combos y Promociones ({combos.length})</option>
-                                )}
-                                {categoriesList.map(cat => (
-                                    <option key={cat.id} value={cat.id}>
-                                        {cat.name}
-                                    </option>
-                                ))}
-                            </select>
-                            <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                        </div>
+                        <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+                            <div className="flex-1 sm:w-52 shrink-0 relative">
+                                <select 
+                                    value={selectedCategoryFilter}
+                                    onChange={(e) => {
+                                        setSelectedCategoryFilter(e.target.value);
+                                        setModalPage(1);
+                                    }}
+                                    className="w-full py-2 sm:py-1.5 pl-2.5 pr-7 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all appearance-none cursor-pointer truncate shadow-xs"
+                                >
+                                    <option value="">📁 Todas las categorías</option>
+                                    {combos.length > 0 && (
+                                        <option value="combos">⚡ Combos y Promociones ({combos.length})</option>
+                                    )}
+                                    {(Array.isArray(categoriesList) ? categoriesList : []).map(cat => (
+                                        <option key={cat.id} value={cat.id}>
+                                            {cat.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                            </div>
 
-                        <div className="flex items-center bg-slate-200/80 p-0.5 rounded-lg shrink-0">
-                            <button 
-                                type="button"
-                                onClick={() => setProductViewMode('grid')}
-                                className={`p-1 rounded-md transition-all ${productViewMode === 'grid' ? 'bg-white text-indigo-600 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-800'}`}
-                                title="Vista Cuadrícula Compacta"
-                            >
-                                <LayoutGrid size={14} />
-                            </button>
-                            <button 
-                                type="button"
-                                onClick={() => setProductViewMode('list')}
-                                className={`p-1 rounded-md transition-all ${productViewMode === 'list' ? 'bg-white text-indigo-600 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-800'}`}
-                                title="Vista Lista Detallada"
-                            >
-                                <List size={14} />
-                            </button>
+                            <div className="flex items-center bg-slate-200/80 p-0.5 rounded-lg shrink-0">
+                                <button 
+                                    type="button"
+                                    onClick={() => setProductViewMode('grid')}
+                                    className={`p-1.5 sm:p-1 rounded-md transition-all ${productViewMode === 'grid' ? 'bg-white text-indigo-600 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-800'}`}
+                                    title="Vista Cuadrícula Compacta"
+                                >
+                                    <LayoutGrid size={14} />
+                                </button>
+                                <button 
+                                    type="button"
+                                    onClick={() => setProductViewMode('list')}
+                                    className={`p-1.5 sm:p-1 rounded-md transition-all ${productViewMode === 'list' ? 'bg-white text-indigo-600 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-800'}`}
+                                    title="Vista Lista Detallada"
+                                >
+                                    <List size={14} />
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -204,7 +207,7 @@ const PosProductCatalogModal = ({
                             </button>
                         )}
 
-                        {categoriesList.slice(0, 20).map(cat => {
+                        {(Array.isArray(categoriesList) ? categoriesList : []).slice(0, 20).map(cat => {
                             const isSelected = String(selectedCategoryFilter) === String(cat.id);
                             return (
                                 <button
@@ -243,7 +246,7 @@ const PosProductCatalogModal = ({
                     ) : productViewMode === 'grid' ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                             {/* Combos en Cuadrícula */}
-                            {filteredCombos.map(c => (
+                            {(Array.isArray(filteredCombos) ? filteredCombos : []).map(c => (
                                 <button 
                                     key={`combo-${c.id}`} 
                                     onClick={() => addToCart(c, true)} 
@@ -272,7 +275,7 @@ const PosProductCatalogModal = ({
                             ))}
 
                             {/* Productos en Cuadrícula */}
-                            {filteredProducts.map(p => {
+                            {(Array.isArray(filteredProducts) ? filteredProducts : []).map(p => {
                                 const agreed = getCustomerAgreedPrice(p);
                                 const isFuel = p.tipo_combustible > 0;
                                 return (
@@ -355,7 +358,7 @@ const PosProductCatalogModal = ({
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 text-xs">
                                         {/* Combos en Lista */}
-                                        {filteredCombos.map(c => (
+                                        {(Array.isArray(filteredCombos) ? filteredCombos : []).map(c => (
                                             <tr 
                                                 key={`combo-${c.id}`}
                                                 onClick={() => addToCart(c, true)}
@@ -392,7 +395,7 @@ const PosProductCatalogModal = ({
                                         ))}
 
                                         {/* Productos en Lista */}
-                                        {filteredProducts.map(p => {
+                                        {(Array.isArray(filteredProducts) ? filteredProducts : []).map(p => {
                                             const agreed = getCustomerAgreedPrice(p);
                                             const isFuel = p.tipo_combustible > 0;
                                             return (
