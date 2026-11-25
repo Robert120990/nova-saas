@@ -16,14 +16,16 @@ import {
     FlaskConical,
     MoreVertical,
     Split,
-    Plus
+    Plus,
+    History,
+    ShieldCheck
 } from 'lucide-react';
 
 
 export default function ProductionBatchesTab({ model }) {
     const [openActionMenuId, setOpenActionMenuId] = useState(null);
     const [actionMenuPos, setActionMenuPos] = useState(null);
-    const { setQualityModal, setAddTarimasModal, loading, searchTerm, setSearchTerm, activeTab, setSelectedBatchForPasteurize, setIsPasteurizeModalOpen, canEditProduction, canDeleteProduction, canManageLots, setDeleteConfirmBatch, handleOpenStagesModal, handleOpenClosePasteurization, handleReopenPasteurization, handleOpenBalanceModal, handleOpenWastesModal, handleOpenEditBatch, handleExportSummary, getBatchStatusBadge, filteredBatches, handleCreateCoproductBatch } = model;
+    const { setQualityModal, setAddTarimasModal, loading, searchTerm, setSearchTerm, activeTab, setSelectedBatchForPasteurize, setIsPasteurizeModalOpen, canEditProduction, canDeleteProduction, canManageLots, canEditClosedBatches, isBatchClosed, handleOpenAuditLogModal, setDeleteConfirmBatch, handleOpenStagesModal, handleOpenClosePasteurization, handleReopenPasteurization, handleOpenBalanceModal, handleOpenWastesModal, handleOpenEditBatch, handleExportSummary, getBatchStatusBadge, filteredBatches, handleCreateCoproductBatch } = model;
 
     return (<>{activeTab === 'batches' && (
                 <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-6 shadow-sm space-y-4">
@@ -383,20 +385,72 @@ export default function ProductionBatchesTab({ model }) {
                                                                         </button>
                                                                     )}
 
-                                                                    {/* Editar Lote */}
-                                                                    {canEditProduction && (
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => {
-                                                                                handleOpenEditBatch(b);
-                                                                                setOpenActionMenuId(null);
-                                                                            }}
-                                                                            className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded-lg text-xs font-medium text-slate-700 w-full transition-colors"
-                                                                        >
-                                                                            <Pencil size={13} className="text-slate-500" />
-                                                                            <span>Editar Lote</span>
-                                                                        </button>
-                                                                    )}
+                                                                    {/* Editar Lote / Editar Lote Cerrado */}
+                                                                    {(() => {
+                                                                        const closed = isBatchClosed ? isBatchClosed(b) : Boolean(b.completed_at || b.pasteurization_status === 'cerrado');
+                                                                        if (closed) {
+                                                                            if (canEditClosedBatches) {
+                                                                                return (
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => {
+                                                                                            handleOpenEditBatch(b);
+                                                                                            setOpenActionMenuId(null);
+                                                                                        }}
+                                                                                        className="flex items-center gap-2 px-2 py-1.5 hover:bg-amber-50 rounded-lg text-xs font-bold text-amber-800 w-full transition-colors text-left"
+                                                                                    >
+                                                                                        <ShieldCheck size={13} className="text-amber-600 shrink-0" />
+                                                                                        <span>Editar Lote Cerrado</span>
+                                                                                    </button>
+                                                                                );
+                                                                            }
+                                                                            return (
+                                                                                <div
+                                                                                    className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-medium text-slate-400 w-full cursor-not-allowed"
+                                                                                    title="Requiere permiso: Editar Lotes Cerrados y Reutilizables"
+                                                                                >
+                                                                                    <Lock size={13} className="text-slate-400 shrink-0" />
+                                                                                    <span>Edición Restringida</span>
+                                                                                </div>
+                                                                            );
+                                                                        }
+                                                                        if (canEditProduction) {
+                                                                            return (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => {
+                                                                                        handleOpenEditBatch(b);
+                                                                                        setOpenActionMenuId(null);
+                                                                                    }}
+                                                                                    className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded-lg text-xs font-medium text-slate-700 w-full transition-colors text-left"
+                                                                                >
+                                                                                    <Pencil size={13} className="text-slate-500 shrink-0" />
+                                                                                    <span>Editar Lote</span>
+                                                                                </button>
+                                                                            );
+                                                                        }
+                                                                        return null;
+                                                                    })()}
+
+                                                                    {/* Bitácora / Log de Modificaciones */}
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            handleOpenAuditLogModal(b);
+                                                                            setOpenActionMenuId(null);
+                                                                        }}
+                                                                        className="flex items-center justify-between gap-2 px-2 py-1.5 hover:bg-indigo-50 rounded-lg text-xs font-medium text-slate-700 w-full transition-colors text-left"
+                                                                    >
+                                                                        <span className="flex items-center gap-2">
+                                                                            <History size={13} className="text-indigo-600 shrink-0" />
+                                                                            <span>Log Modificaciones</span>
+                                                                        </span>
+                                                                        {Number(b.modification_logs_count || 0) > 0 && (
+                                                                            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-200">
+                                                                                {b.modification_logs_count}
+                                                                            </span>
+                                                                        )}
+                                                                    </button>
 
                                                                     {/* Eliminar Lote */}
                                                                     {canDeleteProduction && (

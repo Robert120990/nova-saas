@@ -5,6 +5,7 @@ module.exports = {
     ...require('./eggProduction/eggProductionOperations2.controller'),
     ...require('./eggProduction/eggProductionOperations3.controller'),
     ...require('./eggProduction/updateProductionBatch.controller'),
+    ...require('./eggProduction/closedBatchEdit.controller'),
     ...require('./eggProduction/eggProductionOperations4.controller'),
     ...require('./eggProduction/eggProductionOperations5.controller'),
     ...require('./eggProduction/eggProductionOperations6.controller')

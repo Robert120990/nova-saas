@@ -12,6 +12,7 @@ export default function ProductionRemanentesSelector({
     setShowAllRemanentes,
     selectedRemanenteIds = [],
     remanenteUsages = {},
+    editingBatchId = null,
     onToggleSelect,
     onUpdateUsage,
     onMarkUsed,
@@ -89,12 +90,16 @@ export default function ProductionRemanentesSelector({
     const totalDosificadoLbs = selectedRemanenteIds.reduce((sum, remId) => {
         const rem = availableRemanentes.find(r => r.id === remId);
         if (!rem) return sum;
-        const totalAvail = parseFloat(rem.quantity_lbs || rem.weight_lbs || 0);
+        const baseAvail = parseFloat(rem.quantity_lbs || rem.weight_lbs || 0);
+        const siblingExtra = editingBatchId && Number(rem.target_batch_id) === Number(editingBatchId)
+            ? parseFloat(rem.sibling_residual_lbs || 0)
+            : 0;
+        const totalAvail = baseAvail + siblingExtra;
         const usage = remanenteUsages[remId];
-        if (usage && usage.used_lbs !== undefined) {
+        if (usage && usage.used_lbs !== undefined && usage.used_lbs !== '') {
             return sum + Math.min(totalAvail, parseFloat(usage.used_lbs) || 0);
         }
-        return sum + totalAvail;
+        return sum + baseAvail;
     }, 0);
 
     return (
@@ -136,25 +141,34 @@ export default function ProductionRemanentesSelector({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                     {(Array.isArray(availableRemanentes) ? availableRemanentes : []).map(rem => {
                         const isSelected = selectedRemanenteIds.includes(rem.id);
+                        const isAssignedToThisBatch = Boolean(editingBatchId && Number(rem.target_batch_id) === Number(editingBatchId));
+                        const isAssignedOther = rem.status === 'asignado_a_lote' && !isAssignedToThisBatch;
                         const isAssigned = rem.status === 'asignado_a_lote';
-                        const totalLbs = parseFloat(rem.quantity_lbs || rem.weight_lbs || 0);
+                        const baseLbs = parseFloat(rem.quantity_lbs || rem.weight_lbs || 0);
+                        const siblingExtraLbs = isAssignedToThisBatch ? parseFloat(rem.sibling_residual_lbs || 0) : 0;
+                        const totalLbs = Math.round((baseLbs + siblingExtraLbs) * 100) / 100;
 
                         // Obtener o inicializar uso
                         const usage = remanenteUsages[rem.id] || {};
-                        const currentUsedLbs = usage.used_lbs !== undefined ? parseFloat(usage.used_lbs) : totalLbs;
-                        const currentPct = usage.percentage !== undefined ? parseFloat(usage.percentage) : (totalLbs > 0 ? Math.round(((currentUsedLbs / totalLbs) * 100)) : 100);
-                        const remainingLbs = Math.max(0, Math.round((totalLbs - currentUsedLbs) * 100) / 100);
+                        const defaultUsed = isAssignedToThisBatch ? baseLbs : totalLbs;
+                        const rawUsedVal = usage.used_lbs !== undefined ? usage.used_lbs : defaultUsed;
+                        const currentUsedLbs = rawUsedVal === '' ? '' : parseFloat(rawUsedVal);
+                        const numericUsedLbs = typeof currentUsedLbs === 'number' && !isNaN(currentUsedLbs) ? currentUsedLbs : 0;
+                        const currentPct = usage.percentage !== undefined && usage.percentage !== ''
+                            ? parseFloat(usage.percentage)
+                            : (totalLbs > 0 ? Math.round(((numericUsedLbs / totalLbs) * 100)) : 100);
+                        const remainingLbs = Math.max(0, Math.round((totalLbs - numericUsedLbs) * 100) / 100);
 
                         return (
                             <div
                                 key={rem.id}
                                 onClick={() => {
-                                    if (isAssigned && !isSelected) return;
+                                    if (isAssignedOther && !isSelected) return;
                                     if (onToggleSelect) onToggleSelect(rem);
                                 }}
                                 className={`p-3 rounded-xl border transition-all flex flex-col justify-between gap-2 ${isSelected
                                     ? 'bg-white border-teal-500 shadow-sm ring-2 ring-teal-500/20 cursor-pointer'
-                                    : isAssigned
+                                    : isAssignedOther
                                         ? 'bg-slate-100/80 border-slate-200 text-slate-500 cursor-default opacity-85'
                                         : 'bg-white/70 border-teal-200/70 hover:bg-white hover:border-teal-300 cursor-pointer'
                                     }`}
@@ -166,10 +180,10 @@ export default function ProductionRemanentesSelector({
                                             <input
                                                 type="checkbox"
                                                 checked={isSelected}
-                                                disabled={isAssigned && !isSelected}
+                                                disabled={isAssignedOther && !isSelected}
                                                 onChange={(e) => {
                                                     e.stopPropagation();
-                                                    if (isAssigned && !isSelected) return;
+                                                    if (isAssignedOther && !isSelected) return;
                                                     if (onToggleSelect) onToggleSelect(rem);
                                                 }}
                                                 className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
@@ -242,9 +256,15 @@ export default function ProductionRemanentesSelector({
                                     </div>
 
                                     {/* Metadatos: tipo de huevo, peso disponible, fecha */}
-                                    <div className="flex items-center justify-between text-[11px] text-slate-600">
+                                    <div className="flex items-center justify-between gap-2 flex-wrap text-[11px] text-slate-600">
                                         <span className="capitalize font-medium">{rem.product_type}</span>
-                                        <span className="text-teal-800 font-bold">{Number(totalLbs.toFixed(2))} Lbs disponibles</span>
+                                        {isAssignedToThisBatch ? (
+                                            <span className="text-teal-800 font-bold text-[10px]">
+                                                Asignado: {baseLbs.toFixed(2)} Lbs | Residual: {siblingExtraLbs.toFixed(2)} Lbs (Máx: {totalLbs.toFixed(2)})
+                                            </span>
+                                        ) : (
+                                            <span className="text-teal-800 font-bold">{Number(totalLbs.toFixed(2))} Lbs disponibles</span>
+                                        )}
                                     </div>
 
                                     <div className="flex items-center justify-between text-[10px] text-slate-400">
@@ -305,7 +325,7 @@ export default function ProductionRemanentesSelector({
                                                             max={totalLbs}
                                                             value={currentUsedLbs !== undefined ? currentUsedLbs : ''}
                                                             onChange={(e) => handleUsedLbsChange(rem.id, e.target.value, totalLbs)}
-                                                            className="w-full px-2 py-1 bg-white border border-teal-300 rounded text-xs font-bold text-teal-900 focus:ring-1 focus:ring-teal-500"
+                                                            className="w-full px-2 py-1 pr-8 bg-white border border-teal-300 rounded text-xs font-bold text-teal-900 focus:ring-1 focus:ring-teal-500"
                                                         />
                                                         <span className="absolute right-2 top-1 text-[10px] font-semibold text-slate-400">
                                                             Lbs
@@ -322,9 +342,9 @@ export default function ProductionRemanentesSelector({
                                                             step="any"
                                                             min="0.1"
                                                             max="100"
-                                                            value={currentPct !== undefined ? currentPct : ''}
+                                                            value={currentPct !== undefined && !isNaN(currentPct) ? currentPct : ''}
                                                             onChange={(e) => handlePctInputChange(rem.id, e.target.value, totalLbs)}
-                                                            className="w-full px-2 py-1 bg-white border border-teal-300 rounded text-xs font-bold text-teal-900 focus:ring-1 focus:ring-teal-500"
+                                                            className="w-full px-2 py-1 pr-6 bg-white border border-teal-300 rounded text-xs font-bold text-teal-900 focus:ring-1 focus:ring-teal-500"
                                                         />
                                                         <span className="absolute right-2 top-1 text-[10px] font-semibold text-slate-400">
                                                             %
@@ -334,7 +354,7 @@ export default function ProductionRemanentesSelector({
                                             </div>
 
                                             <div className="text-[10px] text-teal-900 flex items-center justify-between bg-white/90 px-2 py-1 rounded border border-teal-200">
-                                                <span>✓ Incorpora: <strong>{typeof currentUsedLbs === 'number' ? Number(currentUsedLbs.toFixed(2)) : 0} Lbs</strong></span>
+                                                <span>✓ Incorpora: <strong>{typeof currentUsedLbs === 'number' && !isNaN(currentUsedLbs) ? Number(currentUsedLbs.toFixed(2)) : 0} Lbs</strong></span>
                                                 <span className="text-slate-600">
                                                     Quedarán: <strong className="text-teal-800">{Number(remainingLbs.toFixed(2))} Lbs</strong> en stock
                                                 </span>

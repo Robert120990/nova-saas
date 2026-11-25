@@ -18,7 +18,7 @@ import ProductionQuebrajeSection from './ProductionQuebrajeSection';
 
 
 export default function ProductionIsNewBatchModalOpenModal({ model, open = model.isNewBatchModalOpen, onClose = () => { model.setIsNewBatchModalOpen(false); model.setEditingBatch(null); }, onSave = (e) => model.handleCreateBatch(e) }) {
-    const { scheduledProductions, selectedScheduledProd, setScannerModalOpen, rawMaterials, availableRemanentes, showAllRemanentes, setShowAllRemanentes, batchForm, setBatchForm, isSubmitting, isNewBatchModalOpen, setIsNewBatchModalOpen, canManageLots, editingBatch, setEditingBatch, handleMarkRemanenteUsed, handleReactivateRemanente, handleToggleRemanenteSelect, handleUpdateRemanenteUsage, handleDeleteRemanenteDirect, handleSelectScheduledProduction, batches, handleAddSpecificTarimaToRm, handleLoadAllAvailableTarimas, handleUpdateTarimaBoxesInRm, handleUpdateTarimaLbsInRm, handleRemoveTarimaFromRm, isCurrentSeparation, recommendedLot, recommendationReason, nonAALotSelectedForSeparation, nonAALotObj, handleApplyRecommendedLot, handleCreateBatch, handleAddSecondaryBatch, handleRemoveSecondaryBatch, handleUpdateSecondaryBatch, handleLinkSecondaryBatchToSchedule, handleProductTypeChange, handleSecondaryProductTypeChange } = model;
+    const { scheduledProductions, selectedScheduledProd, setScannerModalOpen, rawMaterials, availableRemanentes, showAllRemanentes, setShowAllRemanentes, batchForm, setBatchForm, isSubmitting, isNewBatchModalOpen, setIsNewBatchModalOpen, canManageLots, editingBatch, setEditingBatch, isEditingClosedBatch, handleMarkRemanenteUsed, handleReactivateRemanente, handleToggleRemanenteSelect, handleUpdateRemanenteUsage, handleDeleteRemanenteDirect, handleSelectScheduledProduction, batches, handleAddSpecificTarimaToRm, handleLoadAllAvailableTarimas, handleUpdateTarimaBoxesInRm, handleUpdateTarimaLbsInRm, handleRemoveTarimaFromRm, isCurrentSeparation, recommendedLot, recommendationReason, nonAALotSelectedForSeparation, nonAALotObj, handleApplyRecommendedLot, handleCreateBatch, handleAddSecondaryBatch, handleRemoveSecondaryBatch, handleUpdateSecondaryBatch, handleLinkSecondaryBatchToSchedule, handleProductTypeChange, handleSecondaryProductTypeChange } = model;
     if (!open) return null;
     return (<>{isNewBatchModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-2 sm:p-4">
@@ -51,6 +51,14 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                     ? 'Modifica los parámetros del lote, formulación y materias primas asignadas a esta corrida.'
                                     : 'Configura los parámetros iniciales de quebrado, formulación y materias primas para esta corrida.'}
                             </p>
+                            {isEditingClosedBatch && (
+                                <div className="mt-3 p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-950 flex items-start gap-2">
+                                    <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                                    <span>
+                                        <strong>Edición Controlada de Lote Cerrado:</strong> Al guardar se mostrarán todas las afectaciones en remanentes, balance de masas, envasado y costeo, y se exigirá motivo para el log de auditoría.
+                                    </span>
+                                </div>
+                            )}
                             <div className="h-px bg-slate-100 mt-4" />
                         </div>
 
@@ -977,12 +985,59 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                 setShowAllRemanentes={setShowAllRemanentes}
                                 selectedRemanenteIds={batchForm.remanente_ids || []}
                                 remanenteUsages={batchForm.remanente_usages || {}}
+                                editingBatchId={editingBatch?.id || null}
                                 onToggleSelect={handleToggleRemanenteSelect}
                                 onUpdateUsage={handleUpdateRemanenteUsage}
                                 onMarkUsed={handleMarkRemanenteUsed}
                                 onReactivate={handleReactivateRemanente}
                                 onDelete={handleDeleteRemanenteDirect}
                             />
+
+                            {isEditingClosedBatch && (
+                                <div className="space-y-3 bg-amber-50/70 p-4 rounded-xl border border-amber-200">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                                        <label className="text-[11px] font-bold text-amber-900 uppercase tracking-wide">
+                                            Rectificación de Balance de Masas (Opcional en Lote Cerrado)
+                                        </label>
+                                        <span className="text-[10px] text-amber-700">Solo modifique si debe ajustar rendimiento o mermas</span>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                        <div>
+                                            <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">Rendimiento Líquido (Lbs)</label>
+                                            <input
+                                                type="number"
+                                                step="any"
+                                                min="0"
+                                                value={batchForm.yield_liquid_lbs ?? ''}
+                                                onChange={(e) => setBatchForm({ ...batchForm, yield_liquid_lbs: e.target.value })}
+                                                className="w-full px-2.5 py-1.5 bg-white border border-amber-300 rounded-lg text-xs text-slate-800 font-bold"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">Merma Cáscara (Lbs)</label>
+                                            <input
+                                                type="number"
+                                                step="any"
+                                                min="0"
+                                                value={batchForm.waste_shell_lbs ?? ''}
+                                                onChange={(e) => setBatchForm({ ...batchForm, waste_shell_lbs: e.target.value })}
+                                                className="w-full px-2.5 py-1.5 bg-white border border-amber-300 rounded-lg text-xs text-slate-800 font-bold"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">Merma Proceso (Lbs)</label>
+                                            <input
+                                                type="number"
+                                                step="any"
+                                                min="0"
+                                                value={batchForm.waste_loss_lbs ?? ''}
+                                                onChange={(e) => setBatchForm({ ...batchForm, waste_loss_lbs: e.target.value })}
+                                                className="w-full px-2.5 py-1.5 bg-white border border-amber-300 rounded-lg text-xs text-slate-800 font-bold"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Insumos de Formulación / Receta */}
                             <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
@@ -1081,15 +1136,17 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                     type="submit"
                                     disabled={isSubmitting}
                                     className={`w-full sm:w-auto justify-center px-5 py-2 text-white rounded-xl text-xs font-bold transition-all shadow-sm ${
-                                        (batchForm.enable_secondary_batch || batchForm.is_coproduct)
-                                            ? 'bg-teal-600 hover:bg-teal-700'
-                                            : 'bg-indigo-600 hover:bg-indigo-700'
+                                        isEditingClosedBatch
+                                            ? 'bg-amber-600 hover:bg-amber-700'
+                                            : (batchForm.enable_secondary_batch || batchForm.is_coproduct)
+                                                ? 'bg-teal-600 hover:bg-teal-700'
+                                                : 'bg-indigo-600 hover:bg-indigo-700'
                                     }`}
                                 >
                                     {isSubmitting
                                         ? (editingBatch ? 'Guardando Cambios...' : 'Iniciando...')
                                         : (editingBatch
-                                            ? 'Actualizar Lote'
+                                            ? (isEditingClosedBatch ? 'Revisar Afectaciones y Guardar' : 'Actualizar Lote')
                                             : (batchForm.enable_secondary_batch
                                                 ? 'Iniciar Producción Dual (Lote 1 y Lote 2)'
                                                 : (batchForm.is_coproduct ? 'Iniciar Segundo Lote / Co-Producto' : 'Iniciar Lote')))}

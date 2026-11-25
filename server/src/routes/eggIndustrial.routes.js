@@ -26,7 +26,9 @@ router.delete('/cip/:id', permit('manage_production'), eggController.deleteCipLo
 // 3. Lotes de Producción
 router.get('/batches', permit('manage_production', 'manage_packaging', 'manage_egg_quality', 'manage_production_calendar', 'view_egg_reports', 'manage_industrial_costs'), eggController.getProductionBatches);
 router.post('/batches', permit('manage_production'), eggController.createProductionBatch);
-router.put('/batches/:id', permit('manage_production'), eggController.updateProductionBatch);
+router.post('/batches/:id/preview-edit', permit('manage_production', 'manage_egg_closed_batch_edit'), eggController.previewBatchEdit);
+router.get('/batches/:id/modification-logs', permit('manage_production', 'manage_egg_closed_batch_edit', 'manage_traceability', 'view_egg_reports'), eggController.getBatchModificationLogs);
+router.put('/batches/:id', permit('manage_production', 'manage_egg_closed_batch_edit'), eggController.updateProductionBatch);
 router.delete('/batches/:id', permit('manage_production'), eggController.deleteProductionBatch);
 router.put('/batches/:id/complete', permit('manage_production'), eggController.completeProductionBatch);
 router.get('/batches/:id/stages', permit('manage_production', 'manage_packaging', 'manage_egg_quality', 'manage_production_calendar', 'view_egg_reports', 'manage_industrial_costs'), eggController.getBatchStages);

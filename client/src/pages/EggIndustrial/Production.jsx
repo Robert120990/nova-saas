@@ -1,4 +1,4 @@
-import { useProductionModel, ProductionDeleteConfirmBatchModal, ProductionTarimaPickerModalIsOpenModal, ProductionSelectedBatchForCompleteModal, ProductionIsPasteurizeModalOpenModal, ProductionCipTab, ProductionBatchesTab, ProductionIsNewBatchModalOpenModal, ProductionHeader, ProductionFiltersBar, ProductionContent } from '../../components/egg/production';
+import { useProductionModel, ProductionDeleteConfirmBatchModal, ProductionTarimaPickerModalIsOpenModal, ProductionSelectedBatchForCompleteModal, ProductionIsPasteurizeModalOpenModal, ProductionCipTab, ProductionBatchesTab, ProductionIsNewBatchModalOpenModal, ProductionHeader, ProductionFiltersBar, ProductionContent, ProductionClosedBatchImpactModal, ProductionBatchAuditLogModal } from '../../components/egg/production';
 import {
     Flame
 } from 'lucide-react';
@@ -10,7 +10,7 @@ import EggClosePasteurizationModal from '../../components/egg/EggClosePasteuriza
 import { EggQualityFinishedProductModal } from '../../components/egg/quality';
 export default function EggProduction() {
  const model = useProductionModel();
- const { scannerModalOpen, setScannerModalOpen, tarimaSearchPickerOpen, setTarimaSearchPickerOpen, qualityModal, setQualityModal, rawMaterials, stagesModal, closePasteurizationModal, setClosePasteurizationModal, addTarimasModal, setAddTarimasModal, remanenteModal, setRemanenteModal, wastesModal, setWastesModal, handleOpenStagesModal, handleConfirmClosePasteurization, handleCreateWaste, handleDeleteWaste, handleAddSpecificTarimaToAddModal, handleRemanenteSubmit, fetchData, handleScanTarimaResult } = model;
+ const { scannerModalOpen, setScannerModalOpen, tarimaSearchPickerOpen, setTarimaSearchPickerOpen, qualityModal, setQualityModal, rawMaterials, stagesModal, closePasteurizationModal, setClosePasteurizationModal, addTarimasModal, setAddTarimasModal, remanenteModal, setRemanenteModal, wastesModal, setWastesModal, handleOpenStagesModal, handleConfirmClosePasteurization, handleCreateWaste, handleDeleteWaste, handleAddSpecificTarimaToAddModal, handleRemanenteSubmit, fetchData, handleScanTarimaResult, editingBatch, closedEditPreviewModal, setClosedEditPreviewModal, handleConfirmClosedBatchEdit, auditLogModal, setAuditLogModal } = model;
  return (<div className="space-y-4 sm:space-y-6 text-slate-900">
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm">
@@ -121,5 +121,27 @@ export default function EggProduction() {
 
             {/* DIÁLOGO CONFIRMAR ELIMINACIÓN DE LOTE */}
             <ProductionDeleteConfirmBatchModal model={model} />
+
+            {/* MODAL PREVISUALIZACIÓN DE AFECTACIONES EN LOTE CERRADO */}
+            <ProductionClosedBatchImpactModal
+                open={closedEditPreviewModal.isOpen}
+                onClose={() => setClosedEditPreviewModal(prev => ({ ...prev, isOpen: false }))}
+                batch={editingBatch}
+                preview={closedEditPreviewModal.preview}
+                loading={closedEditPreviewModal.loading}
+                submitting={closedEditPreviewModal.submitting}
+                reason={closedEditPreviewModal.reason}
+                onReasonChange={(val) => setClosedEditPreviewModal(prev => ({ ...prev, reason: val }))}
+                acknowledgeWarnings={closedEditPreviewModal.acknowledgeWarnings}
+                onAcknowledgeWarningsChange={(val) => setClosedEditPreviewModal(prev => ({ ...prev, acknowledgeWarnings: val }))}
+                onConfirm={handleConfirmClosedBatchEdit}
+            />
+
+            {/* MODAL LOG DE MODIFICACIONES DEL LOTE */}
+            <ProductionBatchAuditLogModal
+                open={auditLogModal.isOpen}
+                onClose={() => setAuditLogModal({ isOpen: false, batch: null })}
+                batch={auditLogModal.batch}
+            />
         </div>);
 }

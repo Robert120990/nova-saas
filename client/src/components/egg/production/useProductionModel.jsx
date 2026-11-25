@@ -59,6 +59,9 @@ export default function useProductionModel() {
         egg_condition: 'Buenas',
         empaque_inicio: '',
         empaque_fin: '',
+        yield_liquid_lbs: '',
+        waste_shell_lbs: '',
+        waste_loss_lbs: '',
         raw_materials: [],
         remanente_ids: [],
         remanente_usages: {},
@@ -154,8 +157,27 @@ export default function useProductionModel() {
     const isAdmin = user?.role === 'SuperAdmin' || user?.role === 'Admin' || user?.role_id <= 2;
     const canEditProduction = isAdmin || userPermissions.includes('edit_egg_production');
     const canDeleteProduction = isAdmin || userPermissions.includes('delete_egg_production');
+    const canEditClosedBatches = user?.role === 'SuperAdmin' || userPermissions.includes('manage_egg_closed_batch_edit');
     // Validación de permisos flexibilizada para operadores en huevo industrial producción
     const canManageLots = true;
+
+    const isBatchClosed = (batch) => Boolean(
+        batch &&
+        (batch.completed_at ||
+            batch.pasteurization_status === 'cerrado' ||
+            !['en_proceso', 'quebraje'].includes(batch.status))
+    );
+
+    const [closedEditPreviewModal, setClosedEditPreviewModal] = useState({
+        isOpen: false,
+        loading: false,
+        submitting: false,
+        preview: null,
+        pendingPayload: null,
+        reason: '',
+        acknowledgeWarnings: false
+    });
+    const [auditLogModal, setAuditLogModal] = useState({ isOpen: false, batch: null });
 
     // Modals for Stages, Wastes, Remanentes, Edit & Delete
     const [stagesModal, setStagesModal] = useState({ isOpen: false, batch: null, data: null, loading: false });
@@ -504,6 +526,10 @@ export default function useProductionModel() {
 
     // Abrir pantalla completa de inicio de producción precargada para edición
     const handleOpenEditBatch = (batch) => {
+        if (isBatchClosed(batch) && !canEditClosedBatches) {
+            toast.error('Este lote ya está cerrado. Solo los roles autorizados con permiso "Editar Lotes Cerrados y Reutilizables" pueden editarlo.');
+            return;
+        }
         setEditingBatch(batch);
         let formula = {};
         try {
@@ -530,6 +556,14 @@ export default function useProductionModel() {
         const presList = presStr.split(',').map(s => s.trim()).filter(Boolean);
 
         const assignedRemIds = (batch.remanentes_used || []).map(r => r.id);
+        const initialUsages = {};
+        (batch.remanentes_used || []).forEach(r => {
+            initialUsages[r.id] = {
+                used_lbs: parseFloat(r.quantity_lbs || 0),
+                percentage: 100,
+                pct: 100
+            };
+        });
 
         setBatchForm({
             product_type: batch.product_type || 'huevo entero',
@@ -544,9 +578,12 @@ export default function useProductionModel() {
             egg_condition: batch.egg_condition || 'Buenas',
             empaque_inicio: batch.empaque_inicio || '',
             empaque_fin: batch.empaque_fin || '',
+            yield_liquid_lbs: batch.yield_liquid_lbs !== undefined && batch.yield_liquid_lbs !== null ? String(batch.yield_liquid_lbs) : '',
+            waste_shell_lbs: batch.waste_shell_lbs !== undefined && batch.waste_shell_lbs !== null ? String(batch.waste_shell_lbs) : '',
+            waste_loss_lbs: batch.waste_loss_lbs !== undefined && batch.waste_loss_lbs !== null ? String(batch.waste_loss_lbs) : '',
             raw_materials: mappedRms.length > 0 ? mappedRms : [{ raw_material_id: '', quantity_lbs: '', boxes_count: '', tarimas: [] }],
             remanente_ids: assignedRemIds,
-            remanente_usages: {},
+            remanente_usages: initialUsages,
             ingredients: {
                 boxes_count: formula.boxes_count || formula.raw_egg_boxes || '',
                 water_bottles: formula.water_bottles || '',
@@ -560,10 +597,23 @@ export default function useProductionModel() {
             notes: batch.notes || ''
         });
 
-        // Cargar remanentes disponibles incluyendo los asignados a este lote
+        // Cargar remanentes disponibles incluyendo los asignados a este lote y sus saldos residuales
         axios.get('/api/egg-industrial/remanentes/available', { params: { include_batch_id: batch.id } })
             .then(res => {
-                if (res.data) setAvailableRemanentes(res.data);
+                const list = unwrapList(res);
+                setAvailableRemanentes(list);
+                setBatchForm(prev => {
+                    const nextUsages = { ...(prev.remanente_usages || {}) };
+                    list.forEach(item => {
+                        if (assignedRemIds.includes(item.id)) {
+                            const usedNow = parseFloat(item.quantity_lbs || 0);
+                            const maxEdit = usedNow + parseFloat(item.sibling_residual_lbs || 0);
+                            const pct = maxEdit > 0 ? Math.round((usedNow / maxEdit) * 10000) / 100 : 100;
+                            nextUsages[item.id] = { used_lbs: usedNow, percentage: pct, pct };
+                        }
+                    });
+                    return { ...prev, remanente_usages: nextUsages };
+                });
             })
             .catch(() => { });
 
@@ -582,10 +632,15 @@ export default function useProductionModel() {
             delete nextUsages[rem.id];
         } else {
             const avail = parseFloat(rem.quantity_lbs || rem.weight_lbs || 0);
+            const sibExtra = (editingBatch && Number(rem.target_batch_id) === Number(editingBatch.id))
+                ? parseFloat(rem.sibling_residual_lbs || 0)
+                : 0;
+            const totalMax = avail + sibExtra;
+            const pct = totalMax > 0 ? Math.round((avail / totalMax) * 10000) / 100 : 100;
             nextUsages[rem.id] = {
                 used_lbs: avail,
-                percentage: 100,
-                pct: 100
+                percentage: pct,
+                pct
             };
         }
 
@@ -1822,8 +1877,7 @@ export default function useProductionModel() {
         setIsSubmitting(true);
         try {
             if (editingBatch) {
-                // Modo Edición: Actualizar lote existente
-                const res = await axios.put(`/api/egg-industrial/batches/${editingBatch.id}`, {
+                const editPayload = {
                     product_type: batchForm.product_type,
                     presentation: resolvedPres,
                     operator_name: batchForm.operator_name,
@@ -1844,7 +1898,39 @@ export default function useProductionModel() {
                     egg_condition: batchForm.egg_condition || 'Buenas',
                     empaque_inicio: batchForm.empaque_inicio || null,
                     empaque_fin: batchForm.empaque_fin || null
-                });
+                };
+
+                if (isBatchClosed(editingBatch)) {
+                    editPayload.yield_liquid_lbs = batchForm.yield_liquid_lbs !== '' ? parseFloat(batchForm.yield_liquid_lbs) : undefined;
+                    editPayload.waste_shell_lbs = batchForm.waste_shell_lbs !== '' ? parseFloat(batchForm.waste_shell_lbs) : undefined;
+                    editPayload.waste_loss_lbs = batchForm.waste_loss_lbs !== '' ? parseFloat(batchForm.waste_loss_lbs) : undefined;
+
+                    setIsSubmitting(false);
+                    setClosedEditPreviewModal({
+                        isOpen: true,
+                        loading: true,
+                        submitting: false,
+                        preview: null,
+                        pendingPayload: editPayload,
+                        reason: '',
+                        acknowledgeWarnings: false
+                    });
+                    try {
+                        const prevRes = await axios.post(`/api/egg-industrial/batches/${editingBatch.id}/preview-edit`, editPayload);
+                        setClosedEditPreviewModal(prev => ({
+                            ...prev,
+                            loading: false,
+                            preview: prevRes.data
+                        }));
+                    } catch (prevErr) {
+                        toast.error(prevErr.response?.data?.message || 'No se pudieron calcular las afectaciones del lote.');
+                        setClosedEditPreviewModal(prev => ({ ...prev, isOpen: false, loading: false }));
+                    }
+                    return;
+                }
+
+                // Modo Edición lote en proceso: Actualizar directamente
+                const res = await axios.put(`/api/egg-industrial/batches/${editingBatch.id}`, editPayload);
                 toast.success(res.data?.message || 'Lote de producción actualizado exitosamente.');
                 setEditingBatch(null);
                 setIsNewBatchModalOpen(false);
@@ -2167,5 +2253,41 @@ export default function useProductionModel() {
     });
 
 
- return { getNowDateTimeLocal, user, navigate, location, companyId, scheduledProductions, setScheduledProductions, selectedScheduledProd, setSelectedScheduledProd, scannerModalOpen, setScannerModalOpen, tarimaPickerModal, setTarimaPickerModal, tarimaSearchPickerOpen, setTarimaSearchPickerOpen, qualityModal, setQualityModal, batches, setBatches, rawMaterials, setRawMaterials, availableRemanentes, setAvailableRemanentes, showAllRemanentes, setShowAllRemanentes, openExportMenuId, setOpenExportMenuId, cipLogs, setCipLogs, loading, setLoading, searchTerm, setSearchTerm, activeTab, setActiveTab, batchForm, setBatchForm, cipForm, setCipForm, selectedBatchForPasteurize, setSelectedBatchForPasteurize, pasteurizeForm, setPasteurizeForm, secondPasteurizeForm, setSecondPasteurizeForm, selectedBatchForComplete, setSelectedBatchForComplete, completeForm, setCompleteForm, isSubmitting, setIsSubmitting, cipBlockedError, setCipBlockedError, haccpViolationAlert, setHaccpViolationAlert, isNewBatchModalOpen, setIsNewBatchModalOpen, isPasteurizeModalOpen, setIsPasteurizeModalOpen, productConfig, setProductConfig, userPermissions, isAdmin, canEditProduction, canDeleteProduction, canManageLots, stagesModal, setStagesModal, closePasteurizationModal, setClosePasteurizationModal, scannerContext, setScannerContext, editingBatch, setEditingBatch, addTarimasModal, setAddTarimasModal, remanenteModal, setRemanenteModal, wastesModal, setWastesModal, editBatchModal, setEditBatchModal, deleteConfirmBatch, setDeleteConfirmBatch, handleOpenStagesModal, handleOpenClosePasteurization, handleConfirmClosePasteurization, handleReopenPasteurization, handleReopenBatchPackaging, handleOpenBalanceModal, handleOpenWastesModal, handleOpenEditWaste, handleCreateWaste, handleDeleteWaste, handleOpenEditRemanente, handleDeleteRemanente, handleOpenEditBatch, handleMarkRemanenteUsed, handleReactivateRemanente, handleToggleRemanenteSelect, handleUpdateRemanenteUsage, handleDeleteRemanenteDirect, handleAddSpecificTarimaToAddModal, handleLoadAllAvailableTarimasToAddModal, handleUpdateTarimaBoxesInAddModal, handleUpdateTarimaLbsInAddModal, handleRemoveTarimaFromAddModal, handleManualTarimaDigitize, handleAddTarimasSubmit, handleRemanenteSubmit, _handleEditBatchSubmit, handleDeleteBatchConfirm, handleExportSummary, fetchData, fetchScheduledProductions, handleSelectScheduledProduction, handleCreateCoproductBatch, handleAddSpecificTarimaToRm, handleLoadAllAvailableTarimas, handleUpdateTarimaBoxesInRm, handleUpdateTarimaLbsInRm, handleRemoveTarimaFromRm, handleScanTarimaResult, isSeparationProduct, availableRawLots, oldestFifoLot, oldestAALot, isCurrentSeparation, recommendedLot, recommendationReason, nonAALotSelectedForSeparation, nonAALotObj, handleApplyRecommendedLot, handleCreateBatch, handleQuickSanitize, handleCreateCip, handleDeleteCip, handlePasteurize, handlePasteurizeDual, handleCompleteBatch, getBatchStatusBadge, filteredBatches, handleAddSecondaryBatch, handleRemoveSecondaryBatch, handleUpdateSecondaryBatch, handleLinkSecondaryBatchToSchedule, handleProductTypeChange, handleSecondaryProductTypeChange };
+    const handleOpenAuditLogModal = (batch) => {
+        setAuditLogModal({ isOpen: true, batch });
+    };
+
+    const handleConfirmClosedBatchEdit = async () => {
+        if (!editingBatch || !closedEditPreviewModal.pendingPayload) return;
+        const cleanReason = String(closedEditPreviewModal.reason || '').trim();
+        if (cleanReason.length < 5) {
+            return toast.error('Debe ingresar un motivo descriptivo (mínimo 5 caracteres) para el log de auditoría.');
+        }
+        setClosedEditPreviewModal(prev => ({ ...prev, submitting: true }));
+        try {
+            const res = await axios.put(`/api/egg-industrial/batches/${editingBatch.id}`, {
+                ...closedEditPreviewModal.pendingPayload,
+                edit_reason: cleanReason,
+                acknowledge_warnings: closedEditPreviewModal.acknowledgeWarnings
+            });
+            toast.success(res.data?.message || 'Lote cerrado actualizado y auditado.');
+            setClosedEditPreviewModal({
+                isOpen: false,
+                loading: false,
+                submitting: false,
+                preview: null,
+                pendingPayload: null,
+                reason: '',
+                acknowledgeWarnings: false
+            });
+            setEditingBatch(null);
+            setIsNewBatchModalOpen(false);
+            fetchData();
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Error al aplicar la edición en lote cerrado.');
+            setClosedEditPreviewModal(prev => ({ ...prev, submitting: false }));
+        }
+    };
+
+    return { getNowDateTimeLocal, user, navigate, location, companyId, scheduledProductions, setScheduledProductions, selectedScheduledProd, setSelectedScheduledProd, scannerModalOpen, setScannerModalOpen, tarimaPickerModal, setTarimaPickerModal, tarimaSearchPickerOpen, setTarimaSearchPickerOpen, qualityModal, setQualityModal, batches, setBatches, rawMaterials, setRawMaterials, availableRemanentes, setAvailableRemanentes, showAllRemanentes, setShowAllRemanentes, openExportMenuId, setOpenExportMenuId, cipLogs, setCipLogs, loading, setLoading, searchTerm, setSearchTerm, activeTab, setActiveTab, batchForm, setBatchForm, cipForm, setCipForm, selectedBatchForPasteurize, setSelectedBatchForPasteurize, pasteurizeForm, setPasteurizeForm, secondPasteurizeForm, setSecondPasteurizeForm, selectedBatchForComplete, setSelectedBatchForComplete, completeForm, setCompleteForm, isSubmitting, setIsSubmitting, cipBlockedError, setCipBlockedError, haccpViolationAlert, setHaccpViolationAlert, isNewBatchModalOpen, setIsNewBatchModalOpen, isPasteurizeModalOpen, setIsPasteurizeModalOpen, productConfig, setProductConfig, userPermissions, isAdmin, canEditProduction, canDeleteProduction, canManageLots, canEditClosedBatches, isBatchClosed, isEditingClosedBatch: Boolean(editingBatch && isBatchClosed(editingBatch)), closedEditPreviewModal, setClosedEditPreviewModal, auditLogModal, setAuditLogModal, handleOpenAuditLogModal, handleConfirmClosedBatchEdit, stagesModal, setStagesModal, closePasteurizationModal, setClosePasteurizationModal, scannerContext, setScannerContext, editingBatch, setEditingBatch, addTarimasModal, setAddTarimasModal, remanenteModal, setRemanenteModal, wastesModal, setWastesModal, editBatchModal, setEditBatchModal, deleteConfirmBatch, setDeleteConfirmBatch, handleOpenStagesModal, handleOpenClosePasteurization, handleConfirmClosePasteurization, handleReopenPasteurization, handleReopenBatchPackaging, handleOpenBalanceModal, handleOpenWastesModal, handleOpenEditWaste, handleCreateWaste, handleDeleteWaste, handleOpenEditRemanente, handleDeleteRemanente, handleOpenEditBatch, handleMarkRemanenteUsed, handleReactivateRemanente, handleToggleRemanenteSelect, handleUpdateRemanenteUsage, handleDeleteRemanenteDirect, handleAddSpecificTarimaToAddModal, handleLoadAllAvailableTarimasToAddModal, handleUpdateTarimaBoxesInAddModal, handleUpdateTarimaLbsInAddModal, handleRemoveTarimaFromAddModal, handleManualTarimaDigitize, handleAddTarimasSubmit, handleRemanenteSubmit, _handleEditBatchSubmit, handleDeleteBatchConfirm, handleExportSummary, fetchData, fetchScheduledProductions, handleSelectScheduledProduction, handleCreateCoproductBatch, handleAddSpecificTarimaToRm, handleLoadAllAvailableTarimas, handleUpdateTarimaBoxesInRm, handleUpdateTarimaLbsInRm, handleRemoveTarimaFromRm, handleScanTarimaResult, isSeparationProduct, availableRawLots, oldestFifoLot, oldestAALot, isCurrentSeparation, recommendedLot, recommendationReason, nonAALotSelectedForSeparation, nonAALotObj, handleApplyRecommendedLot, handleCreateBatch, handleQuickSanitize, handleCreateCip, handleDeleteCip, handlePasteurize, handlePasteurizeDual, handleCompleteBatch, getBatchStatusBadge, filteredBatches, handleAddSecondaryBatch, handleRemoveSecondaryBatch, handleUpdateSecondaryBatch, handleLinkSecondaryBatchToSchedule, handleProductTypeChange, handleSecondaryProductTypeChange };
 }

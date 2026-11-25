@@ -265,6 +265,19 @@ const getProductionBatches = async (req, res) => {
             }
         }
 
+        try {
+            const [modCounts] = await pool.query(
+                'SELECT batch_id, COUNT(*) as cnt FROM egg_batch_modification_logs WHERE company_id = ? GROUP BY batch_id',
+                [companyId]
+            );
+            const modCountMap = new Map(modCounts.map(m => [Number(m.batch_id), Number(m.cnt || 0)]));
+            for (const batch of rows) {
+                batch.modification_logs_count = modCountMap.get(Number(batch.id)) || 0;
+            }
+        } catch {
+            for (const batch of rows) batch.modification_logs_count = 0;
+        }
+
         res.json(rows);
     } catch (error) {
         console.error("Error in getProductionBatches:", error);

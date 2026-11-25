@@ -10,3 +10,5 @@ export { default as ProductionHeader } from './ProductionHeader';
 export { default as ProductionFiltersBar } from './ProductionFiltersBar';
 export { default as ProductionContent } from './ProductionContent';
 export { default as ProductionRemanentesSelector } from './ProductionRemanentesSelector';
+export { default as ProductionClosedBatchImpactModal } from './ProductionClosedBatchImpactModal';
+export { default as ProductionBatchAuditLogModal } from './ProductionBatchAuditLogModal';

@@ -249,15 +249,42 @@ const getAvailableRemanentes = async (req, res) => {
         query += ` ORDER BY r.created_at DESC LIMIT 100`;
 
         const [rows] = await pool.query(query, params);
-        const mapped = rows.map(r => ({
-            ...r,
-            remanente_code: `REM-${r.id}`,
-            weight_lbs: parseFloat(r.quantity_lbs || 0),
-            quantity_lbs: parseFloat(r.quantity_lbs || 0),
-            is_pasteurized: r.remanente_type === 'pasteurizado',
-            destination: r.storage_location || 'proximo_empaque',
-            is_coproduct: Boolean(r.is_coproduct || r.parent_batch_id)
-        }));
+
+        let residualByOrigin = new Map();
+        if (includeBatchId && rows.length > 0) {
+            const assignedIds = rows.filter(r => Number(r.target_batch_id) === includeBatchId).map(r => r.id);
+            if (assignedIds.length > 0) {
+                const [availRows] = await pool.query(
+                    `SELECT id, batch_id, quantity_lbs, notes FROM egg_batch_remanentes
+                     WHERE company_id = ? AND status = 'disponible' AND target_batch_id IS NULL AND notes LIKE '%Origen: REM-#%'`,
+                    [req.company_id]
+                );
+                for (const ar of availRows) {
+                    const match = String(ar.notes || '').match(/Origen:\s*REM-#(\d+)/i);
+                    if (match) {
+                        residualByOrigin.set(Number(match[1]), {
+                            id: ar.id,
+                            quantity_lbs: parseFloat(ar.quantity_lbs || 0)
+                        });
+                    }
+                }
+            }
+        }
+
+        const mapped = rows.map(r => {
+            const sib = residualByOrigin.get(Number(r.id)) || null;
+            return {
+                ...r,
+                remanente_code: `REM-${r.id}`,
+                weight_lbs: parseFloat(r.quantity_lbs || 0),
+                quantity_lbs: parseFloat(r.quantity_lbs || 0),
+                sibling_residual_id: sib ? sib.id : null,
+                sibling_residual_lbs: sib ? sib.quantity_lbs : 0,
+                is_pasteurized: r.remanente_type === 'pasteurizado',
+                destination: r.storage_location || 'proximo_empaque',
+                is_coproduct: Boolean(r.is_coproduct || r.parent_batch_id)
+            };
+        });
         res.json(mapped);
     } catch (error) {
         res.status(error.status || 500).json({ message: error.message });
