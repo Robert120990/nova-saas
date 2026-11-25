@@ -658,6 +658,7 @@ router.post('/contingency/trigger-autoclose', salesController.triggerAutoClose);
 
 // Retorno / ERET (proxy to dte-api)
 router.get('/retorno', salesController.listRetornos);
+router.get('/retorno/search-dtes', salesController.searchRetornoEligibleDtes);
 router.post('/retorno/emit', salesController.emitRetorno);
 router.get('/retorno/status/:codigoGeneracion', salesController.getRetornoStatus);
 

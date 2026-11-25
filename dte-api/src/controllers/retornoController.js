@@ -74,16 +74,40 @@ async function getStatus(req, res) {
 
 async function list(req, res) {
     try {
-        const { search = '', page = 1, limit = 15 } = req.query;
-        const offset = (parseInt(page) - 1) * parseInt(limit);
+        const {
+            search = '',
+            page = 1,
+            limit = 15,
+            fecha_desde = '',
+            fecha_hasta = '',
+            status = ''
+        } = req.query;
+        const safePage = Math.max(1, parseInt(page, 10) || 1);
+        const safeLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 15));
+        const offset = (safePage - 1) * safeLimit;
 
         let whereClause = 'WHERE tipo_dte = ? AND company_id = ?';
         const params = ['18', req.company_id];
 
-        if (search) {
-            whereClause += ' AND (codigo_generacion LIKE ? OR json_original LIKE ?)';
-            const searchPattern = `%${search}%`;
-            params.push(searchPattern, searchPattern);
+        if (search && String(search).trim()) {
+            whereClause += ' AND (codigo_generacion LIKE ? OR numero_control LIKE ? OR json_original LIKE ?)';
+            const searchPattern = `%${String(search).trim()}%`;
+            params.push(searchPattern, searchPattern, searchPattern);
+        }
+
+        if (fecha_desde && /^\d{4}-\d{2}-\d{2}$/.test(String(fecha_desde).trim())) {
+            whereClause += ' AND DATE(created_at) >= ?';
+            params.push(String(fecha_desde).trim());
+        }
+
+        if (fecha_hasta && /^\d{4}-\d{2}-\d{2}$/.test(String(fecha_hasta).trim())) {
+            whereClause += ' AND DATE(created_at) <= ?';
+            params.push(String(fecha_hasta).trim());
+        }
+
+        if (status && String(status).trim() && status !== 'all') {
+            whereClause += ' AND status = ?';
+            params.push(String(status).trim());
         }
 
         const [countRows] = await pool.query(
@@ -98,14 +122,14 @@ async function list(req, res) {
              FROM dtes ${whereClause} 
              ORDER BY created_at DESC 
              LIMIT ? OFFSET ?`,
-            [...params, parseInt(limit), offset]
+            [...params, safeLimit, offset]
         );
 
         res.json({
             data: rows,
             total,
-            page: parseInt(page),
-            totalPages: Math.ceil(total / parseInt(limit))
+            page: safePage,
+            totalPages: Math.max(1, Math.ceil(total / safeLimit))
         });
     } catch (error) {
         console.error('ERET List Error:', error);
