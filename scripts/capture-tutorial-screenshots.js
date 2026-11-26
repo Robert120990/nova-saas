@@ -154,7 +154,43 @@ const SCREENS_FASE2 = [
     { file: 'cfg-sistema.png', route: '/configuracion/sistema', companyId: 1, minWaitMs: 900, maxWaitMs: 14000 },
     { file: 'cfg-modulos-empresa.png', route: '/configuracion/modulos-empresa', companyId: 1, minWaitMs: 900, maxWaitMs: 14000 },
     { file: 'cfg-servidor.png', route: '/configuracion/servidor', companyId: 1, minWaitMs: 1000, maxWaitMs: 15000 },
-    { file: 'ai-tasks.png', route: '/ai-tasks', companyId: 1, minWaitMs: 1000, maxWaitMs: 15000 }
+    { file: 'ai-tasks.png', route: '/ai-tasks', companyId: 1, minWaitMs: 1000, maxWaitMs: 15000 },
+
+    // Empresa 9 (ANDELSA): Dashboard Planta y sub-vistas Huevo Industrial
+    { file: 'dashboard-andelsa.png', route: '/dashboard?tab=andelsa', companyId: 9, minWaitMs: 1200, maxWaitMs: 30000, waitForText: 'Dashboard Andelsa' },
+    { file: 'egg-produccion-cip.png', route: '/industrial/produccion', companyId: 9, minWaitMs: 1000, maxWaitMs: 15000, clickButtonText: 'Sanitización' },
+    { file: 'egg-trazabilidad-lab.png', route: '/industrial/trazabilidad', companyId: 9, minWaitMs: 1000, maxWaitMs: 15000, clickButtonText: 'LAB-004' },
+    { file: 'egg-trazabilidad-normas.png', route: '/industrial/trazabilidad', companyId: 9, minWaitMs: 1000, maxWaitMs: 15000, clickButtonText: 'Normas COA' },
+    { file: 'egg-trazabilidad-solidos.png', route: '/industrial/trazabilidad', companyId: 9, minWaitMs: 1000, maxWaitMs: 15000, clickButtonText: 'Sólidos' },
+    { file: 'egg-despachos-rutas.png', route: '/industrial/despachos', companyId: 9, minWaitMs: 1000, maxWaitMs: 15000, clickButtonText: 'Planificador' },
+    { file: 'egg-despachos-flota.png', route: '/industrial/despachos', companyId: 9, minWaitMs: 1000, maxWaitMs: 15000, clickButtonText: 'Flota' },
+    { file: 'egg-despachos-motorista.png', route: '/industrial/despachos', companyId: 9, minWaitMs: 1000, maxWaitMs: 15000, clickButtonText: 'Motorista' },
+    { file: 'egg-insumos-kardex.png', route: '/industrial/insumos', companyId: 9, minWaitMs: 1000, maxWaitMs: 15000, clickButtonText: 'Kárdex' },
+    { file: 'egg-costeo-margen.png', route: '/industrial/costeo-libra', companyId: 9, minWaitMs: 1000, maxWaitMs: 15000, clickButtonText: 'Margen Libre' },
+    { file: 'egg-costeo-escenarios.png', route: '/industrial/costeo-libra', companyId: 9, minWaitMs: 1000, maxWaitMs: 15000, clickButtonText: 'Escenarios' },
+    { file: 'egg-costos-cubetas.png', route: '/industrial/costos-mantenimiento', companyId: 9, minWaitMs: 1000, maxWaitMs: 15000, clickButtonText: 'Envases Retornables' },
+    { file: 'egg-config-prefijos.png', route: '/industrial/configuracion', companyId: 9, minWaitMs: 1000, maxWaitMs: 15000, clickButtonText: 'Prefijos' },
+
+    // Empresa 1: Contabilidad completa (Contabilizar, Apertura, Libros, Estados Financieros, Retenciones) e IVA completo
+    { file: 'acc-contabilizar-cxc-cxp.png', route: '/contabilidad/contabilizar/cxc-cxp', companyId: 1, minWaitMs: 900, maxWaitMs: 14000 },
+    { file: 'acc-contabilizar-turnos.png', route: '/contabilidad/contabilizar/turnos', companyId: 1, minWaitMs: 900, maxWaitMs: 14000 },
+    { file: 'acc-contabilizar-bancos.png', route: '/contabilidad/contabilizar/bancos', companyId: 1, minWaitMs: 900, maxWaitMs: 14000 },
+    { file: 'acc-apertura-anio.png', route: '/contabilidad/apertura', companyId: 1, minWaitMs: 900, maxWaitMs: 14000 },
+    { file: 'acc-libro-diario.png', route: '/contabilidad/reportes/libro-diario', companyId: 1, minWaitMs: 900, maxWaitMs: 14000 },
+    { file: 'acc-libro-mayor.png', route: '/contabilidad/reportes/libro-mayor', companyId: 1, minWaitMs: 900, maxWaitMs: 14000 },
+    { file: 'acc-auxiliar-operaciones.png', route: '/contabilidad/reportes/auxiliar-operaciones', companyId: 1, minWaitMs: 900, maxWaitMs: 14000 },
+    { file: 'acc-listado-partidas.png', route: '/contabilidad/reportes/listado-partidas', companyId: 1, minWaitMs: 900, maxWaitMs: 14000 },
+    { file: 'acc-impresion-partidas.png', route: '/contabilidad/reportes/impresion-partidas', companyId: 1, minWaitMs: 900, maxWaitMs: 14000 },
+    { file: 'acc-balance-comprobacion.png', route: '/contabilidad/reportes/balance-comprobacion', companyId: 1, minWaitMs: 900, maxWaitMs: 14000 },
+    { file: 'acc-estado-resultados.png', route: '/contabilidad/reportes/estado-resultados', companyId: 1, minWaitMs: 900, maxWaitMs: 14000 },
+    { file: 'acc-balance-comparativo.png', route: '/contabilidad/reportes/balance-comparativo', companyId: 1, minWaitMs: 900, maxWaitMs: 14000 },
+    { file: 'acc-cambios-patrimonio.png', route: '/contabilidad/reportes/cambios-patrimonio', companyId: 1, minWaitMs: 900, maxWaitMs: 14000 },
+    { file: 'acc-flujo-efectivo.png', route: '/contabilidad/reportes/flujo-efectivo', companyId: 1, minWaitMs: 900, maxWaitMs: 14000 },
+    { file: 'acc-cedula-auditoria.png', route: '/contabilidad/reportes/cedula-auditoria', companyId: 1, minWaitMs: 900, maxWaitMs: 14000 },
+    { file: 'acc-retenciones.png', route: '/contabilidad/reportes/retenciones', companyId: 1, minWaitMs: 900, maxWaitMs: 14000 },
+    { file: 'iva-ventas-ccf.png', route: '/iva/ventas-ccf', companyId: 1, minWaitMs: 900, maxWaitMs: 14000 },
+    { file: 'iva-ventas-fac.png', route: '/iva/ventas-fac', companyId: 1, minWaitMs: 900, maxWaitMs: 14000 },
+    { file: 'iva-declaraciones.png', route: '/iva/declaraciones', companyId: 1, minWaitMs: 900, maxWaitMs: 14000 }
 ];
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -244,7 +280,7 @@ async function waitForPageReady(cdp, minWaitMs = 900, maxWaitMs = 15000, waitFor
         const res = await cdp.send('Runtime.evaluate', {
             expression: `(() => {
                 const txt = (document.body?.innerText || '').trim();
-                const loading = txt.includes('Cargando registros') || txt.includes('Cargando...') || txt.includes('Cargando historial') || txt.includes('Actualizando...');
+                const loading = txt.includes('Cargando registros') || txt.includes('Cargando...') || txt.includes('Cargando historial') || txt.includes('Actualizando...') || txt.includes('Cargando bitácora') || txt.includes('Cargando cheques');
                 const requiredText = ${JSON.stringify(waitForText || '')};
                 const hasText = !requiredText || txt.includes(requiredText);
                 return JSON.stringify({ href: location.href, len: txt.length, loading, hasText });
@@ -623,6 +659,22 @@ async function run() {
 
                 await cdp.send('Page.navigate', { url: `${clientBaseUrl}${scr.route}` });
                 const meta = await waitForPageReady(cdp, scr.minWaitMs, scr.maxWaitMs, scr.waitForText || '');
+                if (scr.clickButtonText) {
+                    const clickRes = await cdp.send('Runtime.evaluate', {
+                        expression: `(() => {
+                            const needle = ${JSON.stringify(scr.clickButtonText)}.toLowerCase();
+                            const btns = Array.from(document.querySelectorAll('button, [role="tab"]'))
+                                .filter(b => !b.closest('aside, header') && b.offsetParent !== null && (b.innerText || b.textContent || '').toLowerCase().includes(needle));
+                            if (btns.length > 0) {
+                                btns[0].click();
+                                return 'CLICKED:' + (btns[0].innerText || '').replace(/\\s+/g, ' ').trim();
+                            }
+                            return 'NOT_FOUND:' + needle;
+                        })()`
+                    });
+                    console.log(`   ↳ Tab [${scr.file}]: ${clickRes.result?.value}`);
+                    await waitForPageReady(cdp, 950, 14000, scr.postClickWaitForText || '');
+                }
                 const bounds = await prepareCleanUiAndCollectBounds(cdp);
                 const shot = await cdp.send('Page.captureScreenshot', { format: 'png' });
                 const outPath = path.join(OUT_DIR, scr.file);

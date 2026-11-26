@@ -9,13 +9,17 @@ const COMPRAS_INVENTARIO_TUTORIALS = require('./tutorials/comprasInventarioTutor
 const FINANZAS_CONTABILIDAD_TUTORIALS = require('./tutorials/finanzasContabilidadTutorials');
 const RRHH_POZO_ADMIN_TUTORIALS = require('./tutorials/rrhhPozoAdminTutorials');
 const INDUSTRIAL_CRM_TUTORIALS = require('./tutorials/industrialCrmTutorials');
+const INDUSTRIAL_AVANZADO_TUTORIALS = require('./tutorials/industrialAvanzadoTutorials');
+const CONTABILIDAD_AVANZADA_TUTORIALS = require('./tutorials/contabilidadAvanzadaTutorials');
 
 const TUTORIALS_CATALOG = [
     ...TIENDA_PISTA_TUTORIALS,
     ...COMPRAS_INVENTARIO_TUTORIALS,
     ...FINANZAS_CONTABILIDAD_TUTORIALS,
     ...RRHH_POZO_ADMIN_TUTORIALS,
-    ...INDUSTRIAL_CRM_TUTORIALS
+    ...INDUSTRIAL_CRM_TUTORIALS,
+    ...INDUSTRIAL_AVANZADO_TUTORIALS,
+    ...CONTABILIDAD_AVANZADA_TUTORIALS
 ].sort((a, b) => (a.order || 999) - (b.order || 999));
 
 module.exports = {

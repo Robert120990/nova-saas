@@ -124,62 +124,62 @@ const FINANZAS_CONTABILIDAD_TUTORIALS = [
         category: 'contabilidad',
         categoryLabel: 'Contabilidad e IVA',
         requiredModule: 'accounting',
-        menuPath: 'Contabilidad → Catálogo, Partidas, Contabilizar y Auditoría',
-        title: 'Contabilidad: Catálogo de Cuentas, Partidas, Contabilización y Auditoría',
-        summary: 'Administra el catálogo contable, registra partidas manuales cuadradas, contabiliza en lote ventas/compras/turnos/bancos y ejecuta la Auditoría Contable con IA.',
-        outcome: 'Mantener la contabilidad cuadrada, generar pólizas automáticas sin doble digitación y emitir estados financieros confiables.',
+        menuPath: 'Contabilidad → Catálogo de Cuentas, Partidas Contables y Auditoría Contable',
+        title: 'Contabilidad Base: Catálogo de Cuentas, Partidas Manuales y Auditoría IA',
+        summary: 'Administra el catálogo jerárquico de cuentas, registra partidas manuales cuadradas, lanza contabilización automática de pólizas (ampliada en #41) y ejecuta Auditoría Contable con IA.',
+        outcome: 'Mantener el catálogo contable ordenado, capturar asientos manuales sin errores y detectar partidas descuadradas o faltantes con Auditoría IA.',
         duration: '6 min',
         modulePath: '/contabilidad/partidas',
         roles: ['Contador', 'Auditor', 'Admin'],
         requiredPermissions: ['manage_account_chart', 'manage_accounting_entries', 'manage_accounting_contabilizar_ventas_compras', 'manage_accounting_audit'],
         coverImage: 'accounting-entries.png',
         prerequisites: [
-            'Tener configurados los correlativos de partidas y el mapeo de cuentas por defecto en Contabilidad → Ajustes.'
+            'Tener configurados los correlativos de partidas y el mapeo de cuentas por defecto en Contabilidad → Ajustes (ver guía #35).'
         ],
         steps: [
             {
-                title: 'Administrar el Catálogo de Cuentas',
-                description: 'En Contabilidad → Catálogo de Cuentas puedes buscar cuentas por código o nombre y pulsar "NUEVA CUENTA" para añadir rubros de Activo, Pasivo, Patrimonio, Ingresos, Costos o Gastos indicando su cuenta padre y si permite detalle (movimientos).',
+                title: 'Administrar el Catálogo de Cuentas Contables',
+                description: 'En Contabilidad → Catálogo de Cuentas busca por código o nombre y pulsa "NUEVA CUENTA" para añadir rubros de Activo, Pasivo, Patrimonio, Ingresos, Costos o Gastos indicando su cuenta padre y si permite detalle (movimientos).',
                 image: 'accounting-chart.png',
                 annotations: [
                     { n: 1, x: 21.6, y: 24.1, w: 17.3, h: 4.8, label: 'Buscador instantáneo de cuentas contables por código o descripción.' },
-                    { n: 2, x: 68.9, y: 24.2, w: 10.8, h: 4.5, label: 'Botón "NUEVA CUENTA" (junto a opciones de importación/exportación).' },
+                    { n: 2, x: 68.9, y: 24.2, w: 10.8, h: 4.5, label: 'Botón "NUEVA CUENTA" (junto a importación/exportación de catálogo).' },
                     { n: 3, x: 21.7, y: 31.7, w: 72.9, h: 25, label: 'Árbol jerárquico: Código, Nombre, Tipo, Padre, si acepta Detalle y Estado.' }
                 ],
-                tip: 'Recuerda que solo las cuentas marcadas como "Detalle" pueden recibir movimientos dentro de una partida contable.'
+                tip: 'Solo las cuentas marcadas como "Detalle" pueden recibir movimientos dentro de una partida contable; las cuentas padre totalizan automáticamente.'
             },
             {
-                title: 'Crear, consultar e imprimir Partidas Contables',
-                description: 'Entra a Contabilidad → Partidas Contables. Usa "NUEVA PARTIDA" para asientos manuales (verificando que Débito = Crédito) o busca cualquier asiento ya contabilizado. En Acciones puedes ver el detalle, imprimir la póliza PDF, editar o anular.',
+                title: 'Crear, consultar e imprimir Partidas Contables Manuales',
+                description: 'Entra a Contabilidad → Partidas Contables. Usa "NUEVA PARTIDA" para asientos manuales o ajustes (verificando Débito = Crédito) o filtra cualquier póliza ya contabilizada para ver su detalle, imprimir el comprobante PDF, editar o anular.',
                 image: 'accounting-entries.png',
                 annotations: [
                     { n: 1, x: 84.1, y: 14.8, w: 11.1, h: 4.5, label: 'Botón "NUEVA PARTIDA" para capturar manualmente un asiento contable.' },
-                    { n: 2, x: 21.1, y: 22.3, w: 21.6, h: 4.8, label: 'Buscador por número de partida, descripción o tipo (Ingreso, Gasto, Diario).' },
-                    { n: 3, x: 88.5, y: 32.5, w: 6.5, h: 12, label: 'Botones por partida: Ver, Imprimir póliza PDF, Editar o Anular.' }
+                    { n: 2, x: 21.1, y: 22.3, w: 21.6, h: 4.8, label: 'Buscador por número de partida, descripción o tipo (Diario, Ingreso, Gasto, Ajuste).' },
+                    { n: 3, x: 88.5, y: 32.5, w: 6.5, h: 12, label: 'Botones por partida: Ver detalle, Imprimir póliza PDF, Editar o Anular.' }
                 ],
-                tip: 'Antes de anular o editar un mes pasado, verifica las fechas permitidas y correlativos en Contabilidad → Correlativos de Partidas.'
+                tip: 'Antes de modificar un mes cerrado revisa tus numeraciones en Correlativos de Partidas (#35). Para contabilizar automáticamente Ventas, CxC, Turnos y Bancos consulta #41.'
             },
             {
-                title: 'Contabilizar automáticamente Ventas, Compras, CxC/CxP, Turnos y Bancos',
-                description: 'En Contabilidad → Contabilizar elige el módulo ("VENTAS", "COMPRAS", "CxC/CxP", "Cierres de Turno" o "Bancos / Cheques"), selecciona el rango de fechas y pulsa "Calcular". El sistema propone las partidas con base en tus cuentas configuradas para que las revises y las contabilices en bloque.',
+                title: 'Previsualizar Contabilización Automática desde Ventas y Compras',
+                description: 'En Contabilidad → Contabilizar → Ventas/Compras eliges "VENTAS" o "COMPRAS", seleccionas el período y pulsas "Calcular" para generar la propuesta contable. Si deseas conocer los 4 motores completos (CxC/CxP, Cierres de Turno y Bancos/Cheques), abre la guía #41.',
                 image: 'accounting-generate.png',
                 annotations: [
-                    { n: 1, x: 26.1, y: 23, w: 13.4, h: 4, label: 'Selector del flujo a contabilizar (Ventas / Compras u otros submenús).' },
+                    { n: 1, x: 26.1, y: 23, w: 13.4, h: 4, label: 'Selector del flujo a contabilizar (Ventas / Compras).' },
                     { n: 2, x: 28.9, y: 46.4, w: 18.6, h: 3.7, label: 'Enlace directo a "CONFIGURAR EN CUENTAS POR DEFECTO" si falta mapear alguna cuenta.' },
                     { n: 3, x: 81.8, y: 60, w: 8.4, h: 4.5, label: 'Botón "Calcular" para generar la previsualización contable antes de guardar.' }
                 ],
-                tip: 'Si falta mapear una cuenta (ej. IVA Débito o Combustible), el aviso en pantalla te lleva directo a configurarla sin perder tu trabajo.'
+                tip: 'Cada motor valida cuentas faltantes y evita duplicar partidas ya contabilizadas en el mismo rango.'
             },
             {
-                title: 'Ejecutar la Auditoría Contable y Dictamen Inteligente',
-                description: 'Antes de emitir estados financieros o cerrar el mes, ingresa a Contabilidad → Auditoría Contable. Presiona "Actualizar" o "Ejecutar Dictamen IA" para detectar partidas descuadradas, cuentas huérfanas o saltos, y exporta el diagnóstico a Excel si necesitas revisión.',
+                title: 'Ejecutar la Auditoría Contable y Dictamen Inteligente IA',
+                description: 'Antes de emitir estados financieros (#43) o cerrar ejercicio (#35), ingresa a Contabilidad → Auditoría Contable. Presiona "Actualizar" o "Ejecutar Dictamen IA" para detectar partidas descuadradas, cuentas huérfanas o saltos, y exporta los hallazgos a Excel.',
                 image: 'accounting-audit.png',
                 annotations: [
                     { n: 1, x: 79.2, y: 14.7, w: 16, h: 3.9, label: 'Botones "Actualizar" datos y "Exportar Excel" del hallazgo contable.' },
                     { n: 2, x: 21.1, y: 42, w: 36.8, h: 4.8, label: 'Pestañas: Diagnóstico Inteligente, Catálogo de Cuentas y Partidas Contables.' },
                     { n: 3, x: 80, y: 56.2, w: 13.6, h: 5, label: 'Botón "Ejecutar Dictamen IA" para generar el análisis ejecutivo automático.' }
                 ],
-                tip: 'Una auditoría en estado "Limpio / Favorable" indica que tus balances de Comprobación, Estado de Resultados y Balance General están listos.'
+                tip: 'Una auditoría limpia certifica que tus Libros Legales (#42) y Estados Financieros (#43) cerrarán sin descuadres.'
             }
         ],
         troubleshooting: [
@@ -193,50 +193,62 @@ const FINANZAS_CONTABILIDAD_TUTORIALS = [
         category: 'contabilidad',
         categoryLabel: 'Contabilidad e IVA',
         requiredModule: 'accounting',
-        menuPath: 'Libros de IVA → Compras, Ventas, Anexos y Liquidación',
-        title: 'Libros de IVA, Anexos DTE y Liquidación Mensual (F-07 / Pago a Cuenta)',
-        summary: 'Genera los libros legales de Compras, Contribuyentes y Consumidor Final, exporta anexos en formato oficial de Hacienda y calcula tu declaración mensual F-07.',
-        outcome: 'Preparar cada mes los Libros de IVA, Anexos en Excel/CSV y el borrador cuadrado de Liquidación IVA y Pago a Cuenta.',
-        duration: '5 min',
+        menuPath: 'Libros de IVA → Compras, Ventas (CCF / Consumidor), Anexos Compras/Ventas y Liquidación',
+        title: 'Libros de IVA Completos, Anexos (Compras / Ventas) y Liquidación F-07',
+        summary: 'Genera los tres Libros legales de IVA (Compras, Contribuyentes CCF y Consumidor Final FAC), revisa los Anexos de IVA Compras y Ventas (DTE/Retenciones) y calcula la Liquidación F-07.',
+        outcome: 'Preparar cada mes todos los libros legales y archivos Excel/CSV de Hacienda F-07, Retenciones 1% y Pago a Cuenta sin inconsistencias.',
+        duration: '6 min',
         modulePath: '/iva/compras',
         roles: ['Auxiliar', 'Auditor', 'Contador', 'Admin'],
-        requiredPermissions: ['view_purchase_ledger', 'view_ccf_sales_ledger', 'view_fac_sales_ledger', 'view_iva_anexos', 'view_vat_liquidation'],
+        requiredPermissions: ['view_purchase_ledger', 'view_ccf_sales_ledger', 'view_fac_sales_ledger', 'view_iva_anexos', 'view_iva_declaraciones', 'view_vat_liquidation'],
         coverImage: 'iva-purchases.png',
         prerequisites: [
-            'Haber cerrado o validado las compras/gastos del mes y verificado que todos los DTE de venta estén aceptados por Hacienda.'
+            'Haber validado las compras del período y confirmado que los DTE de venta estén aceptados o resueltos.'
         ],
         steps: [
             {
-                title: 'Generar Libros Legales de IVA (Compras, CCF y Consumidor)',
-                description: 'En Libros de IVA elige "Libro de Compras", "Ventas a Contribuyentes" o "Ventas a Consumidor". Elige si lo generarás consolidado "Por Contribuyente (Todas las sucursales)" o solo "Por Sucursal Actual", selecciona Mes, Año y número de folio inicial y presiona "GENERAR REPORTE".',
+                title: 'Generar el Libro de Compras (Por Contribuyente o Sucursal)',
+                description: 'En Libros de IVA → Libro de Compras elige "Por Contribuyente (Todas las sucursales)" cuando presentes una sola declaración jurídica o "Por Sucursal Actual" para revisión individual. Elige Mes, Año y número de folio inicial y presiona "GENERAR REPORTE".',
                 image: 'iva-purchases.png',
                 annotations: [
-                    { n: 1, x: 23.9, y: 31.8, w: 12.2, h: 16, label: 'Modo Consolidado por Contribuyente o por Sucursal Actual + selector de alcance.' },
-                    { n: 2, x: 23.9, y: 53.2, w: 12.2, h: 25.5, label: 'Filtros de Mes, Año y número de folio de inicio de impresión.' },
-                    { n: 3, x: 23.9, y: 85.1, w: 12.2, h: 7.3, label: 'Botón "GENERAR REPORTE" para previsualizar el libro legal en PDF o exportar a Excel.' }
+                    { n: 1, x: 23.9, y: 31.8, w: 12.2, h: 16, label: 'Selector de alcance: Por Contribuyente (consolidado) o Por Sucursal Actual.' },
+                    { n: 2, x: 23.9, y: 53.2, w: 12.2, h: 25.5, label: 'Filtros de Mes, Año y número de folio de inicio legal.' },
+                    { n: 3, x: 23.9, y: 85.1, w: 12.2, h: 7.3, label: 'Botón "GENERAR REPORTE" para previsualizar en PDF o exportar Excel.' }
                 ],
-                tip: 'Usa siempre el modo "Por Contribuyente" cuando presentes la declaración unificada de la empresa con varias estaciones o sucursales.'
+                tip: 'Las notas de crédito de compra y comprobantes excluidos aparecen separados automáticamente en su columna normativa.'
             },
             {
-                title: 'Revisar y exportar Anexos de IVA Ventas y Compras',
-                description: 'Abre Libros de IVA → Anexo de IVA Ventas (o Anexo de IVA Compras). Puedes filtrar por Tipo de DTE, sucursal o contribuyente, verificar los 3 códigos oficiales (Código de Generación, N° Control y Sello MH) y pulsar "Exportar Excel" para cargar los anexos.',
+                title: 'Generar Libro de Ventas a Contribuyentes (CCF) y Consumidor Final (FAC)',
+                description: 'Abre Libros de IVA → Ventas a Contribuyentes (DTE 03 / NC 05) y Libros de IVA → Ventas a Consumidor (DTE 01 y Exportación 11). En ambos puedes emitir el reporte consolidado por Contribuyente o por Sucursal en PDF/Excel cuidando el folio inicial consecutivo.',
+                image: 'iva-ventas-ccf.png',
+                annotations: [
+                    { n: 1, x: 23.9, y: 31.8, w: 12.2, h: 16, label: 'Modo Contribuyente vs Sucursal en Ventas a Contribuyentes (CCF) y Consumidor (FAC).' },
+                    { n: 2, x: 23.9, y: 53.2, w: 12.2, h: 25.5, label: 'Selección de Mes, Año y folio inicial para continuar la foliación legal.' },
+                    { n: 3, x: 23.9, y: 85.1, w: 12.2, h: 7.3, label: 'Botón "GENERAR REPORTE" (también disponible idéntico en Ventas a Consumidor Final).' }
+                ],
+                tip: 'Verifica en Libro de Ventas a Consumidor que los rangos diarios de códigos de generación coincidan con los cierres del mes.'
+            },
+            {
+                title: 'Revisar Anexo de IVA Compras, Retenciones 1% y Anticipo 2%',
+                description: 'Entra a Libros de IVA → Anexo de IVA Compras. Usa sus 5 pestañas ("Compras", "Anticipo 2% (Tarjetas)", "Retenciones Emitidas (1%)", "Retenciones Recibidas (1%)" y "Percepciones (1%)") filtrando por Año, Mes y Sucursal, y exporta a PDF o Excel.',
+                image: 'iva-declaraciones.png',
+                annotations: [
+                    { n: 1, x: 21.1, y: 22.3, w: 65.1, h: 4.7, label: '5 anexos fiscales: Compras, Anticipo 2% Tarjetas, Retenciones 1% y Percepciones 1%.' },
+                    { n: 2, x: 26.3, y: 32, w: 69.2, h: 4.1, label: 'Filtros de Año, Mes, Sucursal Consolidada/Individual, buscador y Exportar PDF/Excel.' },
+                    { n: 3, x: 21.1, y: 50.9, w: 75, h: 11.4, label: 'Detalle auditable con código de generación, NIT, NRC, gravadas, exentas, IVA y retención.' }
+                ],
+                tip: 'Revisa las 5 pestañas antes de cerrar F-07 para no omitir retenciones de tarjetas de crédito o percepciones del 1%.'
+            },
+            {
+                title: 'Revisar Anexo de IVA Ventas DTE y calcular Liquidación F-07',
+                description: 'En Libros de IVA → Anexo de IVA Ventas filtra por Tipo de DTE o Contribuyente y exporta el Excel listo para Hacienda. Luego en Libros de IVA → Liquidación IVA y Pago a Cuenta presiona "Actualizar Datos", verifica el remanente en "Ajustar Parámetros" y revisa los totales en "Formularios Hacienda".',
                 image: 'iva-anexos.png',
                 annotations: [
-                    { n: 1, x: 76.6, y: 14.9, w: 18.6, h: 3.6, label: 'Botones "Exportar PDF" y "Exportar Excel" listos para revisión o carga tributaria.' },
-                    { n: 2, x: 65, y: 24.7, w: 28.5, h: 3.2, label: 'Alternador rápido entre vista Consolidada ("Por Contribuyente") o Sucursal actual.' },
+                    { n: 1, x: 76.6, y: 14.9, w: 18.6, h: 3.6, label: 'Botones "Exportar PDF" y "Exportar Excel" del Anexo de Ventas DTE.' },
+                    { n: 2, x: 65, y: 24.7, w: 28.5, h: 3.2, label: 'Alternador entre vista Consolidada ("Por Contribuyente") o Sucursal actual.' },
                     { n: 3, x: 22.5, y: 34.9, w: 71.3, h: 4.1, label: 'Filtros por sucursal, tipo de DTE, correlativo y buscador por cliente/NIT/NRC.' }
                 ],
-                tip: 'Revisa que ningún DTE del mes figure en estado Rechazado o Pendiente antes de descargar el Excel definitivo del anexo.'
-            },
-            {
-                title: 'Calcular la Liquidación Mensual de IVA y Pago a Cuenta',
-                description: 'Ingresa a Libros de IVA → Liquidación IVA y Pago a Cuenta. Selecciona Año, Mes y el modo consolidado ("Por Contribuyente"), pulsa "Actualizar Datos" y revisa los débitos, créditos, remanente anterior y porcentajes desde "Ajustar Parámetros" o "Formularios Hacienda".',
-                image: 'iva-liquidation.png',
-                annotations: [
-                    { n: 1, x: 57, y: 16.5, w: 32.8, h: 8.6, label: 'Botones "Formularios Hacienda", "Ajustar Parámetros", "Exportar PDF" y "Exportar Excel".' },
-                    { n: 2, x: 22.2, y: 42.3, w: 72.9, h: 4.3, label: 'Filtros de Año, Mes, Consolidado/Sucursal y botón "Actualizar Datos".' }
-                ],
-                tip: 'Si traes remanente de crédito fiscal del mes pasado, verifícalo en "Ajustar Parámetros" para que cuadre el monto final a pagar o nuevo remanente.'
+                tip: 'Desde Liquidación IVA y Pago a Cuenta el botón "Formularios Hacienda" resume casilla por casilla tu F-07 mensual y Pago a Cuenta.'
             }
         ],
         troubleshooting: [
@@ -248,24 +260,24 @@ const FINANZAS_CONTABILIDAD_TUTORIALS = [
         slug: 'contabilidad-cierre-estados-financieros',
         order: 35,
         category: 'contabilidad',
-        categoryLabel: 'Contabilidad y Fiscal',
+        categoryLabel: 'Contabilidad e IVA',
         requiredModule: 'accounting',
-        menuPath: 'Contabilidad → Correlativos, Ajustes, Reportes Financieros y Cierre Anual',
-        title: 'Contabilidad: Correlativos, Configuraciones, Balance y Cierre Anual',
-        summary: 'Controla la numeración mensual de partidas, define cuentas contables por defecto y conexión oficina, emite Balance General / Estado de Resultados y ejecuta el Cierre Anual.',
-        outcome: 'Emitir estados financieros oficiales en PDF o Excel con correlativos ordenados y realizar el cierre contable de fin de año sin descuadres.',
+        menuPath: 'Contabilidad → Correlativos, Ajustes, Cierre Anual y Apertura de Ejercicio',
+        title: 'Contabilidad: Correlativos, Configuraciones, Cierre Anual y Apertura de Ejercicio',
+        summary: 'Controla la numeración mensual de partidas, define cuentas contables por defecto y conexión oficina, ejecuta el Cierre Anual de resultados y genera la Partida de Apertura del nuevo año.',
+        outcome: 'Mantener correlativos ordenados todo el año, automatizar pólizas con las cuentas mapeadas y cerrar un año fiscal abriendo el siguiente sin descuadres.',
         duration: '6 min',
         modulePath: '/contabilidad/cierre',
         roles: ['Contador', 'Auxiliar', 'Auditor', 'Gerencia', 'Admin'],
-        requiredPermissions: ['manage_accounting_correlativos', 'manage_accounting_adjustments', 'view_accounting_balance_general', 'view_accounting_estado_resultados', 'manage_annual_close', 'manage_fiscal_year_open'],
+        requiredPermissions: ['manage_accounting_correlativos', 'manage_accounting_adjustments', 'manage_annual_close', 'manage_fiscal_year_open'],
         coverImage: 'acc-cierre-anual.png',
         prerequisites: [
-            'Tener cargado el Catálogo de Cuentas y contabilizadas las partidas mensuales del ejercicio.'
+            'Tener cargado el Catálogo de Cuentas y contabilizadas/mayorizadas todas las partidas del período (ver #42 y #43 para reportes).'
         ],
         steps: [
             {
                 title: 'Controlar Correlativos Mensuales por Tipo de Partida',
-                description: 'En Contabilidad → Correlativos de Partidas elige el tipo de partida (Diario, Ingreso, Egreso, Ajuste, Apertura) y define o ajusta el próximo número por mes con "GUARDAR". Así mantienes consecutiva la numeración contable todo el año.',
+                description: 'En Contabilidad → Correlativos de Partidas elige el tipo de partida (Diario, Ingreso, Egreso, Ajuste, Apertura) y define o ajusta el próximo número por mes con "GUARDAR". Así mantienes consecutiva la numeración contable durante todo el ejercicio.',
                 image: 'acc-correlativos.png',
                 annotations: [
                     { n: 1, x: 31.5, y: 29.3, w: 26.1, h: 4.4, label: 'Selector del Tipo de Partida contable cuyo correlativo mensual deseas revisar o inicializar.' },
@@ -276,39 +288,40 @@ const FINANZAS_CONTABILIDAD_TUTORIALS = [
             },
             {
                 title: 'Configurar Cuentas por Defecto, Auxiliares y Conexión Oficina',
-                description: 'Abre Contabilidad → Configuraciones de Contabilidad. En sus pestañas ("GENERAL", "CUENTAS POR DEFECTO", "CUENTAS AUXILIARES", "CONEXIÓN OFICINA") vincula cuentas de IVA débito/crédito, caja, bancos y resultados para automatizar los asientos y pulsa "GUARDAR CONFIGURACIÓN".',
+                description: 'Abre Contabilidad → Ajustes. En sus 4 pestañas ("GENERAL", "CUENTAS POR DEFECTO", "CUENTAS AUXILIARES", "CONEXIÓN OFICINA") mapeas cuentas de IVA débito/crédito, caja, bancos, clientes, proveedores y utilidad para automatizar las pólizas y pulsas "GUARDAR CONFIGURACIÓN".',
                 image: 'acc-ajustes.png',
                 annotations: [
-                    { n: 1, x: 26.5, y: 24.7, w: 52.6, h: 4.1, label: 'Pestañas de configuración: General, Cuentas por Defecto, Cuentas Auxiliares y Conexión Oficina.' },
-                    { n: 2, x: 27.9, y: 40.9, w: 61.5, h: 39.6, label: 'Parámetros fiscales, cuentas contables mapeadas y botón "GUARDAR CONFIGURACIÓN".' }
+                    { n: 1, x: 26.5, y: 24.7, w: 52.6, h: 4.1, label: 'Pestañas: General, Cuentas por Defecto, Cuentas Auxiliares y Conexión Oficina.' },
+                    { n: 2, x: 27.9, y: 40.9, w: 61.5, h: 39.6, label: 'Mapeo de cuentas contables automáticas y botón "GUARDAR CONFIGURACIÓN".' }
                 ],
-                tip: 'Una vez mapeadas las cuentas en "CUENTAS POR DEFECTO", las pólizas de ventas y compras toman automáticamente cada rubro sin digitación manual.'
+                tip: 'Al dejar configurada "CONEXIÓN OFICINA", el motor Contabilizar → Bancos / Cheques (#41) descarga cheques y movimientos automáticamente.'
             },
             {
-                title: 'Generar Balance General y Estado de Resultados',
-                description: 'Ve a Contabilidad → Balance General (o Estado de Resultados / Balanza de Comprobación). Selecciona el Mes de corte, el Nivel de detalle de cuentas y el Formato (PDF o Excel) y haz clic en "GENERAR REPORTE" para obtener la vista previa oficial.',
-                image: 'acc-balance-general.png',
-                annotations: [
-                    { n: 1, x: 23.5, y: 41, w: 13, h: 42, label: 'Panel izquierdo de parámetros: Mes, Nivel de agrupación, Formato y botón "GENERAR REPORTE".' },
-                    { n: 2, x: 40, y: 24, w: 54, h: 66, label: 'Visor del estado financiero generado listo para imprimir o descargar en PDF/Excel.' }
-                ],
-                tip: 'Usa nivel 4 o superior cuando necesites validar subcuentas detalladas de bancos o inventarios, y nivel 2 o 3 para resúmenes gerenciales.'
-            },
-            {
-                title: 'Ejecutar el Cierre Contable Anual y Apertura de Ejercicio',
-                description: 'Al finalizar el año entra a Contabilidad → Cierre Contable Anual (y luego a Apertura Año Fiscal). Verifica el Año Fiscal y Fecha de Cierre arriba, revisa en el cuadro central el saldo de las Cuentas de Resultado (Ingresos, Costos y Gastos) y la utilidad calculada a la derecha, y presiona "GENERAR PARTIDA DE CIERRE".',
+                title: 'Ejecutar el Cierre Contable Anual (Liquidación de Resultados)',
+                description: 'Al finalizar diciembre entra a Contabilidad → Cierre Anual. Verifica Año Fiscal y Fecha de Cierre arriba, revisa en la tabla central el saldo acumulado de las Cuentas de Resultado (Ingresos, Costos y Gastos) y la utilidad/pérdida calculada a la derecha, y presiona "GENERAR PARTIDA DE CIERRE".',
                 image: 'acc-cierre-anual.png',
                 annotations: [
-                    { n: 1, x: 25.8, y: 25, w: 63.5, h: 13, label: 'Encabezado de Año Fiscal y Fecha de Cierre contable.' },
-                    { n: 2, x: 25.8, y: 40.6, w: 44.7, h: 55, label: 'Resumen automático de saldos en Cuentas de Resultado acumuladas en el año.' },
-                    { n: 3, x: 71.5, y: 40.6, w: 19.5, h: 31, label: 'Panel "RESULTADO DEL EJERCICIO" con utilidad/pérdida neta y botón "GENERAR PARTIDA DE CIERRE".' }
+                    { n: 1, x: 25.8, y: 25, w: 63.5, h: 13, label: 'Encabezado de Año Fiscal y Fecha de Cierre contable al 31 de diciembre.' },
+                    { n: 2, x: 25.8, y: 40.6, w: 44.7, h: 55, label: 'Resumen automático de saldos en Cuentas de Resultado que quedarán liquidadas a cero.' },
+                    { n: 3, x: 71.5, y: 40.6, w: 19.5, h: 31, label: 'Panel "RESULTADO DEL EJERCICIO" con utilidad neta y botón "GENERAR PARTIDA DE CIERRE".' }
                 ],
-                tip: 'Antes de pulsar "GENERAR PARTIDA DE CIERRE", confirma en Mayor y Balanza que todas las partidas de diciembre estén contabilizadas (estado Mayorizada).'
+                tip: 'Confirma previamente en Auditoría Contable (#18) y Balance de Comprobación (#43) que todas las partidas de diciembre estén mayorizadas.'
+            },
+            {
+                title: 'Generar la Partida de Apertura de Nuevo Ejercicio Fiscal',
+                description: 'Una vez cerrado el año anterior entra a Contabilidad → Apertura de Ejercicio. Selecciona el Nuevo Año (ej. 2027) y Fecha de Apertura (01/01/2027), valida en la tabla los Saldos de Balance trasladados (Activo vs Pasivo + Patrimonio a la derecha) y haz clic en "GENERAR PARTIDA DE APERTURA".',
+                image: 'acc-apertura-anio.png',
+                annotations: [
+                    { n: 1, x: 25.8, y: 25, w: 65, h: 13, label: 'Nuevo Año fiscal a inicializar y Fecha de Apertura (ej. 01/01/2027).' },
+                    { n: 2, x: 25.8, y: 40.6, w: 44.7, h: 57, label: 'Tabla de Saldos de Balance trasladados del año anterior por cuenta contable.' },
+                    { n: 3, x: 72.5, y: 40.6, w: 17.5, h: 42, label: 'Cuadre Total Activo vs Pasivo + Patrimonio, descripción y botón "GENERAR PARTIDA DE APERTURA".' }
+                ],
+                tip: 'Verifica que Total Activo coincida exactamente con Total Pasivo + Patrimonio antes de pulsar "GENERAR PARTIDA DE APERTURA".'
             }
         ],
         troubleshooting: [
-            { issue: 'El Balance General no cuadra (Activo distinto de Pasivo + Capital)', fix: 'Verifica si existen partidas en borrador sin mayorizar en ese mes o si falta generar la partida de cierre de resultado.' },
-            { issue: 'No puedo crear partidas automáticas en un mes nuevo', fix: 'Revisa en Contabilidad → Correlativos de Partidas que el mes esté habilitado y en Contabilidad → Configuraciones de Contabilidad que las cuentas por defecto sigan asignadas.' }
+            { issue: 'En Apertura de Ejercicio el Total Activo difiere de Pasivo + Patrimonio', fix: 'Falta ejecutar o mayorizar el Cierre Anual del ejercicio previo para trasladar el Resultado del Ejercicio al Patrimonio.' },
+            { issue: 'No puedo crear partidas automáticas en un mes nuevo', fix: 'Revisa en Contabilidad → Correlativos de Partidas que el mes esté habilitado y en Contabilidad → Ajustes que las cuentas por defecto sigan asignadas.' }
         ]
     }
 ];

@@ -31,7 +31,7 @@ const TUTORIAL_CATEGORIES = [
     {
         id: 'contabilidad',
         label: 'Contabilidad e IVA',
-        description: 'Catálogo de cuentas, partidas manuales, contabilización automática, auditoría contable, libros y anexos de IVA.'
+        description: 'Catálogo de cuentas, partidas, contabilización automática (4 motores), libros legales, estados financieros, cédula de auditoría, cierre/apertura y libros/anexos IVA.'
     },
     {
         id: 'rrhh',
@@ -41,7 +41,7 @@ const TUTORIAL_CATEGORIES = [
     {
         id: 'industrial',
         label: 'Planta Industrial y CRM',
-        description: 'Panel SCADA, recepción de huevo, baja de tarimas, pasteurización, empaque, calendario, contenedores, despachos, trazabilidad, insumos, costeo, reportes, ajustes y CRM.'
+        description: 'Dashboard Andelsa, SCADA, recepción MP, tarimas, sanitización CIP, pasteurización, empaque/Blast Freezer, calendario, contenedores, rutas, LAB-004/COA, insumos, costeo/lb, cubetas, reportes y CRM.'
     },
     {
         id: 'operaciones_admin',

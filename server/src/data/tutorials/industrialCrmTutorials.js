@@ -9,22 +9,33 @@ const INDUSTRIAL_CRM_TUTORIALS = [
         category: 'industrial',
         categoryLabel: 'Planta Industrial y CRM',
         requiredModule: 'egg_industrial',
-        menuPath: 'Huevo Industrial → Panel SCADA, Recepción MP y Baja de Tarimas',
-        title: 'Planta Industrial: Monitoreo SCADA, Recepción MP y Baja de Tarimas',
-        summary: 'Supervisa el Panel IoT/SCADA de pasteurización y frío, registra ingresos de huevo en cáscara/líquido por granja y vincula facturas para dar de baja tarimas.',
-        outcome: 'Controlar los puntos críticos de planta y mantener trazabilidad exacta de cada tarima recibida desde granja hasta su facturación o consumo.',
-        duration: '5 min',
+        menuPath: 'Dashboard Planta Andelsa / Huevo Industrial → Panel SCADA, Recepción MP y Baja de Tarimas',
+        title: 'ANDELSA: Dashboard Planta, Monitoreo SCADA, Recepción MP y Baja de Tarimas',
+        summary: 'Supervisa indicadores diarios en Dashboard Andelsa, monitorea el Panel IoT/SCADA, registra ingresos de huevo por granja en Recepción MP y vincula facturas para dar de baja tarimas.',
+        outcome: 'Controlar el arranque diario de planta, los puntos críticos de temperatura y la trazabilidad exacta de cada tarima recibida desde granja.',
+        duration: '6 min',
         modulePath: '/industrial/recepcion',
         roles: ['Supervisor', 'Gerencia', 'Contador', 'Operaciones', 'Bodega', 'Produccion', 'Calidad', 'Jefe Pista', 'Admin'],
-        requiredPermissions: ['view_industrial_dashboard', 'manage_mp_reception', 'manage_egg_tarima_writeoffs'],
-        coverImage: 'egg-recepcion.png',
+        requiredPermissions: ['view_dashboard_andelsa', 'view_industrial_dashboard', 'manage_mp_reception', 'manage_egg_tarima_writeoffs'],
+        coverImage: 'dashboard-andelsa.png',
         prerequisites: [
             'Tener configurados proveedores/granjas, tipos de huevo y prefijos de lotes en Huevo Industrial → Ajustes.'
         ],
         steps: [
             {
-                title: 'Monitorear temperaturas y puntos críticos en Panel IoT / SCADA',
-                description: 'Entra a Huevo Industrial → Panel IoT / SCADA para vigilar en vivo las temperaturas de pasteurización, flujo y tanques pulmón/almacenamiento, así como las alertas de planta. Desde arriba puedes abrir el Calendario de Producción o restablecer lecturas de simulación.',
+                title: 'Revisar KPIs diarios de Planta en Dashboard → Dashboard Planta Andelsa',
+                description: 'Al ingresar a Dashboard → pestaña "Andelsa" ves al instante el Costo Promedio del Mes ($/lb), Lotes en Proceso, Despachos de Hoy y Mañana, Liberaciones de Calidad pendientes, Preparación de Bodega para los próximos 7 días y el Pipeline de Lotes Activos en pasteurizadora.',
+                image: 'dashboard-andelsa.png',
+                annotations: [
+                    { n: 1, x: 40.8, y: 12.1, w: 8.1, h: 4.2, label: 'Pestaña "Andelsa" en el Dashboard principal (también configurable como inicio automático del rol).' },
+                    { n: 2, x: 20, y: 31, w: 76, h: 17, label: 'Indicadores ejecutivos: Costo Promedio/lb, Lotes en Proceso, Despachos y Liberación de Calidad.' },
+                    { n: 3, x: 20, y: 49, w: 76, h: 45, label: 'Control de Despacho Hoy/Mañana, Preparación de Bodega (7 días) y Pipeline de Lotes Activos.' }
+                ],
+                tip: 'Desde Preparación Bodega (Próx. 7 días) anticipas cuánta materia prima (MP) e insumos debes alistar según pedidos confirmados.'
+            },
+            {
+                title: 'Monitorear temperaturas y puntos críticos (PCC) en Panel IoT / SCADA',
+                description: 'Entra a Huevo Industrial → Panel IoT / SCADA para vigilar en vivo las temperaturas de pasteurización, flujo y tanques pulmón/almacenamiento, así como las alertas térmicas. Arriba puedes abrir el Calendario de Producción o restablecer lecturas de simulación.',
                 image: 'egg-planta.png',
                 annotations: [
                     { n: 1, x: 70.3, y: 22.3, w: 24.8, h: 5.7, label: 'Accesos a "Calendario de Producción" y "Restablecer Lecturas".' },
@@ -38,15 +49,15 @@ const INDUSTRIAL_CRM_TUTORIALS = [
                 description: 'Abre Huevo Industrial → Recepción MP y pulsa "Nueva Recepción". Ingresa granja/proveedor, lote de granja, tipo de huevo, cantidad de cajas y peso en libras por tarima; la fila quedará pendiente de revisión hasta recibir aprobación de Calidad (LAB-004).',
                 image: 'egg-recepcion.png',
                 annotations: [
-                    { n: 1, x: 84.8, y: 14.8, w: 10.3, h: 4.1, label: 'Botón "Nueva Recepción" para registrar un ingreso de materia prima con sus tarimas.' },
+                    { n: 1, x: 84.8, y: 14.8, w: 10.3, h: 4.1, label: 'Botón "Nueva Recepción" para registrar un ingreso de materia prima (MP) con sus tarimas.' },
                     { n: 2, x: 73.5, y: 28.3, w: 21.6, h: 3.9, label: 'Buscador por proveedor, lote o tipo de huevo.' },
                     { n: 3, x: 85.2, y: 44.4, w: 14.6, h: 16, label: 'Estado de Calidad (Pendiente / Grado AA/A) y botón para Ver Detalle y Tarimas.' }
                 ],
-                tip: 'Cada tarima recibe un código único identificable para su traslado en bodega o envío directo a quebrado.'
+                tip: 'Cada tarima recibe un código único identificable para su traslado entre bodegas o envío directo a quebrado.'
             },
             {
                 title: 'Vincular Facturas y Dar de Baja Tarimas de Materia Prima',
-                description: 'En Huevo Industrial → Facturas y Baja de Tarimas selecciona los cuadritos de las tarimas físicas en la pestaña "Lotes y Tarimas Disponibles" (puedes filtrar por Ubicación como Bodega Abajo o Bodega Arriba) y presiona "Vincular Factura / Dar de Baja" para respaldar su salida con la factura de compra o despacho.',
+                description: 'En Huevo Industrial → Facturas y Baja de Tarimas selecciona las tarimas físicas en la pestaña "Lotes y Tarimas Disponibles" (puedes filtrar por Ubicación como Bodega Abajo o Bodega Arriba) y presiona "Vincular Factura / Dar de Baja" para respaldar su consumo o liquidación contra la factura de compra.',
                 image: 'egg-baja-tarimas.png',
                 annotations: [
                     { n: 1, x: 73.2, y: 14.1, w: 22.2, h: 4.1, label: 'Botón "Actualizar" y acceso principal "Vincular Factura / Dar de Baja".' },
@@ -58,7 +69,7 @@ const INDUSTRIAL_CRM_TUTORIALS = [
         ],
         troubleshooting: [
             { issue: 'Una tarima recibida no aparece disponible para producción', fix: 'Revisa en Recepción MP si su evaluación de Calidad sigue en "Pendiente Calidad"; Calidad debe aprobarla primero.' },
-            { issue: 'Falta un prefijo de lote al registrar la recepción', fix: 'Configura el prefijo correspondiente en Huevo Industrial → Ajustes antes de guardar el ingreso.' }
+            { issue: 'Falta un prefijo de lote al registrar la recepción', fix: 'Configura el prefijo correspondiente en Huevo Industrial → Ajustes → Prefijos de Lote por Proveedor.' }
         ]
     },
     {
@@ -67,56 +78,55 @@ const INDUSTRIAL_CRM_TUTORIALS = [
         category: 'industrial',
         categoryLabel: 'Planta Industrial y CRM',
         requiredModule: 'egg_industrial',
-        menuPath: 'Huevo Industrial → Producción, Empaque y Trazabilidad',
-        title: 'Producción, Pasteurización, Empaque y Trazabilidad 360° & Calidad',
-        summary: 'Opera lotes de quebrado y pasteurización, registra limpieza CIP, envasado y congelamiento en Blast Freezer, y audita trazabilidad completa con certificados COA.',
-        outcome: 'Documentar el rendimiento desde tarima hasta producto terminado envasado con liberación microbiológica y Certificado de Análisis (COA).',
+        menuPath: 'Huevo Industrial → Producción y Pasteurización, Sanitización CIP y Empaque / Blast Freezer',
+        title: 'ANDELSA: Sanitización CIP, Producción, Pasteurización y Empaque / Congelado',
+        summary: 'Documenta lavados CIP previos al arranque, opera lotes de quebrado y pasteurización, gestiona ediciones controladas de lotes cerrados/reutilizables y registra Empaque y Blast Freezer.',
+        outcome: 'Completar el ciclo productivo desde sanitización CIP y quebrado hasta producto terminado envasado o congelado, listo en inventario.',
         duration: '6 min',
         modulePath: '/industrial/produccion',
-        roles: ['Supervisor', 'Gerencia', 'Contador', 'Operaciones', 'Bodega', 'Produccion', 'Calidad', 'Jefe Pista', 'Admin'],
-        requiredPermissions: ['manage_production', 'manage_packaging', 'manage_traceability', 'manage_egg_quality'],
+        roles: ['Produccion', 'Calidad', 'Supervisor', 'Gerencia', 'Operaciones', 'Bodega', 'Admin'],
+        requiredPermissions: ['manage_production', 'manage_packaging', 'manage_egg_production_lots', 'manage_egg_closed_batch_edit', 'manage_egg_cip_exception'],
         coverImage: 'egg-produccion.png',
         prerequisites: [
-            'Contar con tarimas de materia prima aprobadas y registro vigente de sanitización CIP (Limpieza en Sitio) o autorización excepcional de Calidad.'
+            'Contar con tarimas de materia prima (MP) aprobadas por Calidad y lavado CIP vigente (o autorización excepcional de Calidad).'
         ],
         steps: [
             {
-                title: 'Crear Lotes de Quebrado, Pasteurizar y registrar Sanitización CIP',
-                description: 'En Huevo Industrial → Producción y Pasteurización pulsa "+ Iniciar Nueva Producción" para cargar tarimas al quebrado, o "Pasteurizar" para iniciar el proceso térmico sobre lotes formulados. En la pestaña "Registros de Sanitización (CIP)" documenta cada lavado antes del arranque.',
+                title: 'Documentar Limpieza y Sanitización CIP antes de arrancar planta',
+                description: 'En Huevo Industrial → Producción y Pasteurización abre la pestaña "Registros de Sanitización (CIP)". Selecciona el equipo (Pasteurizador de Placas, Quebradora, Centrífuga, Tanques Pulmón), registra el químico CIP (ej. Ácido Peracético), temperatura, minutos y resultado ("Completado y Aprobado") antes de iniciar corrida.',
+                image: 'egg-produccion-cip.png',
+                annotations: [
+                    { n: 1, x: 29.9, y: 26.5, w: 13.7, h: 3.6, label: 'Pestaña "Registros de Sanitización (CIP)" para validar limpieza pre-operacional.' },
+                    { n: 2, x: 21.1, y: 36.3, w: 22, h: 61, label: 'Formulario "REGISTRAR LIMPIEZA CIP": equipo, químico, temperatura, tiempo y estado.' },
+                    { n: 3, x: 47.5, y: 36.3, w: 47.7, h: 50, label: 'Historial de sanitizaciones CIP recientes y estado de aprobación para arrancar.' }
+                ],
+                tip: 'Si necesitas operar por contingencia sin registro CIP reciente, el rol Calidad cuenta con el permiso especial para autorizar una Excepción CIP.'
+            },
+            {
+                title: 'Crear Lotes de Quebrado, Pasteurizar y editar lotes controlados',
+                description: 'Regresa a la pestaña "Lotes de Producción". Pulsa "+ Iniciar Nueva Producción" para cargar tarimas al quebrado y "Pasteurizar" para iniciar el proceso térmico sobre lotes formulados. Al abrir el detalle de un lote puedes realizar cierres de pasteurización o ediciones autorizadas de lotes cerrados/reutilizables con bitácora de impacto.',
                 image: 'egg-produccion.png',
                 annotations: [
-                    { n: 1, x: 19.8, y: 26.2, w: 23.5, h: 4.5, label: 'Pestañas para alternar entre "Lotes de Producción" y "Registros de Sanitización (CIP)".' },
+                    { n: 1, x: 19.8, y: 26.2, w: 23.5, h: 4.5, label: 'Alternador entre "Lotes de Producción" y "Registros de Sanitización (CIP)".' },
                     { n: 2, x: 62.5, y: 26.2, w: 35.5, h: 4.5, label: 'Accesos a Calendario de Producción, "+ Iniciar Nueva Producción" y "Pasteurizar".' },
-                    { n: 3, x: 76.5, y: 36, w: 19.8, h: 4.2, label: 'Buscador rápido de historial de procesamiento por lote o producto.' }
+                    { n: 3, x: 76.5, y: 36, w: 19.8, h: 4.2, label: 'Buscador rápido del historial de procesamiento por lote juliano, comercial o producto.' }
                 ],
-                tip: 'Si un lote cerrado o reutilizable requiere ajuste excepcional autorizado, Gerencia/Calidad cuenta con el permiso controlado de edición en el detalle del lote.'
+                tip: 'Toda modificación excepcional sobre un lote cerrado o reutilizable queda auditada automáticamente en la bitácora del lote con sus afectaciones.'
             },
             {
-                title: 'Registrar Empaque Final y Congelado (Blast Freezer)',
-                description: 'Abre Huevo Industrial → Empaque y Congelado. Presiona "Registrar Envasado" para empacar el lote pasteurizado en sus presentaciones físicas (baldes, bolsas, cajas), consumiendo sus empaques e insumos y cerrando el lote; luego usa "Blast Freezer" para controlar lotes en cámara de congelación rápida.',
+                title: 'Registrar Empaque Final y Congelado rápido (Blast Freezer)',
+                description: 'Abre Huevo Industrial → Empaque y Congelado. Presiona "Registrar Envasado" para empacar el lote pasteurizado en baldes, bolsas o cajas (descontando automáticamente los empaques de Insumos y enviando producto terminado a Inventario). Si el producto va congelado, usa el botón "Blast Freezer" para registrar el ciclo de congelación.',
                 image: 'egg-empaque.png',
                 annotations: [
-                    { n: 1, x: 76.5, y: 15.2, w: 19.7, h: 3.6, label: 'Botones "Registrar Envasado" (lotes terminados) y "Blast Freezer" (congelado).' },
-                    { n: 2, x: 76.7, y: 28.8, w: 19.5, h: 3.9, label: 'Buscador del historial de unidades empacadas por lote o presentación.' }
+                    { n: 1, x: 76.5, y: 15.2, w: 19.7, h: 3.6, label: 'Botones "Registrar Envasado" (producto terminado) y "Blast Freezer" (cámara de congelación).' },
+                    { n: 2, x: 76.7, y: 28.8, w: 19.5, h: 3.9, label: 'Buscador del historial de unidades empacadas por lote o presentación comercial.' }
                 ],
-                tip: 'Al hacer el cierre técnico de envasado el producto terminado pasa automáticamente al Inventario Industrial disponible para despachos.'
-            },
-            {
-                title: 'Auditar Trazabilidad 360°, Control de Calidad (LAB-004) y COA',
-                description: 'Ingresa a Huevo Industrial → Trazabilidad 360°. Usa las pestañas superiores para recorrer la cadena completa en "Trazabilidad de Lotes", evaluar análisis microbiológicos en "Control de Calidad (LAB-004)", configurar normas COA o calcular sólidos en "Calculadora de Sólidos HE+".',
-                image: 'egg-trazabilidad.png',
-                annotations: [
-                    { n: 1, x: 51.3, y: 15.5, w: 48.7, h: 3.2, label: 'Pestañas: Trazabilidad de Lotes, Control de Calidad (LAB-004), Normas COA y Sólidos HE+.' },
-                    { n: 2, x: 20.9, y: 32, w: 72, h: 4, label: 'Indicadores globales: libras procesadas en MP, producción, unidades y alertas activas.' },
-                    { n: 3, x: 20.9, y: 45.8, w: 46.2, h: 4.3, label: 'Buscador por lote proveedor, lote juliano, lote comercial, producto o cliente.' },
-                    { n: 4, x: 24.2, y: 53.4, w: 33.2, h: 3.2, label: 'Filtros por etapa: Todos, Materia Prima, En Producción, Inventario Final o Con Alertas.' }
-                ],
-                tip: 'Desde cualquier lote liberado por Calidad puedes generar e imprimir el Certificado de Análisis (COA) oficial para el cliente.'
+                tip: 'Una vez completado el envasado y congelado, el departamento de Calidad realiza la evaluación final LAB-004 y liberación COA en Trazabilidad 360° (guía #38).'
             }
         ],
         troubleshooting: [
-            { issue: 'El sistema exige registro de Sanitización CIP antes de producir', fix: 'Ve a la pestaña "Registros de Sanitización (CIP)" para documentar el lavado previo o solicita autorización de excepción CIP al rol Calidad.' },
-            { issue: 'Un lote envasado sigue bloqueado para despachos', fix: 'Confirma en Trazabilidad 360° → Control de Calidad (LAB-004) que el análisis de liberación del lote esté aprobado.' }
+            { issue: 'El sistema exige registro de Sanitización CIP antes de iniciar producción', fix: 'Documenta el lavado en la pestaña "Registros de Sanitización (CIP)" como Completado y Aprobado o solicita autorización de excepción CIP a Calidad.' },
+            { issue: 'No puedo editar un lote ya cerrado o reutilizable', fix: 'Esa acción requiere el permiso específico "Editar Lotes Cerrados y Reutilizables" reservado para supervisión o Gerencia.' }
         ]
     },
     {
@@ -125,67 +135,66 @@ const INDUSTRIAL_CRM_TUTORIALS = [
         category: 'industrial',
         categoryLabel: 'Planta Industrial y CRM',
         requiredModule: 'egg_industrial',
-        menuPath: 'Huevo Industrial → Despachos, Inventario, Insumos y Costeo',
-        title: 'Despachos y Rutas, Inventario Traducido, Insumos y Costeo por Libra',
-        summary: 'Programa pedidos y rutas de entrega con modo motorista, consulta existencias en Libras/Kg/Unidades, gestiona empaques/aditivos/CIP y simula costos por libra.',
-        outcome: 'Coordinar entregas a tiempo sin quiebres de empaque o producto terminado y conocer la rentabilidad real por libra producida.',
-        duration: '5 min',
+        menuPath: 'Huevo Industrial → Despachos y Rutas (Pedidos, Planificador, Flota y Modo Motorista)',
+        title: 'ANDELSA: Despachos y Rutas (Pedidos, Planificador, Flota y Modo Motorista)',
+        summary: 'Administra todo el flujo logístico en sus 4 etapas: Calendario de Pedidos, Planificador de Rutas & Mapa con Facturación Automática DTE, Flota y Mantenimiento, y Modo Motorista con QR.',
+        outcome: 'Coordinar pedidos diarios, armar rutas óptimas por camión, facturar automáticamente toda una ruta con lotes asignados y confirmar entregas en campo con QR.',
+        duration: '6 min',
         modulePath: '/industrial/despachos',
-        roles: ['Supervisor', 'Gerencia', 'Contador', 'Operaciones', 'Bodega', 'Produccion', 'Calidad', 'Jefe Pista', 'Admin'],
-        requiredPermissions: ['manage_egg_dispatch', 'view_egg_inventory', 'manage_egg_supplies', 'manage_industrial_costeo_libra'],
+        roles: ['Supervisor', 'Gerencia', 'Contador', 'Operaciones', 'Bodega', 'Produccion', 'Jefe Pista', 'Admin'],
+        requiredPermissions: ['manage_egg_dispatch', 'manage_egg_commissions'],
         coverImage: 'egg-despachos.png',
         prerequisites: [
-            'Tener lotes envasados disponibles y clientes configurados en el módulo de Clientes o CRM.'
+            'Tener lotes envasados disponibles en Inventario Industrial y vehículos/motoristas registrados en la pestaña Flota.'
         ],
         steps: [
             {
-                title: 'Programar Pedidos y Rutas en Despachos y Rutas',
-                description: 'En Huevo Industrial → Despachos y Rutas utiliza las 4 vistas superiores: "1. Calendario de Pedidos" (para registrar con "+ Nuevo Pedido"), "2. Planificador de Rutas & Mapa", "3. Flota y Mantenimiento" y "4. Modo Motorista (Móvil)" para confirmar entregas en campo.',
+                title: '1. Programar Pedidos de Clientes en Calendario de Pedidos',
+                description: 'En Huevo Industrial → Despachos y Rutas (pestaña "1. Calendario de Pedidos") pulsa "+ Nuevo Pedido" para registrar entregas con cliente, productos/libras, fecha comprometida y prioridad (Urgente, Alta, Normal). Usa los filtros por estado ("Pendientes / En Ruta / Entregados") para organizar la carga.',
                 image: 'egg-despachos.png',
                 annotations: [
-                    { n: 1, x: 76.4, y: 20, w: 18.1, h: 3.6, label: 'Accesos directos a "Nuevo Pedido" y "Planificar Ruta".' },
-                    { n: 2, x: 21.1, y: 32.7, w: 69.7, h: 3.9, label: '4 etapas del flujo: Calendario de Pedidos, Planificador & Mapa, Flota y Modo Motorista.' },
-                    { n: 3, x: 22.2, y: 48.3, w: 47.8, h: 3.6, label: 'Filtros por cliente, estado (Pendientes / En Ruta / Entregados) y prioridad.' }
+                    { n: 1, x: 76.4, y: 20, w: 18.1, h: 3.6, label: 'Accesos rápidos "+ Nuevo Pedido" y "Planificar Ruta".' },
+                    { n: 2, x: 21.1, y: 32.7, w: 69.7, h: 3.9, label: 'Las 4 etapas logísticas: Pedidos, Planificador & Mapa, Flota y Modo Motorista.' },
+                    { n: 3, x: 22.2, y: 48.3, w: 47.8, h: 3.6, label: 'Filtros por cliente, estado de entrega y prioridad del despacho.' }
                 ],
-                tip: 'Usa las prioridades (Urgentes, Altas, Normales) para organizar el orden de carga en los camiones refrigerados.'
+                tip: 'Marca los pedidos con prioridad "Urgente" o "Alta" para que el planificador los priorice al armar los viajes del día.'
             },
             {
-                title: 'Consultar Inventario Industrial en Libras, Kilogramos o Unidades',
-                description: 'Abre Huevo Industrial → Inventario Industrial. Puedes alternar arriba entre Producto Terminado, Materia Prima, Mermas y Desperdicios o Insumos; cambiar instantáneamente la unidad de medida entre "Lbs", "Kg" y "Unidades"; pulsar "Ver Lotes" por fila y exportar a PDF o Excel.',
-                image: 'egg-inventario.png',
+                title: '2. Planificar Rutas, Asignar Lotes y Facturar en Bloque',
+                description: 'Pasa a la pestaña "2. Planificador de Rutas & Mapa". Elige una ruta en el selector o crea una con "+ Crear Nueva Ruta" asignando camión, motorista y pedidos; luego desde el detalle de la ruta asignas los lotes específicos y ejecutas la Facturación Automática de Ruta para emitir los DTEs en serie.',
+                image: 'egg-despachos-rutas.png',
                 annotations: [
-                    { n: 1, x: 70.2, y: 14, w: 25.2, h: 3.6, label: 'Exportar PDF/Excel y selector inmediato de unidad ("Lbs", "Kg", "Unidades").' },
-                    { n: 2, x: 20.9, y: 21.6, w: 78.3, h: 4.8, label: 'Cuatro vistas globales: Producto Terminado, Materia Prima, Mermas e Insumos.' },
-                    { n: 3, x: 88.5, y: 72.3, w: 6.4, h: 12, label: 'Botón "Ver Lotes" para inspeccionar lotes julianos y fechas de vencimiento por presentación.' }
+                    { n: 1, x: 37.1, y: 32.8, w: 17.8, h: 3.6, label: 'Pestaña "2. Planificador de Rutas & Mapa" para organizar paradas y cargas.' },
+                    { n: 2, x: 30.9, y: 42.3, w: 16, h: 4.1, label: 'Selector de ruta activa (y acceso derecho "+ Crear Nueva Ruta").' },
+                    { n: 3, x: 85, y: 42.5, w: 10.1, h: 3.6, label: 'Botón "+ Crear Nueva Ruta" para consolidar pedidos de un viaje.' }
                 ],
-                tip: 'La pestaña "Catálogo Traducido" unifica presentaciones comerciales a equivalentes exactos de peso neto.'
+                tip: 'Al facturar automáticamente una ruta puedes elegir qué lotes específicos se descargan en cada factura y previsualizar/imprimir todo el legajo en PDF.'
             },
             {
-                title: 'Controlar Empaques, Aditivos y Químicos CIP en Inventario de Insumos',
-                description: 'En Huevo Industrial → Inventario de Insumos clasifica artículos en Empaques, Aditivos o Químicos CIP y controla alertas de "Bajo Stock" o "Agotados". Usa "Nuevo Insumo" para crear ítems, "Registrar Entrada / Salida" para movimientos y "Sincronizar Costeo" para alimentar el costo unitario.',
-                image: 'egg-insumos.png',
+                title: '3. Controlar Vehículos Refrigerados y Mantenimientos en Flota',
+                description: 'En la pestaña "3. Flota y Mantenimiento" administras las unidades de reparto refrigeradas (`C-104928`, etc.) con "+ Agregar Vehículo", controlas el odómetro y registras servicios preventivos o correctivos con "Registrar Mantenimiento" para evitar fallas de cadena de frío.',
+                image: 'egg-despachos-flota.png',
                 annotations: [
-                    { n: 1, x: 60, y: 13.3, w: 34.9, h: 8.4, label: 'Botones PDF, Excel, "Sincronizar Costeo", "Registrar Entrada / Salida" y "Nuevo Insumo".' },
-                    { n: 2, x: 20.6, y: 43.8, w: 75.1, h: 3.4, label: 'Filtros por categoría (Empaques, Aditivos, Químicos CIP), nivel de stock y buscador.' },
-                    { n: 3, x: 67.9, y: 55.1, w: 27.1, h: 3.2, label: 'Alternador entre "Existencias de Insumos" y "Kárdex de Movimientos".' }
+                    { n: 1, x: 55.5, y: 32.8, w: 15.1, h: 3.6, label: 'Pestaña "3. Flota y Mantenimiento" para unidades y talleres.' },
+                    { n: 2, x: 71.8, y: 40.8, w: 23.4, h: 3.6, label: 'Botones "+ Agregar Vehículo" y "Registrar Mantenimiento".' },
+                    { n: 3, x: 21.1, y: 48, w: 74, h: 38, label: 'Tarjetas por camión con placa/edición y tabla de mantenimientos programados.' }
                 ],
-                tip: 'También tienes Huevo Industrial → Contenedores de Frío (en el menú) para administrar retornables o racks refrigerados prestados a clientes.'
+                tip: 'Registra siempre la fecha próxima de cambio de aceite o revisión de termoking para anticipar mantenimientos.'
             },
             {
-                title: 'Analizar costos reales en Costeo por Libra & Simulador',
-                description: 'Ingresa a Huevo Industrial → Costeo por Libra & Simulador para calcular el costo real por libra según materia prima, rendimientos, empaques, CIP y gastos. Presiona "Cargar Parámetros Reales al Simulador" y usa las pestañas de la calculadora para simular márgenes de venta.',
-                image: 'egg-costeo.png',
+                title: '4. Confirmar Entregas en Campo con Modo Motorista y Escáner QR',
+                description: 'Abre la pestaña "4. Modo Motorista (Móvil)" desde el teléfono o tablet del reparto. Muestra al motorista asignado sus paradas de entrega del día con el escáner QR de DTE y botón de confirmación para cerrar la ruta en vivo.',
+                image: 'egg-despachos-motorista.png',
                 annotations: [
-                    { n: 1, x: 76.3, y: 15.6, w: 18.9, h: 3.9, label: 'Botones "Recalcular" y "Guardar Escenario" para comparar supuestos financieros.' },
-                    { n: 2, x: 75.8, y: 48.2, w: 19.3, h: 3.6, label: 'Botón "Cargar Parámetros Reales al Simulador" con promedios de planta.' },
-                    { n: 3, x: 19.9, y: 76.9, w: 80.1, h: 3.9, label: 'Pestañas: Calculadora, Simulador Margen Libre, Metas, Acuerdos, Insumos y Escenarios.' }
+                    { n: 1, x: 71.3, y: 32.8, w: 19.5, h: 3.6, label: 'Pestaña "4. Modo Motorista (Móvil)" optimizada para entregas en ruta.' },
+                    { n: 2, x: 21.1, y: 43, w: 74, h: 45, label: 'Vista operativa de entregas del día con lectura de QR DTE y confirmación.' }
                 ],
-                tip: 'Cuando actualices costos de empaques o insumos en Inventario de Insumos, pulsa "Sincronizar Costeo" para verlos reflejados aquí.'
+                tip: 'Cuando la entrega se confirma en Modo Motorista, el pedido pasa automáticamente a Entregado en el Dashboard de Andelsa.'
             }
         ],
         troubleshooting: [
-            { issue: 'Los insumos figuran en 0 o Agotados tras crearlos', fix: 'Registra su saldo inicial usando el botón "Registrar Entrada / Salida" en Inventario de Insumos.' },
-            { issue: 'No puedo asignar un pedido a una ruta', fix: 'Verifica en la pestaña "3. Flota y Mantenimiento" que exista al menos un vehículo y motorista disponible.' }
+            { issue: 'No puedo crear una ruta porque no aparecen camiones ni motoristas', fix: 'Entra primero a la pestaña "3. Flota y Mantenimiento" y da de alta el vehículo con "+ Agregar Vehículo".' },
+            { issue: 'Falta un lote al ejecutar la Facturación Automática de Ruta', fix: 'Confirma que el lote ya haya cerrado su etapa en Empaque y que tenga unidades disponibles en Inventario Industrial.' }
         ]
     },
     {
@@ -195,7 +204,7 @@ const INDUSTRIAL_CRM_TUTORIALS = [
         categoryLabel: 'Planta Industrial y CRM',
         requiredModule: 'egg_industrial',
         menuPath: 'Huevo Industrial → Calendario de Producción y Contenedores de Frío',
-        title: 'Calendario de Producción y Control de Contenedores de Frío',
+        title: 'ANDELSA: Calendario de Producción y Control de Contenedores de Frío',
         summary: 'Planifica corridas diarias según pedidos y sugerencias IA de materia prima, y controla la ocupación, días encendidos y cortes de cobro de contenedores de frío.',
         outcome: 'Programar la planta según demanda real de clientes y facturar/liquidar correctamente los días de almacenamiento en contenedores refrigerados.',
         duration: '5 min',
@@ -241,51 +250,73 @@ const INDUSTRIAL_CRM_TUTORIALS = [
         category: 'industrial',
         categoryLabel: 'Planta Industrial y CRM',
         requiredModule: 'egg_industrial',
-        menuPath: 'Huevo Industrial → Costeo/Mantenimiento, Reportes y Ajustes',
-        title: 'Costos y Envases, Reportes Oficiales y Ajustes de Planta',
-        summary: 'Administra costos por lote, cubetas retornables y mantenimiento de equipos; emite los 7 reportes oficiales de planta en PDF/Excel y configura prefijos y rendimientos.',
-        outcome: 'Controlar envases retornables, mantener los gastos reales de planta sincronizados con Planillas y descargar todos los reportes oficiales en 1 clic.',
-        duration: '5 min',
+        menuPath: 'Huevo Industrial → Costeo/Mantenimiento, Envases Retornables, Reportes y Ajustes',
+        title: 'ANDELSA: Costos, Cubetas Retornables, 7 Reportes Oficiales y Ajustes de Planta',
+        summary: 'Administra costos por lote, control de cubetas y tapaderas retornables, mantenimiento de equipos; emite los 7 reportes oficiales de planta en PDF/Excel y configura prefijos y rendimientos.',
+        outcome: 'Conciliar cubetas prestadas con clientes, sincronizar gastos reales de planillas RRHH con Costeo y descargar los 7 reportes oficiales de ANDELSA en 1 clic.',
+        duration: '6 min',
         modulePath: '/industrial/reportes',
         roles: ['Supervisor', 'Gerencia', 'Contador', 'Operaciones', 'Bodega', 'Produccion', 'Calidad', 'Jefe Pista', 'Admin'],
-        requiredPermissions: ['manage_industrial_costs', 'view_egg_reports', 'view_egg_raw_materials_report', 'view_egg_production_report', 'view_egg_packaging_report', 'view_egg_quality_report', 'view_egg_inventory_report', 'manage_industrial_settings'],
+        requiredPermissions: ['manage_industrial_costs', 'view_egg_reports', 'view_egg_raw_materials_report', 'view_egg_production_report', 'view_egg_packaging_report', 'view_egg_quality_report', 'view_egg_inventory_report', 'manage_industrial_settings', 'manage_egg_returnables'],
         coverImage: 'egg-reportes.png',
         prerequisites: [
-            'Tener al menos lotes registrados o parámetros base de costos/prefijos configurados en Ajustes de Planta.'
+            'Tener al menos lotes registrados o parámetros base de costos/prefijos configurados en Huevo Industrial → Ajustes.'
         ],
         steps: [
             {
-                title: 'Gestionar Costos por Lote, Cubetas Retornables y Mantenimiento',
-                description: 'En Huevo Industrial → Costeo y Mantenimiento cambia entre las 4 pestañas: "Costos por Lote" (pulsa "Sincronizar Datos Reales" para cargar lotes del rango), "Envases Retornables (Cubetas)" (control de préstamos con clientes), "Mantenimiento de Equipos" y "Proyección de Demanda", o salta directo con "Abrir Costeo por Libra →".',
+                title: 'Analizar Costos por Lote, Mantenimiento y Proyección de Demanda',
+                description: 'En Huevo Industrial → Costeo y Mantenimiento entra a "Costos por Lote" y pulsa "Sincronizar Datos Reales" para cargar el costo real por libra de cada lote del rango. Desde las otras pestañas gestionas Mantenimiento de Equipos y Proyección de Demanda, o saltas directo con "Abrir Costeo por Libra →".',
                 image: 'egg-costos-mantenimiento.png',
                 annotations: [
                     { n: 1, x: 84.9, y: 14.3, w: 11.5, h: 3.6, label: 'Acceso directo "Abrir Costeo por Libra →" hacia el simulador financiero.' },
                     { n: 2, x: 19.9, y: 39, w: 53, h: 3.9, label: 'Pestañas: Costos por Lote, Envases Retornables (Cubetas), Mantenimiento y Proyección.' },
                     { n: 3, x: 62.9, y: 49.4, w: 12.2, h: 3.2, label: 'Botón "Sincronizar Datos Reales" para calcular el costo real por libra procesada.' }
                 ],
-                tip: 'Lleva al día la pestaña "Envases Retornables (Cubetas)" para emitir el saldo exacto de cubetas en poder de cada cliente o granja.'
+                tip: 'Consulta las guías #38, #39 y #40 para el detalle avanzado de Trazabilidad/LAB-004, Inventario/Insumos y Costeo por Libra.'
             },
             {
-                title: 'Generar los 7 Reportes Oficiales de Huevo Industrial',
-                description: 'Entra a Huevo Industrial → Reportes y selecciona el módulo arriba: "Ventas por Producto", "Ventas por Cliente", "Producción", "Materia prima", "Envasado", "Calidad" o "Mermas". Ajusta fechas, producto o cliente, activa si aplica el switch de Notas de Crédito (05) y pulsa "Filtrar", "Descargar XLSX", "Descargar PDF" o "Ver PDF".',
+                title: 'Controlar Envases Retornables (Cubetas y Tapaderas por Cliente)',
+                description: 'En la pestaña "Envases Retornables (Cubetas)" controlas cubetas (+) prestadas, devoluciones (-), saldos netos y descuadres de tapaderas por cliente. Pulsa "Sincronizar Facturación Automática" para cruzar envíos facturados y usa el filtro "Con Descuadre de Tapas" o "Con Saldo Pendiente".',
+                image: 'egg-costos-cubetas.png',
+                annotations: [
+                    { n: 1, x: 29.9, y: 39, w: 15.4, h: 3.9, label: 'Pestaña "Envases Retornables (Cubetas)" para control de préstamo y devolución.' },
+                    { n: 2, x: 62.5, y: 49.2, w: 20, h: 8.6, label: 'Botones "Sincronizar Facturación Automática", "Recargar saldos" y "Registrar Cliente para Envases".' },
+                    { n: 3, x: 20.6, y: 82.4, w: 75.1, h: 3.9, label: 'Buscador de cliente y filtros rápidos: Todos, Con Saldo Pendiente y Con Descuadre de Tapas.' }
+                ],
+                tip: 'Sincroniza después de emitir facturación de rutas para que cada cubeta entregada se sume al saldo del cliente automáticamente.'
+            },
+            {
+                title: 'Generar los 7 Reportes Oficiales de Huevo Industrial (PDF y Excel)',
+                description: 'Entra a Huevo Industrial → Reportes y selecciona el módulo arriba: "Ventas por Producto", "Ventas por Cliente", "Producción", "Materia prima", "Envasado", "Calidad" o "Mermas". Ajusta fechas, activa si aplica Notas de Crédito (05) y pulsa "Filtrar", "Gráficas", "Descargar XLSX", "Descargar PDF" o "Ver PDF".',
                 image: 'egg-reportes.png',
                 annotations: [
                     { n: 1, x: 19.5, y: 10.9, w: 54.2, h: 4.1, label: '7 áreas de reporte: Ventas por Producto/Cliente, Producción, Materia Prima, Envasado, Calidad y Mermas.' },
-                    { n: 2, x: 20.6, y: 20.5, w: 71.5, h: 5, label: 'Filtros rápidos de Mes, rango Desde/Hasta, Producto, Cliente y tipo de documento fiscal.' },
-                    { n: 3, x: 33.7, y: 27.6, w: 61.9, h: 3.9, label: 'Botón "Filtrar" + "Gráficas", "Descargar XLSX" (Excel), "Descargar PDF" y "Ver PDF".' }
+                    { n: 2, x: 20.6, y: 20.5, w: 71.5, h: 5, label: 'Filtros rápidos de Mes, rango Desde/Hasta, Producto, Cliente y Criterio de Documentos.' },
+                    { n: 3, x: 33.7, y: 27.6, w: 61.9, h: 3.9, label: 'Botón "Filtrar", "Gráficas", "Descargar XLSX" (Excel), "Descargar PDF" y "Ver PDF".' }
                 ],
                 tip: 'Haz clic sobre cualquier fila de la tabla resumen para desplegar su desglose detallado de facturas, lotes o clientes sin salir de la pantalla.'
             },
             {
-                title: 'Configurar Costos Operativos, Prefijos y Rendimientos en Ajustes',
-                description: 'En Huevo Industrial → Ajustes tienes 4 pestañas clave: "Costos y Planillas" (presiona "Cargar desde Planillas RRHH y Gastos Operativos" para traer costos reales sin digitar), "Prefijos de Lote por Proveedor", "Rendimientos de Producto" (porcentajes de huevo entero, clara y yema) y "Vinculación de Códigos".',
+                title: 'Configurar Costos Operativos y Planillas RRHH en Huevo Industrial → Ajustes',
+                description: 'En Huevo Industrial → Ajustes → "Costos y Planillas" presionas "Cargar desde Planillas RRHH y Gastos Operativos" para traer costos reales de nómina y planta sin digitarlos a mano. También dispones de la pestaña "Rendimientos de Producto" (% entero/clara/yema) y "Vinculación de Códigos".',
                 image: 'egg-configuracion.png',
                 annotations: [
-                    { n: 1, x: 47.6, y: 14.3, w: 39, h: 7.3, label: 'Pestañas de configuración: Costos y Planillas, Prefijos de Lote, Rendimientos y Códigos.' },
+                    { n: 1, x: 47.6, y: 14.3, w: 39, h: 7.3, label: '4 pestañas de configuración: Costos y Planillas, Prefijos de Lote, Rendimientos y Códigos.' },
                     { n: 2, x: 73.7, y: 34.4, w: 22.5, h: 4.3, label: 'Botón verde "Cargar desde Planillas RRHH y Gastos Operativos" para sincronización contable real.' },
-                    { n: 3, x: 74.6, y: 51.4, w: 21.6, h: 5.2, label: 'Botón de ayuda explicando cómo se calcula y prorratea cada rubro operativo.' }
+                    { n: 3, x: 74.6, y: 51.4, w: 21.6, h: 5.2, label: 'Ayuda contextual "(?)" explicando exactamente cómo se calcula y prorratea cada rubro.' }
                 ],
-                tip: 'Haz clic en el ícono "(?)" junto a cualquier rubro de costo operativo para ver exactamente de qué cuentas de RRHH o Gastos proviene su cálculo.'
+                tip: 'Haz clic en "(?)" junto a cualquier rubro para confirmar de qué departamento RRHH o cuenta contable proviene su cálculo.'
+            },
+            {
+                title: 'Parametrizar Prefijos de Lote, Taras y Empaques por Granja / Proveedor',
+                description: 'Cambia a la pestaña "Prefijos de Lote por Proveedor" dentro de Ajustes para definir el prefijo automático (ej. `GRJ-`), taras base por tarima y empaque habitual de cada proveedor con "+ Asignar Prefijo a Proveedor". Esto acelera la captura diaria en Recepción MP.',
+                image: 'egg-config-prefijos.png',
+                annotations: [
+                    { n: 1, x: 57.4, y: 14.3, w: 15, h: 3.4, label: 'Pestaña "Prefijos de Lote por Proveedor" en Configuración de Parámetros.' },
+                    { n: 2, x: 80.9, y: 31.7, w: 14.2, h: 4.1, label: 'Botón "Asignar Prefijo a Proveedor" para agregar una regla de recepción por granja.' },
+                    { n: 3, x: 21.2, y: 42.6, w: 73.9, h: 57.4, label: 'Tabla de reglas con Prefijo, Taras base por tarima, Empaque habitual y botones Editar/Eliminar.' }
+                ],
+                tip: 'Con las taras base por tarima configuradas aquí, Recepción MP descuenta el peso del empaque plástico automáticamente.'
             }
         ],
         troubleshooting: [
