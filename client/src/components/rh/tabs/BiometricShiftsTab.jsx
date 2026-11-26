@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Clock, RefreshCw, Save, Plus, Trash2 } from 'lucide-react';
+import BiometricOvertimeRulesSection from '../BiometricOvertimeRulesSection';
 
 const BiometricShiftsTab = ({
     form,
@@ -133,6 +134,8 @@ const BiometricShiftsTab = ({
                         </p>
                     </div>
                 </div>
+
+                <BiometricOvertimeRulesSection form={form} setForm={setForm} />
 
                 <div className="flex items-center justify-between pt-1">
                     <button

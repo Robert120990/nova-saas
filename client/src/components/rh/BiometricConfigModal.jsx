@@ -35,9 +35,9 @@ const BiometricConfigModal = ({ open, onClose }) => {
         ventana_salida_fin: '23:59',
         modo_clasificacion: 'hibrido',
         pais_festivos: 'SV',
-        vincular_con_planilla: 0,
-        calcular_horas_extra: 1,
-        horas_jornada_diaria: 8.00
+        vincular_con_planilla: 0, calcular_horas_extra: 1, horas_jornada_diaria: 8.00,
+        modo_calculo_jornada: 'neto_sin_almuerzo', redondeo_horas_extra_minutos: 0,
+        umbral_redondeo_minutos: 15, compensar_sabado: 0, horas_jornada_sabado: 4.00, permitir_saldo_negativo: 0
     });
 
     const [empSearch, setEmpSearch] = useState('');

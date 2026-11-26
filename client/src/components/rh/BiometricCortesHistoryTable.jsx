@@ -50,7 +50,13 @@ const BiometricCortesHistoryTable = ({ cortesList, isLoading, onSelectCorte, onE
                                     <td className="py-3 px-4 text-center font-bold">{c.total_empleados}</td>
                                     <td className="py-3 px-4 text-right font-mono font-medium">{c.total_horas_trabajadas} h</td>
                                     <td className="py-3 px-4 text-right font-mono font-bold text-emerald-700">
-                                        +{c.total_horas_extra_aprobadas} h
+                                        <span className="block">
+                                            +{Number(c.total_horas_extra_pagables || c.total_horas_extra_aprobadas || 0).toFixed(1)} h
+                                        </span>
+                                        <span className="block text-[10px] font-medium text-slate-400">
+                                            Prod: {Number(c.total_horas_extra_produccion || 0).toFixed(1)} · Transp: {Number(c.total_horas_extra_transporte || 0).toFixed(1)}
+                                            {Number(c.total_horas_extra_avicola || 0) > 0 ? ` · Avíc: +${Number(c.total_horas_extra_avicola).toFixed(1)}` : ''}
+                                        </span>
                                     </td>
                                     <td className="py-3 px-4 text-center">
                                         <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200">

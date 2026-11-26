@@ -14,6 +14,7 @@ import BiometricCorteExportModal from '../BiometricCorteExportModal';
 import BiometricImportZkModal from '../BiometricImportZkModal';
 import BiometricCortesHistoryTable from '../BiometricCortesHistoryTable';
 import BiometricOvertimeTable from '../BiometricOvertimeTable';
+import BiometricCortesSaldosTable from '../BiometricCortesSaldosTable';
 import { BiometricPendingBanner, BiometricFrozenBanner } from '../BiometricOvertimeBanners';
 
 const BiometricOvertimeCortesTab = () => {
@@ -162,6 +163,8 @@ const BiometricOvertimeCortesTab = () => {
                 params: {
                     startDate: activeStartDate,
                     endDate: activeEndDate,
+                    corteId: selectedCorte?.id || undefined,
+                    corteNombre: selectedCorte?.nombre || undefined,
                     format: 'andelsa_excel',
                     template: 'andelsa'
                 },
@@ -263,6 +266,17 @@ const BiometricOvertimeCortesTab = () => {
                     isLoading={isCortesLoading}
                     onSelectCorte={handleSelectCorte}
                     onExportCorte={(c) => setExportCorteTarget(c)}
+                />
+            )}
+
+            {(subView === 'pending' || selectedCorte) && (
+                <BiometricCortesSaldosTable
+                    employeeSummaries={overtimeData?.employeeSummaries || employees}
+                    summary={overtimeData?.periodTotals || summary}
+                    previousCorte={overtimeData?.previous_corte || null}
+                    rules={overtimeData?.rules || {}}
+                    selectedEmployeeKey={selectedEmployeeKey === 'all' ? '' : selectedEmployeeKey}
+                    onSelectEmployee={(key) => setSelectedEmployeeKey(key || 'all')}
                 />
             )}
 

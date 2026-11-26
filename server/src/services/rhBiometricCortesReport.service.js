@@ -10,7 +10,7 @@ const { getDailyOvertimeRows } = require('./rhBiometricCortes.service');
  */
 function fmtHoursPair(val) {
     const num = Number(val || 0);
-    if (num <= 0) return '0.00 h';
+    if (num === 0) return '0.00 h';
     return `${formatDecimalHoursText(num, true)} (${num.toFixed(2)}h)`;
 }
 
@@ -196,7 +196,7 @@ function renderGlobalCortePdf(doc, ctx) {
         doc.fontSize(7).fillColor('#475569');
         doc.text(`${emp.horas_extra_calculadas.toFixed(2)}h`, cols[7].x + 2, y + 9, { width: cols[7].w - 4, align: 'right', lineBreak: false });
 
-        doc.font('Helvetica-Bold').fillColor(emp.horas_extra_aprobadas > 0 ? '#15803d' : '#64748b');
+        doc.font('Helvetica-Bold').fillColor(emp.horas_extra_aprobadas > 0 ? '#15803d' : (emp.horas_extra_aprobadas < 0 ? '#b91c1c' : '#64748b'));
         doc.text(`${emp.horas_extra_aprobadas.toFixed(2)}h`, cols[8].x + 2, y + 5, { width: cols[8].w - 4, align: 'right', lineBreak: false });
         doc.font('Helvetica').fontSize(5.8).fillColor('#475569').text(formatDecimalHoursText(emp.horas_extra_aprobadas, true), cols[8].x + 2, y + 14, { width: cols[8].w - 4, align: 'right', lineBreak: false });
 
@@ -339,8 +339,9 @@ function renderDetailedPersonPdf(doc, ctx) {
             doc.fillColor('#475569').text(r.horas_extra_calculadas > 0 ? `${Number(r.horas_extra_calculadas).toFixed(2)}h` : '—', cols[5].x + 2, y + 6, { width: cols[5].w - 4, align: 'right', lineBreak: false });
 
             const noctTag = Number(r.horas_extra_nocturnas || 0) > 0 ? ` (N:${Number(r.horas_extra_nocturnas).toFixed(2)}h)` : '';
-            doc.font('Helvetica-Bold').fillColor(r.horas_extra_aprobadas > 0 ? '#15803d' : '#94a3b8').text(
-                r.horas_extra_aprobadas > 0 ? `${Number(r.horas_extra_aprobadas).toFixed(2)}h${noctTag}` : '—',
+            const heAprobVal = Number(r.horas_extra_aprobadas || 0);
+            doc.font('Helvetica-Bold').fillColor(heAprobVal > 0 ? '#15803d' : (heAprobVal < 0 ? '#b91c1c' : '#94a3b8')).text(
+                heAprobVal !== 0 ? `${heAprobVal.toFixed(2)}h${noctTag}` : '—',
                 cols[6].x + 2,
                 y + 6,
                 { width: cols[6].w - 4, align: 'right', lineBreak: false }

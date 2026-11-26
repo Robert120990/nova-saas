@@ -14,6 +14,8 @@ export { default as BiometricEditOvertimeModal } from './BiometricEditOvertimeMo
 export { default as BiometricFreezePeriodModal } from './BiometricFreezePeriodModal';
 export { default as BiometricCorteExportModal } from './BiometricCorteExportModal';
 export { default as BiometricCortesHistoryTable } from './BiometricCortesHistoryTable';
+export { default as BiometricCortesSaldosTable } from './BiometricCortesSaldosTable';
+export { default as BiometricOvertimeRulesSection } from './BiometricOvertimeRulesSection';
 export { default as BiometricOvertimeTable } from './BiometricOvertimeTable';
 export { default as BiometricEmployeeModal } from './BiometricEmployeeModal';
 export { default as BiometricImportZkModal } from './BiometricImportZkModal';

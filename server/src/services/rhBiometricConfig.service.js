@@ -8,7 +8,13 @@ const DEFAULT_SETTINGS = {
     ventana_almuerzo_inicio: '11:00:00', ventana_almuerzo_fin: '14:30:00',
     ventana_salida_inicio: '15:00:00', ventana_salida_fin: '23:59:59',
     modo_clasificacion: 'hibrido', pais_festivos: 'SV',
-    vincular_con_planilla: 0, calcular_horas_extra: 1, horas_jornada_diaria: 8.00
+    vincular_con_planilla: 0, calcular_horas_extra: 1, horas_jornada_diaria: 8.00,
+    modo_calculo_jornada: 'neto_sin_almuerzo',
+    redondeo_horas_extra_minutos: 0,
+    umbral_redondeo_minutos: 15,
+    compensar_sabado: 0,
+    horas_jornada_sabado: 4.00,
+    permitir_saldo_negativo: 0
 };
 
 async function getSettings(companyId) {
@@ -46,8 +52,17 @@ async function updateSettings(companyId, data) {
         tolerancia_entrada_minutos, tolerancia_salida_temprana_minutos,
         ventana_entrada_inicio, ventana_entrada_fin, ventana_almuerzo_inicio, ventana_almuerzo_fin,
         ventana_salida_inicio, ventana_salida_fin, modo_clasificacion, pais_festivos,
-        vincular_con_planilla, calcular_horas_extra, horas_jornada_diaria
+        vincular_con_planilla, calcular_horas_extra, horas_jornada_diaria,
+        modo_calculo_jornada, redondeo_horas_extra_minutos, umbral_redondeo_minutos,
+        compensar_sabado, horas_jornada_sabado, permitir_saldo_negativo
     } = data;
+
+    const modoJornada = modo_calculo_jornada === 'bruto_con_almuerzo' ? 'bruto_con_almuerzo' : 'neto_sin_almuerzo';
+    const redondeoMins = Math.max(0, Math.min(60, parseInt(redondeo_horas_extra_minutos, 10) || 0));
+    const umbralMins = Math.max(1, Math.min(60, parseInt(umbral_redondeo_minutos, 10) || 15));
+    const compSab = compensar_sabado ? 1 : 0;
+    const hrsSab = parseFloat(horas_jornada_sabado) > 0 ? parseFloat(horas_jornada_sabado) : 4.00;
+    const allowNeg = permitir_saldo_negativo ? 1 : 0;
 
     await pool.query(
         `INSERT INTO rh_biometric_settings
@@ -55,8 +70,10 @@ async function updateSettings(companyId, data) {
           tolerancia_entrada_minutos, tolerancia_salida_temprana_minutos,
           ventana_entrada_inicio, ventana_entrada_fin, ventana_almuerzo_inicio, ventana_almuerzo_fin,
           ventana_salida_inicio, ventana_salida_fin, modo_clasificacion, pais_festivos,
-          vincular_con_planilla, calcular_horas_extra, horas_jornada_diaria)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          vincular_con_planilla, calcular_horas_extra, horas_jornada_diaria,
+          modo_calculo_jornada, redondeo_horas_extra_minutos, umbral_redondeo_minutos,
+          compensar_sabado, horas_jornada_sabado, permitir_saldo_negativo)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
           hora_entrada = VALUES(hora_entrada), hora_salida = VALUES(hora_salida),
           hora_inicio_almuerzo = VALUES(hora_inicio_almuerzo), hora_fin_almuerzo = VALUES(hora_fin_almuerzo),
@@ -67,7 +84,13 @@ async function updateSettings(companyId, data) {
           ventana_salida_inicio = VALUES(ventana_salida_inicio), ventana_salida_fin = VALUES(ventana_salida_fin),
           modo_clasificacion = VALUES(modo_clasificacion), pais_festivos = VALUES(pais_festivos),
           vincular_con_planilla = VALUES(vincular_con_planilla), calcular_horas_extra = VALUES(calcular_horas_extra),
-          horas_jornada_diaria = VALUES(horas_jornada_diaria)`,
+          horas_jornada_diaria = VALUES(horas_jornada_diaria),
+          modo_calculo_jornada = VALUES(modo_calculo_jornada),
+          redondeo_horas_extra_minutos = VALUES(redondeo_horas_extra_minutos),
+          umbral_redondeo_minutos = VALUES(umbral_redondeo_minutos),
+          compensar_sabado = VALUES(compensar_sabado),
+          horas_jornada_sabado = VALUES(horas_jornada_sabado),
+          permitir_saldo_negativo = VALUES(permitir_saldo_negativo)`,
         [
             companyId, hora_entrada || DEFAULT_SETTINGS.hora_entrada, hora_salida || DEFAULT_SETTINGS.hora_salida,
             hora_inicio_almuerzo || DEFAULT_SETTINGS.hora_inicio_almuerzo, hora_fin_almuerzo || DEFAULT_SETTINGS.hora_fin_almuerzo,
@@ -76,7 +99,8 @@ async function updateSettings(companyId, data) {
             ventana_almuerzo_inicio || DEFAULT_SETTINGS.ventana_almuerzo_inicio, ventana_almuerzo_fin || DEFAULT_SETTINGS.ventana_almuerzo_fin,
             ventana_salida_inicio || DEFAULT_SETTINGS.ventana_salida_inicio, ventana_salida_fin || DEFAULT_SETTINGS.ventana_salida_fin,
             modo_clasificacion || DEFAULT_SETTINGS.modo_clasificacion, pais_festivos || DEFAULT_SETTINGS.pais_festivos,
-            vincular_con_planilla ? 1 : 0, calcular_horas_extra ? 1 : 0, parseFloat(horas_jornada_diaria) || 8.00
+            vincular_con_planilla ? 1 : 0, calcular_horas_extra ? 1 : 0, parseFloat(horas_jornada_diaria) || 8.00,
+            modoJornada, redondeoMins, umbralMins, compSab, hrsSab, allowNeg
         ]
     );
 

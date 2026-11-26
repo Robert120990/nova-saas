@@ -45,23 +45,42 @@ async function getBiometricPayrollContext(pool, companyId, periodoAnio, periodoM
         return byEmployee.get(empId);
     };
 
-    // 1. Horas extra aprobadas (priorizando registros en cortes congelados o ajustes guardados del rango)
+    // 1. Horas extra aprobadas (priorizando saldos consolidados con arrastre de cortes congelados)
     if (settingsRows[0].calcular_horas_extra) {
-        const [otRows] = await pool.query(
-            `SELECT empleado_id, salida, horas_extra_aprobadas
-             FROM rh_biometric_daily_overtime
-             WHERE company_id = ? AND empleado_id IS NOT NULL
-               AND fecha >= ? AND fecha <= ?
-               AND horas_extra_aprobadas > 0`,
+        const [frozenSaldos] = await pool.query(
+            `SELECT s.empleado_id, SUM(s.horas_pagables) as horas_pagables
+             FROM rh_biometric_corte_saldos s
+             JOIN rh_biometric_cortes c ON c.id = s.corte_id
+             WHERE s.company_id = ? AND c.estado = 'congelado'
+               AND s.empleado_id IS NOT NULL
+               AND c.fecha_fin >= ? AND c.fecha_fin <= ?
+             GROUP BY s.empleado_id`,
             [companyId, range.startDate, range.endDate]
         ).catch(() => [[]]);
 
-        for (const r of otRows) {
-            const entry = ensure(r.empleado_id);
-            const mins = Math.round(parseFloat(r.horas_extra_aprobadas || 0) * 60);
-            const split = splitOvertimeDayNight(r.salida ? `2026-01-01 ${r.salida}` : null, mins);
-            entry.horasExtraDiurnas = parseFloat((entry.horasExtraDiurnas + split.horasExtraDiurnas).toFixed(2));
-            entry.horasExtraNocturnas = parseFloat((entry.horasExtraNocturnas + split.horasExtraNocturnas).toFixed(2));
+        if (frozenSaldos.length > 0) {
+            for (const r of frozenSaldos) {
+                const entry = ensure(r.empleado_id);
+                const pagables = Math.max(0, parseFloat(r.horas_pagables || 0));
+                entry.horasExtraDiurnas = parseFloat((entry.horasExtraDiurnas + pagables).toFixed(2));
+            }
+        } else {
+            const [otRows] = await pool.query(
+                `SELECT empleado_id, salida, horas_extra_aprobadas
+                 FROM rh_biometric_daily_overtime
+                 WHERE company_id = ? AND empleado_id IS NOT NULL
+                   AND fecha >= ? AND fecha <= ?
+                   AND horas_extra_aprobadas > 0`,
+                [companyId, range.startDate, range.endDate]
+            ).catch(() => [[]]);
+
+            for (const r of otRows) {
+                const entry = ensure(r.empleado_id);
+                const mins = Math.round(parseFloat(r.horas_extra_aprobadas || 0) * 60);
+                const split = splitOvertimeDayNight(r.salida ? `2026-01-01 ${r.salida}` : null, mins);
+                entry.horasExtraDiurnas = parseFloat((entry.horasExtraDiurnas + split.horasExtraDiurnas).toFixed(2));
+                entry.horasExtraNocturnas = parseFloat((entry.horasExtraNocturnas + split.horasExtraNocturnas).toFixed(2));
+            }
         }
     }
 

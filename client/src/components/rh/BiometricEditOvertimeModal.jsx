@@ -44,8 +44,8 @@ const BiometricEditOvertimeModal = ({ open, onClose, entry, onSuccess }) => {
     const handleSubmit = (e) => {
         e.preventDefault();
         const num = parseFloat(horasAprobadas);
-        if (isNaN(num) || num < 0) {
-            toast.error('Ingrese un número de horas extra válido (mayor o igual a 0).');
+        if (isNaN(num) || num < -24 || num > 24) {
+            toast.error('Ingrese un número de horas extra válido (entre -24 y 24).');
             return;
         }
 
@@ -57,6 +57,7 @@ const BiometricEditOvertimeModal = ({ open, onClose, entry, onSuccess }) => {
             entrada: entry.entrada,
             salida: entry.salida,
             corte_id: entry.corte_id || null,
+            es_dia_compensacion: entry.es_dia_compensacion ? 1 : 0,
             horas_extra_aprobadas: num,
             observacion: observacion.trim()
         });
@@ -69,6 +70,11 @@ const BiometricEditOvertimeModal = ({ open, onClose, entry, onSuccess }) => {
     const handleSetZero = () => {
         setHorasAprobadas('0');
         if (!observacion) setObservacion('No autorizadas por jefatura');
+    };
+
+    const handleSetSaturdayComp = () => {
+        setHorasAprobadas('-4');
+        if (!observacion) setObservacion('Compensación sábado (44h sem.)');
     };
 
     return (
@@ -161,19 +167,27 @@ const BiometricEditOvertimeModal = ({ open, onClose, entry, onSuccess }) => {
                                     className="text-[10px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 px-2 py-0.5 rounded transition-colors"
                                     title="Poner a 0 horas extra"
                                 >
-                                    0 h (Denegar)
+                                    0 h
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleSetSaturdayComp}
+                                    className="text-[10px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 px-2 py-0.5 rounded transition-colors"
+                                    title="Aplicar compensación de sábado (-4 horas)"
+                                >
+                                    -4 h (Sáb)
                                 </button>
                             </div>
                         </div>
                         <input
                             type="number"
-                            step="0.25"
-                            min="0"
+                            step="0.5"
+                            min="-24"
                             max="24"
                             required
                             value={horasAprobadas}
                             onChange={(e) => setHorasAprobadas(e.target.value)}
-                            placeholder="Ej. 2.0"
+                            placeholder="Ej. 2.0 o -4.0"
                             className="w-full text-base font-bold text-indigo-900 border border-slate-300 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white"
                         />
                         {horasAprobadas !== '' && !isNaN(parseFloat(horasAprobadas)) && (

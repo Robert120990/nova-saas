@@ -1,13 +1,21 @@
 const pool = require('../config/db');
 const { extractDateOnly, normalizeDateRange } = require('./rhBiometricDate.helper');
+const { recalculateFrozenCorteTotals } = require('./rhBiometricCortesSaldos.helper');
+
+function clampHours(val) {
+    const num = parseFloat(val);
+    if (isNaN(num)) return 0;
+    return parseFloat(Math.max(-24, Math.min(24, num)).toFixed(2));
+}
 
 /**
- * Actualizar o registrar ajuste individual de horas extra
+ * Actualizar o registrar ajuste individual de horas extra (acepta valores negativos ej. -4h sábado o déficit)
  */
 async function updateOvertimeEntry(companyId, userId, data) {
     const {
         empleado_id, device_uid, fecha, horas_extra_aprobadas, observacion,
-        horas_trabajadas = 0, entrada = null, salida = null, corte_id = null
+        horas_trabajadas = 0, entrada = null, salida = null, corte_id = null,
+        horas_extra_avicola = null, es_dia_compensacion = 0
     } = data;
 
     const cleanFecha = extractDateOnly(fecha);
@@ -15,57 +23,67 @@ async function updateOvertimeEntry(companyId, userId, data) {
         throw new Error('Faltan parámetros obligatorios (device_uid o fecha).');
     }
 
-    const aprobadasNum = Math.max(0, parseFloat(horas_extra_aprobadas || 0));
+    const aprobadasNum = clampHours(horas_extra_aprobadas || 0);
+    const avicolaNum = horas_extra_avicola !== null && horas_extra_avicola !== undefined
+        ? Math.max(0, clampHours(horas_extra_avicola))
+        : 0;
+    const cleanEntrada = entrada && entrada !== '---' ? entrada : null;
+    const cleanSalida = salida && salida !== '---' ? salida : null;
 
-    await pool.query(
-        `INSERT INTO rh_biometric_daily_overtime (
-            company_id, empleado_id, device_uid, fecha, entrada, salida,
-            horas_trabajadas, horas_extra_aprobadas, es_editado, observacion,
-            corte_id, created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-            horas_extra_aprobadas = VALUES(horas_extra_aprobadas),
-            es_editado = 1,
-            observacion = VALUES(observacion),
-            updated_at = NOW()`,
-        [
-            companyId, empleado_id || null, device_uid, cleanFecha,
-            entrada || null, salida || null, horas_trabajadas,
-            aprobadasNum, observacion || null, corte_id || null, userId || null
-        ]
-    );
+    const conn = await pool.getConnection();
+    try {
+        await conn.beginTransaction();
 
-    await pool.query(
-        `UPDATE rh_biometric_attendance_logs
-         SET horas_extra = ?
-         WHERE company_id = ? AND device_uid = ?
-           AND punch_time >= ? AND punch_time <= ?`,
-        [aprobadasNum, companyId, device_uid, `${cleanFecha} 00:00:00`, `${cleanFecha} 23:59:59`]
-    );
-
-    if (corte_id) {
-        await pool.query(
-            `UPDATE rh_biometric_cortes c
-             SET total_horas_extra_aprobadas = (
-                 SELECT COALESCE(SUM(horas_extra_aprobadas), 0)
-                 FROM rh_biometric_daily_overtime
-                 WHERE corte_id = c.id
-             )
-             WHERE id = ? AND company_id = ?`,
-            [corte_id, companyId]
+        await conn.query(
+            `INSERT INTO rh_biometric_daily_overtime (
+                company_id, empleado_id, device_uid, fecha, entrada, salida,
+                horas_trabajadas, horas_extra_aprobadas, horas_extra_avicola,
+                es_dia_compensacion, es_editado, observacion, corte_id, created_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                horas_extra_aprobadas = VALUES(horas_extra_aprobadas),
+                horas_extra_avicola = COALESCE(?, horas_extra_avicola),
+                es_editado = 1,
+                observacion = VALUES(observacion),
+                updated_at = NOW()`,
+            [
+                companyId, empleado_id || null, device_uid, cleanFecha,
+                cleanEntrada, cleanSalida, parseFloat(horas_trabajadas || 0),
+                aprobadasNum, avicolaNum, es_dia_compensacion ? 1 : 0,
+                observacion || null, corte_id || null, userId || null,
+                horas_extra_avicola !== null && horas_extra_avicola !== undefined ? avicolaNum : null
+            ]
         );
-    }
 
-    return {
-        success: true,
-        message: 'Horas extra actualizadas exitosamente.',
-        horas_extra_aprobadas: aprobadasNum,
-        es_editado: 1
-    };
+        await conn.query(
+            `UPDATE rh_biometric_attendance_logs
+             SET horas_extra = ?
+             WHERE company_id = ? AND device_uid = ?
+               AND punch_time >= ? AND punch_time <= ?`,
+            [Math.max(0, aprobadasNum), companyId, device_uid, `${cleanFecha} 00:00:00`, `${cleanFecha} 23:59:59`]
+        );
+
+        if (corte_id) {
+            await recalculateFrozenCorteTotals(conn, companyId, corte_id);
+        }
+
+        await conn.commit();
+        return {
+            success: true,
+            message: 'Horas extra actualizadas exitosamente.',
+            horas_extra_aprobadas: aprobadasNum,
+            es_editado: 1
+        };
+    } catch (err) {
+        await conn.rollback();
+        throw err;
+    } finally {
+        conn.release();
+    }
 }
 
 /**
- * Congelar período por fechas
+ * Congelar período por fechas (persiste detalle diario + saldos por colaborador y arrastre de horas pendientes)
  */
 async function freezePeriod(companyId, userId, data, getDailyOvertimeRowsFn) {
     const { nombre, observaciones } = data;
@@ -93,6 +111,9 @@ async function freezePeriod(companyId, userId, data, getDailyOvertimeRowsFn) {
         onlyOvertime: 0
     });
 
+    const summary = periodData.summary || {};
+    const empSummaries = Array.isArray(periodData.employeeSummaries) ? periodData.employeeSummaries : [];
+
     const conn = await pool.getConnection();
     try {
         await conn.beginTransaction();
@@ -101,14 +122,22 @@ async function freezePeriod(companyId, userId, data, getDailyOvertimeRowsFn) {
             `INSERT INTO rh_biometric_cortes (
                 company_id, nombre, fecha_inicio, fecha_fin, estado,
                 total_empleados, total_horas_trabajadas, total_horas_extra,
-                total_horas_extra_aprobadas, observaciones, created_by
-            ) VALUES (?, ?, ?, ?, 'congelado', ?, ?, ?, ?, ?, ?)`,
+                total_horas_extra_aprobadas, total_horas_extra_produccion,
+                total_horas_extra_transporte, total_horas_extra_avicola,
+                total_horas_pendientes_aplicadas, total_horas_extra_pagables,
+                observaciones, created_by
+            ) VALUES (?, ?, ?, ?, 'congelado', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 companyId, nombre, fecha_inicio, fecha_fin,
-                periodData.summary.total_empleados,
-                periodData.summary.total_horas_trabajadas,
-                periodData.summary.total_horas_extra_calculadas,
-                periodData.summary.total_horas_extra_aprobadas,
+                summary.total_empleados || 0,
+                summary.total_horas_trabajadas || 0,
+                summary.total_horas_extra_calculadas || 0,
+                summary.total_horas_extra_aprobadas || 0,
+                summary.total_horas_extra_produccion || 0,
+                summary.total_horas_extra_transporte || 0,
+                summary.total_horas_extra_avicola || 0,
+                summary.total_horas_pendientes_aplicadas || 0,
+                summary.total_horas_extra_pagables || 0,
                 observaciones || null,
                 userId || null
             ]
@@ -120,22 +149,51 @@ async function freezePeriod(companyId, userId, data, getDailyOvertimeRowsFn) {
                 `INSERT INTO rh_biometric_daily_overtime (
                     company_id, corte_id, empleado_id, device_uid, fecha, entrada, salida,
                     horas_trabajadas, minutos_tardanza, horas_extra_calculadas,
-                    horas_extra_aprobadas, es_editado, observacion, congelado, created_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                    horas_extra_aprobadas, horas_extra_avicola, es_dia_compensacion,
+                    es_editado, observacion, congelado, created_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
                 ON DUPLICATE KEY UPDATE
                     corte_id = VALUES(corte_id),
                     congelado = 1,
                     horas_trabajadas = VALUES(horas_trabajadas),
                     horas_extra_calculadas = VALUES(horas_extra_calculadas),
                     horas_extra_aprobadas = IF(es_editado = 1, horas_extra_aprobadas, VALUES(horas_extra_aprobadas)),
+                    horas_extra_avicola = GREATEST(horas_extra_avicola, VALUES(horas_extra_avicola)),
+                    es_dia_compensacion = VALUES(es_dia_compensacion),
                     updated_at = NOW()`,
                 [
                     companyId, corteId, row.empleado_id, row.device_uid, row.fecha,
-                    row.entrada !== '---' ? row.entrada : null,
-                    row.salida !== '---' ? row.salida : null,
+                    row.entrada && row.entrada !== '---' ? row.entrada : null,
+                    row.salida && row.salida !== '---' ? row.salida : null,
                     row.horas_trabajadas, row.minutos_tardanza,
                     row.horas_extra_calculadas, row.horas_extra_aprobadas,
+                    row.horas_extra_avicola || 0, row.es_dia_compensacion ? 1 : 0,
                     row.es_editado ? 1 : 0, row.observacion || null, userId || null
+                ]
+            );
+        }
+
+        for (const emp of empSummaries) {
+            await conn.query(
+                `INSERT INTO rh_biometric_corte_saldos (
+                    company_id, corte_id, empleado_id, device_uid, empleado_nombre,
+                    area, categoria, horas_jornada_base,
+                    horas_extra_periodo, horas_pendientes_anteriores, horas_extra_avicola,
+                    saldo_neto, horas_pagables, saldo_arrastre_siguiente
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    horas_extra_periodo = VALUES(horas_extra_periodo),
+                    horas_pendientes_anteriores = VALUES(horas_pendientes_anteriores),
+                    horas_extra_avicola = VALUES(horas_extra_avicola),
+                    saldo_neto = VALUES(saldo_neto),
+                    horas_pagables = VALUES(horas_pagables),
+                    saldo_arrastre_siguiente = VALUES(saldo_arrastre_siguiente),
+                    updated_at = NOW()`,
+                [
+                    companyId, corteId, emp.empleado_id, emp.device_uid, emp.nombre,
+                    emp.area, emp.categoria, emp.horas_jornada_base,
+                    emp.horas_extra_periodo, emp.horas_pendientes_anteriores, emp.horas_extra_avicola,
+                    emp.saldo_neto, emp.horas_pagables, emp.saldo_arrastre_siguiente
                 ]
             );
         }
@@ -152,7 +210,7 @@ async function freezePeriod(companyId, userId, data, getDailyOvertimeRowsFn) {
         return {
             success: true,
             corte_id: corteId,
-            message: `Período "${nombre}" congelado exitosamente con ${periodData.rows.length} registros.`
+            message: `Período "${nombre}" congelado exitosamente con ${periodData.rows.length} registros y ${empSummaries.length} colaboradores consolidados.`
         };
     } catch (err) {
         await conn.rollback();
@@ -198,6 +256,11 @@ async function unfreezeCorte(companyId, corteId) {
         );
 
         await conn.query(
+            `DELETE FROM rh_biometric_corte_saldos WHERE company_id = ? AND corte_id = ?`,
+            [companyId, corteId]
+        );
+
+        await conn.query(
             `DELETE FROM rh_biometric_cortes WHERE id = ? AND company_id = ?`,
             [corteId, companyId]
         );
@@ -232,13 +295,13 @@ async function batchUpdateOvertimeEntries(companyId, userId, { entries = [], act
             if (!item.device_uid || !cleanFecha) continue;
 
             let aprobadas = 0;
-            const calc = Math.max(0, parseFloat(item.horas_extra_calculadas || 0));
-            const custom = Math.max(0, parseFloat(customHours || 0));
+            const calc = clampHours(item.horas_extra_calculadas || 0);
+            const custom = clampHours(customHours || 0);
 
             if (action === 'approve_clock') aprobadas = calc;
             else if (action === 'deny_zero') aprobadas = 0;
             else if (action === 'set_custom') aprobadas = custom;
-            else if (action === 'cap_hours') aprobadas = Math.min(calc, custom);
+            else if (action === 'cap_hours') aprobadas = calc >= 0 ? Math.min(calc, Math.max(0, custom)) : calc;
 
             aprobadas = parseFloat(aprobadas.toFixed(2));
             const note = observacion && observacion.trim()
@@ -270,7 +333,7 @@ async function batchUpdateOvertimeEntries(companyId, userId, { entries = [], act
                  SET horas_extra = ?
                  WHERE company_id = ? AND device_uid = ?
                    AND punch_time >= ? AND punch_time <= ?`,
-                [aprobadas, companyId, item.device_uid, `${cleanFecha} 00:00:00`, `${cleanFecha} 23:59:59`]
+                [Math.max(0, aprobadas), companyId, item.device_uid, `${cleanFecha} 00:00:00`, `${cleanFecha} 23:59:59`]
             );
 
             if (item.corte_id) touchedCortes.add(item.corte_id);
@@ -278,16 +341,7 @@ async function batchUpdateOvertimeEntries(companyId, userId, { entries = [], act
         }
 
         for (const corteId of touchedCortes) {
-            await conn.query(
-                `UPDATE rh_biometric_cortes c
-                 SET total_horas_extra_aprobadas = (
-                     SELECT COALESCE(SUM(horas_extra_aprobadas), 0)
-                     FROM rh_biometric_daily_overtime
-                     WHERE corte_id = c.id
-                 )
-                 WHERE id = ? AND company_id = ?`,
-                [corteId, companyId]
-            );
+            await recalculateFrozenCorteTotals(conn, companyId, corteId);
         }
 
         await conn.commit();

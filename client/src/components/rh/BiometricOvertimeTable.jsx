@@ -232,7 +232,9 @@ const BiometricOvertimeTable = ({
                                 <span className="block">{formatDate(r.fecha)}</span>
                                 <div className="flex items-center gap-1 flex-wrap mt-0.5">
                                     {r.es_festivo && <span className="text-[9px] font-bold bg-amber-100 text-amber-800 px-1 py-0.5 rounded">Festivo</span>}
+                                    {r.es_sabado && <span className="text-[9px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-1 py-0.5 rounded">Sáb</span>}
                                     {r.es_domingo && <span className="text-[9px] font-bold bg-sky-100 text-sky-800 px-1 py-0.5 rounded">Dom</span>}
+                                    {r.es_dia_compensacion && <span className="text-[9px] font-bold bg-rose-50 text-rose-700 border border-rose-200 px-1 py-0.5 rounded">Comp.</span>}
                                     {r.es_marcacion_incompleta && (
                                         <span className="inline-flex items-center gap-0.5 text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-300 px-1 py-0.5 rounded" title={r.alerta_marcacion}>
                                             <AlertTriangle className="w-2.5 h-2.5" />
@@ -265,27 +267,40 @@ const BiometricOvertimeTable = ({
                                 ) : <span className="text-slate-300">—</span>}
                             </td>
                             <td className="py-2.5 px-3 font-mono text-right text-slate-500">
-                                {r.horas_extra_calculadas > 0 ? (
+                                {r.horas_extra_calculadas !== 0 ? (
                                     <div>
-                                        <span className="font-bold text-indigo-900 block">{formatDecimalHours(r.horas_extra_calculadas)}</span>
-                                        <span className="text-[10px] text-slate-400 font-normal block">({r.horas_extra_calculadas.toFixed(2)} h)</span>
+                                        <span className={`font-bold block ${r.horas_extra_calculadas < 0 ? 'text-rose-700' : 'text-indigo-900'}`}>
+                                            {formatDecimalHours(r.horas_extra_calculadas)}
+                                        </span>
+                                        <span className="text-[10px] text-slate-400 font-normal block">({Number(r.horas_extra_calculadas).toFixed(2)} h)</span>
                                     </div>
                                 ) : '—'}
                             </td>
                             <td className="py-2.5 px-3 font-mono text-right bg-indigo-50/50">
-                                {r.horas_extra_aprobadas > 0 ? (
+                                {r.horas_extra_aprobadas !== 0 || r.horas_extra_avicola > 0 ? (
                                     <div className="flex flex-col items-end">
-                                        <div className="flex items-center justify-end gap-1">
-                                            <span className="text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                                                +{formatDecimalHours(r.horas_extra_aprobadas)}
-                                            </span>
-                                            {r.es_editado && <span className="w-2 h-2 rounded-full bg-indigo-500" title="Ajustada manualmente" />}
-                                        </div>
-                                        <span className="text-[10px] text-emerald-700/80 font-normal mt-0.5 flex items-center gap-1">
-                                            ({r.horas_extra_aprobadas.toFixed(2)} h)
+                                        {r.horas_extra_aprobadas !== 0 && (
+                                            <div className="flex items-center justify-end gap-1">
+                                                <span className={`font-bold px-2 py-0.5 rounded border ${
+                                                    r.horas_extra_aprobadas < 0
+                                                        ? 'text-rose-800 bg-rose-50 border-rose-200'
+                                                        : 'text-emerald-800 bg-emerald-50 border-emerald-200'
+                                                }`}>
+                                                    {r.horas_extra_aprobadas > 0 ? '+' : ''}{formatDecimalHours(r.horas_extra_aprobadas)}
+                                                </span>
+                                                {r.es_editado && <span className="w-2 h-2 rounded-full bg-indigo-500" title="Ajustada manualmente" />}
+                                            </div>
+                                        )}
+                                        <span className={`text-[10px] font-normal mt-0.5 flex items-center gap-1 ${r.horas_extra_aprobadas < 0 ? 'text-rose-700/80' : 'text-emerald-700/80'}`}>
+                                            {r.horas_extra_aprobadas !== 0 && `(${Number(r.horas_extra_aprobadas).toFixed(2)} h)`}
                                             {r.horas_extra_nocturnas > 0 && (
                                                 <span className="inline-flex items-center gap-0.5 px-1 rounded bg-indigo-100 text-indigo-800 font-bold" title={`Nocturnas: ${r.horas_extra_nocturnas}h | Diurnas: ${r.horas_extra_diurnas}h`}>
                                                     <Moon className="w-2.5 h-2.5" />{r.horas_extra_nocturnas}h
+                                                </span>
+                                            )}
+                                            {r.horas_extra_avicola > 0 && (
+                                                <span className="inline-flex items-center px-1 rounded bg-amber-100 text-amber-800 font-bold" title="Horas Extra Avícola">
+                                                    +{Number(r.horas_extra_avicola).toFixed(1)}h Avíc.
                                                 </span>
                                             )}
                                         </span>

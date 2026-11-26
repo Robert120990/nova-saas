@@ -186,14 +186,16 @@ export const formatTime = (dateStr, fallback = '') => {
 export const formatDecimalHours = (decimalHours, options = {}) => {
     const val = parseFloat(decimalHours);
     const fallback = options.fallback || (options.short ? '0m' : '0 min');
-    if (!val || isNaN(val) || val <= 0) return fallback;
-    const totalMinutes = Math.round(val * 60);
+    if (!val || isNaN(val)) return fallback;
+    const sign = val < 0 ? '-' : '';
+    const totalMinutes = Math.round(Math.abs(val) * 60);
+    if (totalMinutes === 0) return fallback;
     const h = Math.floor(totalMinutes / 60);
     const m = totalMinutes % 60;
     const minSuffix = options.short ? 'm' : ' min';
-    if (h > 0 && m > 0) return `${h}h ${m}${minSuffix}`;
-    if (h > 0) return options.short ? `${h}h` : `${h}h 00 min`;
-    return `${m}${minSuffix}`;
+    if (h > 0 && m > 0) return `${sign}${h}h ${m}${minSuffix}`;
+    if (h > 0) return options.short ? `${sign}${h}h` : `${sign}${h}h 00 min`;
+    return `${sign}${m}${minSuffix}`;
 };
 
 /**

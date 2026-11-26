@@ -19,7 +19,12 @@ const BiometricFreezePeriodModal = ({ open, onClose, suggestedRange, onSuccess }
             setFechaInicio(start);
             setFechaFin(end);
             if (start && end) {
-                setNombre(`Corte ${formatDate(start)} al ${formatDate(end)}`);
+                const [, mStr, dStr] = end.split('-');
+                const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+                const y = end.slice(0, 4);
+                const mName = months[(parseInt(mStr, 10) - 1) % 12] || '';
+                const qLabel = parseInt(dStr, 10) <= 15 ? '1° Quincena' : '2° Quincena';
+                setNombre(mName ? `${qLabel} ${mName} ${y}` : `Corte ${formatDate(start)} al ${formatDate(end)}`);
             } else {
                 setNombre('Corte de Asistencia y Horas Extra');
             }

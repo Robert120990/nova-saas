@@ -1,5 +1,6 @@
 /**
  * Motor compartido de cálculo biométrico (anti-rebote, detección de marcas incompletas,
+ * redondeo configurable por bloques, compensación semanal 44h / sábados,
  * desglose legal de horas extra diurnas/nocturnas/domingo/festivo y formato legible).
  */
 const {
@@ -13,23 +14,46 @@ const NIGHT_START_MIN = 19 * 60; // 19:00 (Código de Trabajo SV: jornada noctur
 const NIGHT_END_MIN = 6 * 60;    // 06:00
 
 /**
- * Formatea horas decimales (ej. 2.80) a texto legible ("2h 48 min" o "2h 48m").
+ * Formatea horas decimales (ej. 2.80 o -4.00) a texto legible ("2h 48 min", "-4h").
  */
 function formatDecimalHoursText(decimalHours, short = false) {
     const val = parseFloat(decimalHours);
-    if (!val || isNaN(val) || val <= 0) return short ? '0m' : '0 min';
-    const totalMinutes = Math.round(val * 60);
+    if (!val || isNaN(val)) return short ? '0m' : '0 min';
+    const sign = val < 0 ? '-' : '';
+    const totalMinutes = Math.round(Math.abs(val) * 60);
+    if (totalMinutes === 0) return short ? '0m' : '0 min';
     const h = Math.floor(totalMinutes / 60);
     const m = totalMinutes % 60;
     const suffix = short ? 'm' : ' min';
-    if (h > 0 && m > 0) return `${h}h ${m}${suffix}`;
-    if (h > 0) return short ? `${h}h` : `${h}h 00 min`;
-    return `${m}${suffix}`;
+    if (h > 0 && m > 0) return `${sign}${h}h ${m}${suffix}`;
+    if (h > 0) return short ? `${sign}${h}h` : `${sign}${h}h 00 min`;
+    return `${sign}${m}${suffix}`;
+}
+
+/**
+ * Redondea minutos extra (positivos o negativos) según bloques configurables.
+ * Ej. stepMinutes = 30, thresholdMinutes = 15 (estándar planta 0.5h):
+ *   0..14 min -> 0h | 15..44 min -> 0.5h | 45..74 min -> 1.0h (simétrico para negativos).
+ * Si stepMinutes <= 0 devuelve decimal exacto con 2 decimales.
+ */
+function roundOvertimeMinutesToHours(deltaMinutes, stepMinutes = 0, thresholdMinutes = 15) {
+    if (!deltaMinutes || isNaN(deltaMinutes)) return 0;
+    const step = parseInt(stepMinutes, 10) || 0;
+    if (step <= 0) {
+        return parseFloat((deltaMinutes / 60).toFixed(2)) || 0;
+    }
+    const threshold = Math.max(1, Math.min(step, parseInt(thresholdMinutes, 10) || Math.ceil(step / 2)));
+    const sign = deltaMinutes < 0 ? -1 : 1;
+    const absMin = Math.abs(deltaMinutes);
+    const blocks = Math.floor(absMin / step);
+    const rem = absMin % step;
+    const roundedBlocks = blocks + (rem >= threshold ? 1 : 0);
+    const hours = parseFloat(((roundedBlocks * step) / 60).toFixed(2));
+    return hours === 0 ? 0 : sign * hours;
 }
 
 /**
  * Elimina rebotes / dobles toques consecutivos del lector biométrico (ej. < 3 minutos).
- * Conserva la primera marcación de cada ráfaga y reporta cuántas marcas duplicadas fueron filtradas.
  */
 function debouncePunches(rawPunches = [], minGapMinutes = DEFAULT_DEBOUNCE_MINUTES) {
     const sorted = [...rawPunches].filter(Boolean).sort();
@@ -56,7 +80,7 @@ function debouncePunches(rawPunches = [], minGapMinutes = DEFAULT_DEBOUNCE_MINUT
 
 /**
  * Clasifica las marcaciones de un día y calcula horas trabajadas, tardanza,
- * alertas de marcación incompleta y desglose de horas extra (diurna/nocturna/domingo/festivo).
+ * alertas de marcación incompleta y horas extra según política de la empresa.
  */
 function evaluateDayAttendance(rawPunches, options = {}) {
     const {
@@ -66,7 +90,13 @@ function evaluateDayAttendance(rawPunches, options = {}) {
         jornadaHoras = 8.0,
         exentoHorasExtras = false,
         esFestivo = false,
-        debounceMinutes = DEFAULT_DEBOUNCE_MINUTES
+        debounceMinutes = DEFAULT_DEBOUNCE_MINUTES,
+        modoCalculoJornada = 'neto_sin_almuerzo',
+        redondeoMinutos = 0,
+        umbralRedondeoMinutos = 15,
+        compensarSabado = false,
+        horasJornadaSabado = 4.0,
+        permitirSaldoNegativo = false
     } = options;
 
     const { punches: sorted, removedDuplicates } = debouncePunches(rawPunches, debounceMinutes);
@@ -108,12 +138,16 @@ function evaluateDayAttendance(rawPunches, options = {}) {
         alertas.push(`${removedDuplicates} doble(s) toque filtrado(s)`);
     }
 
+    const dayOfWeek = fecha ? new Date(`${fecha}T12:00:00Z`).getUTCDay() : -1;
+    const esDomingo = dayOfWeek === 0;
+    const esSabado = dayOfWeek === 6;
+
     const entradaEsperadaMins = timeStringToMinutes(horaEntradaEsperada);
     const limiteEntrada = entradaEsperadaMins + toleranciaMinutos;
 
     let minutosTardanza = 0;
     let esLlegadaTarde = false;
-    if (horaEntrada) {
+    if (horaEntrada && !esSabado && !esDomingo) {
         const entradaRealMins = timeStringToMinutes(extractTime(horaEntrada));
         if (entradaRealMins > limiteEntrada) {
             minutosTardanza = entradaRealMins - entradaEsperadaMins;
@@ -127,10 +161,11 @@ function evaluateDayAttendance(rawPunches, options = {}) {
         let diffMins = diffMinutesLocal(horaEntrada, horaSalida);
         if (horaSalidaAlmuerzo && horaEntradaAlmuerzo) {
             const lunchMins = diffMinutesLocal(horaSalidaAlmuerzo, horaEntradaAlmuerzo);
-            // Solo descontar almuerzo razonable (entre 5 min y 3 horas)
             if (lunchMins >= 5 && lunchMins <= 180) {
                 minutosAlmuerzo = lunchMins;
-                diffMins = Math.max(0, diffMins - lunchMins);
+                if (modoCalculoJornada !== 'bruto_con_almuerzo') {
+                    diffMins = Math.max(0, diffMins - lunchMins);
+                }
             }
         }
         minutosTrabajados = diffMins;
@@ -138,18 +173,35 @@ function evaluateDayAttendance(rawPunches, options = {}) {
 
     const horasTrabajadas = parseFloat((minutosTrabajados / 60).toFixed(2));
     const jornadaMins = Math.round(jornadaHoras * 60);
+    const sabadoMins = Math.round((parseFloat(horasJornadaSabado) || 4.0) * 60);
+
     let minutosExtra = 0;
     let horasExtraCalculadas = 0;
 
-    if (!exentoHorasExtras && minutosTrabajados > jornadaMins) {
-        minutosExtra = minutosTrabajados - jornadaMins;
-        horasExtraCalculadas = parseFloat((minutosExtra / 60).toFixed(2));
+    if (!exentoHorasExtras) {
+        if (esDomingo && compensarSabado && minutosTrabajados > 0) {
+            minutosExtra = minutosTrabajados;
+            horasExtraCalculadas = roundOvertimeMinutesToHours(minutosExtra, redondeoMinutos, umbralRedondeoMinutos);
+        } else if (esSabado && compensarSabado) {
+            if (minutosTrabajados > 0) {
+                const deltaSab = minutosTrabajados - sabadoMins;
+                if (deltaSab >= 0 || permitirSaldoNegativo) {
+                    minutosExtra = deltaSab;
+                    horasExtraCalculadas = roundOvertimeMinutesToHours(deltaSab, redondeoMinutos, umbralRedondeoMinutos);
+                }
+            } else if (!esFestivo && permitirSaldoNegativo) {
+                minutosExtra = -sabadoMins;
+                horasExtraCalculadas = roundOvertimeMinutesToHours(-sabadoMins, redondeoMinutos, umbralRedondeoMinutos);
+            }
+        } else if (minutosTrabajados > jornadaMins) {
+            minutosExtra = minutosTrabajados - jornadaMins;
+            horasExtraCalculadas = roundOvertimeMinutesToHours(minutosExtra, redondeoMinutos, umbralRedondeoMinutos);
+        }
     }
 
-    const esDomingo = fecha ? new Date(`${fecha}T12:00:00Z`).getUTCDay() === 0 : false;
     const { horasExtraDiurnas, horasExtraNocturnas } = splitOvertimeDayNight(
         horaSalida,
-        minutosExtra
+        Math.max(0, Math.round(Math.max(0, horasExtraCalculadas) * 60))
     );
 
     return {
@@ -169,6 +221,7 @@ function evaluateDayAttendance(rawPunches, options = {}) {
         horasExtraCalculadas,
         horasExtraDiurnas,
         horasExtraNocturnas,
+        esSabado,
         esDomingo,
         esFestivo: !!esFestivo
     };
@@ -210,6 +263,7 @@ function splitOvertimeDayNight(horaSalida, overtimeMinutes) {
 module.exports = {
     DEFAULT_DEBOUNCE_MINUTES,
     formatDecimalHoursText,
+    roundOvertimeMinutesToHours,
     debouncePunches,
     evaluateDayAttendance,
     splitOvertimeDayNight
