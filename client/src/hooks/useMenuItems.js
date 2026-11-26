@@ -270,7 +270,7 @@ function buildTree(items) {
     if (ivaNode && !ivaNode.children.some(c => c.path === '/iva/liquidacion')) {
         ivaNode.children.push({
             id: 'virtual-vat-liquidation',
-            label: 'Liquidación IVA y Pago a Cuenta',
+            label: 'Liqui. Iva y Pago Cta',
             path: '/iva/liquidacion',
             permission: 'view_vat_liquidation',
             permission_key: 'view_vat_liquidation',

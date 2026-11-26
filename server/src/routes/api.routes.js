@@ -226,6 +226,7 @@ const shiftController = require('../controllers/shift.controller');
 const comboController = require('../controllers/combo.controller');
 const vatBooksController = require('../controllers/vatBooks.controller');
 const vatDeclarationsController = require('../controllers/vatDeclarations.controller');
+const vatHaciendaAnexosController = require('../controllers/vatHaciendaAnexos.controller');
 const customerDiscountController = require('../controllers/customerDiscount.controller');
 const customerBranchController = require('../controllers/customerBranch.controller');
 const customerFleetController = require('../controllers/customerFleet.controller');
@@ -793,6 +794,10 @@ router.get('/vat-books/anexos-iva-excel', vatBooksController.getVatBookAnexosIVA
 router.get('/vat-books/liquidation', checkPermission('view_vat_liquidation'), vatBooksController.getVatLiquidationData);
 router.get('/vat-books/liquidation/pdf', checkPermission('view_vat_liquidation'), vatBooksController.getVatLiquidationPDF);
 router.get('/vat-books/liquidation/excel', checkPermission('view_vat_liquidation'), vatBooksController.getVatLiquidationExcel);
+router.get('/vat-books/liquidation/anexos-hacienda/summary', checkPermission('view_vat_liquidation'), vatHaciendaAnexosController.getAnexosSummary);
+router.get('/vat-books/liquidation/anexos-hacienda/contribuyentes', checkPermission('view_vat_liquidation'), vatHaciendaAnexosController.downloadTaxpayersAnnexCsv);
+router.get('/vat-books/liquidation/anexos-hacienda/compras', checkPermission('view_vat_liquidation'), vatHaciendaAnexosController.downloadPurchasesAnnexCsv);
+router.get('/vat-books/liquidation/anexos-hacienda/:type', checkPermission('view_vat_liquidation'), vatHaciendaAnexosController.downloadAnnexCsvByType);
 
 // VAT Declarations (Anexos F-07)
 router.get('/vat-books/declarations/anticipo-cuenta', checkPermission('view_iva_declaraciones'), vatDeclarationsController.getAnticipoCuenta);

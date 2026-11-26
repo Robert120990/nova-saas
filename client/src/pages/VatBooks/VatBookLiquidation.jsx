@@ -20,12 +20,13 @@ import {
     Receipt,
     AlertCircle,
     Building2,
-    Landmark
+    Landmark,
+    Download
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
 import Money, { MoneyInput } from '../../components/ui/Money';
-import { HaciendaDeclarationModal } from '../../components/vatLiquidation';
+import { HaciendaDeclarationModal, HaciendaAnexosCsvModal } from '../../components/vatLiquidation';
 
 const MONTHS = [
     { value: '1', label: 'Enero' },
@@ -64,6 +65,7 @@ const VatBookLiquidation = () => {
     const [activeTab, setActiveTab] = useState('resumen');
     const [showConfig, setShowConfig] = useState(false);
     const [showHaciendaModal, setShowHaciendaModal] = useState(false);
+    const [showAnexosCsvModal, setShowAnexosCsvModal] = useState(false);
     const [isExporting, setIsExporting] = useState(null);
 
     // Consulta de sucursales
@@ -169,7 +171,7 @@ const VatBookLiquidation = () => {
                         </div>
                         <div>
                             <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight">
-                                Liquidación de IVA y Pago a Cuenta
+                                Liqui. Iva y Pago Cta
                             </h1>
                             <p className="text-slate-500 font-medium text-xs mt-0.5">
                                 Formulario F-07 | Débito Fiscal, Crédito Fiscal y Anticipo de Renta (Art. 151 Código Tributario)
@@ -179,6 +181,16 @@ const VatBookLiquidation = () => {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2.5">
+                    <button
+                        onClick={() => setShowAnexosCsvModal(true)}
+                        disabled={isLoading}
+                        className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-2 rounded-xl font-bold text-xs transition-all shadow-md active:scale-95 disabled:opacity-50 cursor-pointer"
+                        title="Descargar anexos de Contribuyentes y Compras en formato CSV para subir a Hacienda"
+                    >
+                        <Download size={15} />
+                        <span>Anexos Hacienda</span>
+                    </button>
+
                     <button
                         onClick={() => setShowHaciendaModal(true)}
                         disabled={isLoading || !data}
@@ -1178,6 +1190,17 @@ const VatBookLiquidation = () => {
                 isOpen={showHaciendaModal}
                 onClose={() => setShowHaciendaModal(false)}
                 data={data}
+            />
+
+            {/* Modal Descarga de Anexos CSV para Hacienda */}
+            <HaciendaAnexosCsvModal
+                isOpen={showAnexosCsvModal}
+                onClose={() => setShowAnexosCsvModal(false)}
+                year={year}
+                month={month}
+                branchId={branchId}
+                branchName={branchId === 'all' ? 'Por Contribuyente (Todas)' : (data?.meta?.branchName || currentBranchName)}
+                periodText={data?.meta?.periodText || `${MONTHS.find((m) => m.value === String(month))?.label || month} ${year}`}
             />
         </div>
     );
