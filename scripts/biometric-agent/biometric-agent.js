@@ -19,7 +19,7 @@ const https = require('https');
 const crypto = require('crypto');
 const { spawn, spawnSync } = require('child_process');
 
-const AGENT_VERSION = '2.2.0';
+const AGENT_VERSION = '2.2.1';
 const USERS_SYNC_INTERVAL_MS = 10 * 60 * 1000; // Sincronizar catálogo de usuarios del reloj cada 10 min
 const SELF_UPDATE_CHECK_MS = 15 * 60 * 1000;   // Revisar auto-actualización cada 15 min
 
@@ -68,7 +68,8 @@ let config = {
 
 if (fs.existsSync(configPath)) {
     try {
-        const loaded = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        const rawConfig = fs.readFileSync(configPath, 'utf8').replace(/^\uFEFF/, '');
+        const loaded = JSON.parse(rawConfig);
         config = { ...config, ...loaded };
     } catch (e) {
         console.warn('[AVISO] Error leyendo config.json, usando valores por defecto:', e.message);
@@ -142,10 +143,36 @@ function saveSyncState() {
     }
 }
 
+function isPrivateServerUrl(urlStr) {
+    try {
+        const h = new URL(urlStr).hostname.toLowerCase();
+        return h === 'localhost' || h === '127.0.0.1' || h === '::1'
+            || /^192\.168\./.test(h)
+            || /^10\./.test(h)
+            || /^172\.(1[6-9]|2\d|3[01])\./.test(h);
+    } catch {
+        return false;
+    }
+}
+
+let privateUrlHintShown = false;
+function maybeLogPrivateUrlHint(errMsg) {
+    if (privateUrlHintShown) return;
+    if (!isPrivateServerUrl(config.serverUrl)) return;
+    if (!/(ECONNREFUSED|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|Timeout)/i.test(String(errMsg || ''))) return;
+    privateUrlHintShown = true;
+    log(
+        `SUGERENCIA: config.json apunta a una IP local (${config.serverUrl}) que no responde. `
+        + `Si usa SIPE en la nube, cambie "serverUrl" a "https://sys.sipesv.com" en config.json `
+        + `o ejecute "actualizar-conector.bat" descargado desde https://sys.sipesv.com.`,
+        'WARN'
+    );
+}
+
 function loadSyncState() {
     if (!fs.existsSync(statePath)) return;
     try {
-        const raw = fs.readFileSync(statePath, 'utf8');
+        const raw = fs.readFileSync(statePath, 'utf8').replace(/^\uFEFF/, '');
         syncState = { ...syncState, ...JSON.parse(raw) };
         if (syncState.lastPunchTime) {
             const normalized = formatLocalDateTime(syncState.lastPunchTime);
@@ -578,6 +605,7 @@ async function syncAttendances() {
         lastDeviceReachable = false;
         const msg = getErrorMessage(err);
         log(`Error durante la sincronización: ${msg}`, 'ERROR');
+        maybeLogPrivateUrlHint(msg);
         await requestServer('/api/rh/biometric/heartbeat', 'POST', {
             status: 'error',
             device_info: {
@@ -623,7 +651,9 @@ async function startAgent() {
         const updated = await handleHeartbeatUpdate(hb);
         if (updated) return;
     } catch (hbErr) {
-        log(`No se pudo contactar al servidor SIPE en ${config.serverUrl}: ${getErrorMessage(hbErr)}`, 'WARN');
+        const errMsg = getErrorMessage(hbErr);
+        log(`No se pudo contactar al servidor SIPE en ${config.serverUrl}: ${errMsg}`, 'WARN');
+        maybeLogPrivateUrlHint(errMsg);
     }
 
     await syncAttendances();

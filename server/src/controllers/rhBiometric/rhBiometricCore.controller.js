@@ -1,6 +1,5 @@
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
 const rhBiometricService = require('../../services/rhBiometric.service');
 
 const getDevices = async (req, res) => {
@@ -125,7 +124,7 @@ const downloadUpdaterBat = async (req, res) => {
             [req.params.id, req.company_id]
         );
         if (!devices.length) return res.status(404).json({ message: 'Dispositivo no encontrado.' });
-        const batContent = rhBiometricService.buildOneClickUpdaterBat(devices[0], getBestServerUrl(req));
+        const batContent = rhBiometricService.buildOneClickUpdaterBat(devices[0], rhBiometricService.resolveBestServerUrl(req));
         res.setHeader('Content-Type', 'application/x-bat');
         res.setHeader('Content-Disposition', 'attachment; filename="actualizar-conector.bat"');
         res.send(batContent);
@@ -201,33 +200,6 @@ const heartbeatFromAgent = async (req, res) => {
     }
 };
 
-const getBestServerUrl = (req) => {
-    const rawHost = req.get('host') || 'localhost:4000';
-    const isLocalhost = rawHost.includes('localhost') || rawHost.includes('127.0.0.1');
-    const protocol = (req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https') ? 'https' : 'http';
-
-    if (!isLocalhost && !rawHost.startsWith('192.168.') && !rawHost.startsWith('10.') && !rawHost.startsWith('172.')) {
-        return `${protocol}://${rawHost}`;
-    }
-
-    let lanIp = '127.0.0.1';
-    try {
-        const nets = os.networkInterfaces();
-        for (const name of Object.keys(nets)) {
-            for (const net of nets[name]) {
-                if (net.family === 'IPv4' && !net.internal) {
-                    lanIp = net.address;
-                    break;
-                }
-            }
-            if (lanIp !== '127.0.0.1') break;
-        }
-    } catch { /* fallback */ }
-
-    const backendPort = process.env.PORT || 4000;
-    return `http://${lanIp}:${backendPort}`;
-};
-
 const downloadConfig = async (req, res) => {
     try {
         const deviceId = req.params.id;
@@ -239,7 +211,7 @@ const downloadConfig = async (req, res) => {
         const dev = devices[0];
 
         const cfg = {
-            serverUrl: getBestServerUrl(req),
+            serverUrl: rhBiometricService.resolveBestServerUrl(req),
             companyId: dev.company_id,
             deviceId: dev.id,
             deviceName: dev.nombre,

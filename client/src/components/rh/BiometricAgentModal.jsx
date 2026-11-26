@@ -239,7 +239,7 @@ const BiometricAgentModal = ({ open, onClose, device = null, onDeviceUpdated }) 
 
                     <div>
                         <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-                            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Archivos del Conector v{device?.latest_agent_version || '2.1.0'}</h3>
+                            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Archivos del Conector v{device?.latest_agent_version || '2.2.1'}</h3>
                             <button type="button" onClick={handleDownloadAll} disabled={!!downloadingFile} className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 disabled:opacity-50">
                                 {downloadingFile ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
                                 Descargar los 5 archivos
@@ -248,7 +248,7 @@ const BiometricAgentModal = ({ open, onClose, device = null, onDeviceUpdated }) 
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                             {[
                                 { url: `/api/rh/biometric/devices/${device?.id}/download-config`, file: 'config.json', desc: 'IP, Puerto y Clave listos', icon: FileCode, color: 'text-indigo-600' },
-                                { url: '/api/rh/biometric/agent/download-script', file: 'biometric-agent.js', desc: 'Motor v2.1 con auto-update', icon: Download, color: 'text-amber-600' },
+                                { url: '/api/rh/biometric/agent/download-script', file: 'biometric-agent.js', desc: `Motor v${device?.latest_agent_version || '2.2.1'} con auto-update`, icon: Download, color: 'text-amber-600' },
                                 { url: '/api/rh/biometric/agent/download-bat', file: 'iniciar-conector.bat', desc: 'Inicio manual en consola', icon: Terminal, color: 'text-emerald-600' },
                                 { url: '/api/rh/biometric/agent/download-service-bat', file: 'instalar-servicio-windows.bat', desc: 'Arranque automático oculto', icon: Cpu, color: 'text-sky-600' },
                                 { url: '/api/rh/biometric/agent/download-stop-bat', file: 'detener-conector.bat', desc: 'Detiene y libera red', icon: Square, color: 'text-rose-600' }

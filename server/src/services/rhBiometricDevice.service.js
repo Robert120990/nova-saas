@@ -191,5 +191,6 @@ module.exports = {
     setDeviceUpdatePolicy: updaterService.setDeviceUpdatePolicy,
     requestRemoteDeviceUpdate: updaterService.requestRemoteDeviceUpdate,
     buildOneClickUpdaterBat: updaterService.buildOneClickUpdaterBat,
-    evaluateDeviceCompatibility: updaterService.evaluateDeviceCompatibility
+    evaluateDeviceCompatibility: updaterService.evaluateDeviceCompatibility,
+    resolveBestServerUrl: updaterService.resolveBestServerUrl
 };

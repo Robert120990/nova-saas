@@ -1,8 +1,11 @@
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const pool = require('../config/db');
 const { parseJsonSafe } = require('./rhBiometricClockUsers.service');
+
+const DEFAULT_PUBLIC_SERVER_URL = 'https://sys.sipesv.com';
 
 const AGENT_SCRIPT_CANDIDATES = [
     path.resolve(__dirname, '../../../scripts/biometric-agent/biometric-agent.js'),
@@ -17,16 +20,105 @@ const AGENT_CHANGELOG = [
     'Conexión limpia por ciclo sin fuga de memoria ni sockets colgados en node-zklib',
     'Auto-actualización verificada por SHA-256 con respaldo automático (.bak) y modo automático o bajo confirmación',
     'Sincronización de catálogo de usuarios del reloj (zk.getUsers) y soporte para 50,000+ registros sin timeout',
-    'Filtro anti-CMOS automático (descarta fechas corruptas como año 2000 o 2118)'
+    'Filtro anti-CMOS automático (descarta fechas corruptas como año 2000 o 2118)',
+    'Soporte BOM UTF-8 en config.json/sync-state.json y auto-reparación de serverUrl en actualizador 1-clic'
 ];
 
 let cachedManifest = {
     mtimeMs: 0,
-    version: '2.2.0',
+    version: '2.2.1',
     sha256: null,
     filePath: null,
-    release_date: '2026-11-24'
+    release_date: '2026-11-26'
 };
+
+function isPrivateOrLocalHostname(hostname) {
+    const h = String(hostname || '').trim().toLowerCase().replace(/^\[|\]$/g, '');
+    if (!h) return true;
+    if (h === 'localhost' || h === '127.0.0.1' || h === '::1' || h === '0.0.0.0') return true;
+    if (/^127\./.test(h)) return true;
+    if (/^10\./.test(h)) return true;
+    if (/^192\.168\./.test(h)) return true;
+    if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return true;
+    if (/^169\.254\./.test(h)) return true;
+    if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(h)) return true;
+    return false;
+}
+
+function parseUrlOriginSafe(raw) {
+    if (!raw || typeof raw !== 'string') return null;
+    try {
+        const u = new URL(raw.trim());
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+        return { protocol: u.protocol.replace(':', ''), host: u.host, hostname: u.hostname, origin: u.origin };
+    } catch {
+        return null;
+    }
+}
+
+function getPreferredLanIp() {
+    const candidates = [];
+    try {
+        const nets = os.networkInterfaces();
+        for (const name of Object.keys(nets)) {
+            const isVirtual = /(vethernet|wsl|docker|hyper-v|virtual|vmware|vbox|tailscale|zerotier|loopback|nordlynx|tun|tap)/i.test(name);
+            for (const net of nets[name] || []) {
+                if (net.family !== 'IPv4' || net.internal) continue;
+                const ip = net.address;
+                let score = isVirtual ? 0 : 100;
+                if (ip.startsWith('192.168.')) score += 50;
+                else if (ip.startsWith('10.')) score += 40;
+                else if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) score += 20;
+                else if (/^169\.254\./.test(ip)) score -= 100;
+                else if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(ip)) score -= 50;
+                candidates.push({ ip, score });
+            }
+        }
+    } catch { /* fallback */ }
+    candidates.sort((a, b) => b.score - a.score);
+    return candidates[0]?.ip || '127.0.0.1';
+}
+
+function resolveBestServerUrl(req) {
+    const envUrl = process.env.BIOMETRIC_SERVER_URL || process.env.PUBLIC_URL || process.env.APP_URL;
+    const parsedEnv = parseUrlOriginSafe(envUrl);
+    if (parsedEnv) return parsedEnv.origin;
+
+    const forwardedProto = String(req?.headers?.['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
+    const isHttps = req?.protocol === 'https' || forwardedProto === 'https';
+
+    const forwardedHost = String(req?.headers?.['x-forwarded-host'] || '').split(',')[0].trim();
+    const rawHost = String(req?.get?.('host') || req?.headers?.host || '').trim();
+    const originParsed = parseUrlOriginSafe(req?.headers?.origin);
+    const refererParsed = parseUrlOriginSafe(req?.headers?.referer);
+
+    const hostCandidates = [];
+    if (forwardedHost) {
+        const hostname = forwardedHost.split(':')[0];
+        const proto = (isHttps || /\.sipesv\.com$/i.test(hostname)) ? 'https' : 'http';
+        hostCandidates.push({ hostname, origin: `${proto}://${forwardedHost}` });
+    }
+    if (originParsed) hostCandidates.push({ hostname: originParsed.hostname, origin: originParsed.origin });
+    if (refererParsed) hostCandidates.push({ hostname: refererParsed.hostname, origin: refererParsed.origin });
+    if (rawHost) {
+        const hostname = rawHost.split(':')[0];
+        const proto = (isHttps || /\.sipesv\.com$/i.test(hostname)) ? 'https' : 'http';
+        hostCandidates.push({ hostname, origin: `${proto}://${rawHost}` });
+    }
+
+    for (const c of hostCandidates) {
+        if (!isPrivateOrLocalHostname(c.hostname)) {
+            return c.origin.replace(/\/+$/, '');
+        }
+    }
+
+    if (process.env.NODE_ENV === 'production') {
+        return DEFAULT_PUBLIC_SERVER_URL;
+    }
+
+    const backendPort = process.env.PORT || 4000;
+    return `http://${getPreferredLanIp()}:${backendPort}`;
+}
 
 function compareSemver(a, b) {
     const parse = (v) => String(v || '0.0.0').replace(/^[^0-9]*/, '').split('.').map(n => parseInt(n, 10) || 0);
@@ -186,13 +278,48 @@ async function requestRemoteDeviceUpdate(companyId, deviceId, userLabel = 'Admin
  * preserva/crea config.json, limpia cursores CMOS corruptos y reinicia el conector.
  */
 function buildOneClickUpdaterBat(device, serverUrl) {
-    const cleanUrl = String(serverUrl || 'https://sys.sipesv.com').replace(/\/+$/, '');
-    const agentKey = String(device.agent_key || '');
-    const deviceIp = String(device.ip_address || '');
+    const cleanUrl = String(serverUrl || DEFAULT_PUBLIC_SERVER_URL).trim().replace(/\/+$/, '').replace(/[^a-zA-Z0-9.:/_-]/g, '');
+    const agentKey = String(device.agent_key || '').trim().replace(/[^a-zA-Z0-9_-]/g, '');
+    const deviceIp = String(device.ip_address || '').trim().replace(/[^a-zA-Z0-9.:_-]/g, '');
     const devicePort = parseInt(device.port, 10) || 4370;
     const commKey = parseInt(device.comm_key, 10) || 0;
     const protocol = device.protocol === 'udp' ? 'udp' : 'tcp';
+    const companyId = parseInt(device.company_id, 10) || 1;
+    const deviceId = parseInt(device.id, 10) || 1;
     const manifest = getAgentReleaseManifest();
+
+    const syncConfigPs = [
+        "$p = Join-Path $PWD 'config.json';",
+        "$utf8 = New-Object System.Text.UTF8Encoding $false;",
+        "$cfg = [ordered]@{};",
+        "if (Test-Path $p) { try { $raw = [System.IO.File]::ReadAllText($p).TrimStart([char]0xFEFF); $old = $raw | ConvertFrom-Json; foreach ($prop in $old.PSObject.Properties) { $cfg[$prop.Name] = $prop.Value } } catch { Write-Host '[AVISO] config.json danado, regenerando...' } };",
+        "$prevUrl = [string]$cfg['serverUrl'];",
+        `$cfg['serverUrl'] = '${cleanUrl}';`,
+        `$cfg['companyId'] = ${companyId};`,
+        `$cfg['deviceId'] = ${deviceId};`,
+        `$cfg['agentKey'] = '${agentKey}';`,
+        `if ('${deviceIp}') { $cfg['deviceIp'] = '${deviceIp}' };`,
+        `$cfg['devicePort'] = ${devicePort};`,
+        `$cfg['commKey'] = ${commKey};`,
+        `$cfg['protocol'] = '${protocol}';`,
+        "if (-not $cfg.Contains('syncIntervalSeconds')) { $cfg['syncIntervalSeconds'] = 60 };",
+        "$cfg['autoUpdate'] = $true;",
+        "[System.IO.File]::WriteAllText($p, ($cfg | ConvertTo-Json -Depth 4), $utf8);",
+        `if ($prevUrl -and $prevUrl -ne '${cleanUrl}') { Write-Host ('[OK] serverUrl actualizado: ' + $prevUrl + ' -> ${cleanUrl}') } else { Write-Host '[OK] config.json verificado (${cleanUrl}).' }`
+    ].join(' ');
+
+    const repairCmosPs = [
+        "try {",
+        "$p = Join-Path $PWD 'sync-state.json';",
+        "$utf8 = New-Object System.Text.UTF8Encoding $false;",
+        "$s = ([System.IO.File]::ReadAllText($p).TrimStart([char]0xFEFF)) | ConvertFrom-Json;",
+        "if ($s.lastPunchTime -and [int]($s.lastPunchTime.Substring(0,4)) -gt (Get-Date).Year) {",
+        "$s.lastPunchTime = $null;",
+        "[System.IO.File]::WriteAllText($p, ($s | ConvertTo-Json -Depth 4), $utf8);",
+        "Write-Host '[OK] Cursor CMOS futuro reparado.';",
+        "}",
+        "} catch {}"
+    ].join(' ');
 
     return [
         '@echo off',
@@ -245,29 +372,14 @@ function buildOneClickUpdaterBat(device, serverUrl) {
         'move /y "biometric-agent.js.new" "biometric-agent.js" >nul',
         `echo [OK] biometric-agent.js actualizado a v${manifest.version}.`,
         '',
-        'echo [4/5] Verificando configuracion (config.json) y reparando cursor CMOS...',
-        'if not exist "config.json" (',
-        '  (',
-        '    echo {',
-        `    echo   "serverUrl": "${cleanUrl}",`,
-        `    echo   "companyId": ${device.company_id},`,
-        `    echo   "deviceId": ${device.id},`,
-        `    echo   "agentKey": "${agentKey}",`,
-        `    echo   "deviceIp": "${deviceIp}",`,
-        `    echo   "devicePort": ${devicePort},`,
-        `    echo   "commKey": ${commKey},`,
-        `    echo   "protocol": "${protocol}",`,
-        '    echo   "syncIntervalSeconds": 60,',
-        '    echo   "autoUpdate": true',
-        '    echo }',
-        '  ) > config.json',
-        ')',
+        'echo [4/5] Sincronizando configuracion (config.json) y reparando cursor CMOS...',
+        `powershell -NoProfile -Command "${syncConfigPs}"`,
         'if exist "sync-state.json" (',
-        '  powershell -NoProfile -Command "try { $s = Get-Content \'sync-state.json\' -Raw | ConvertFrom-Json; if ($s.lastPunchTime -and [int]($s.lastPunchTime.Substring(0,4)) -gt (Get-Date).Year) { $s.lastPunchTime = $null; $s | ConvertTo-Json | Set-Content \'sync-state.json\' -Encoding UTF8; Write-Host \'[OK] Cursor CMOS futuro reparado.\' } } catch {}"',
+        `  powershell -NoProfile -Command "${repairCmosPs}"`,
         ')',
         'if not exist "node_modules\\node-zklib" (',
         '  echo [INFO] Instalando node-zklib...',
-        '  if not exist "package.json" echo {"name":"sipe-biometric-agent","version":"2.2.0","private":true} > package.json',
+        `  if not exist "package.json" echo {"name":"sipe-biometric-agent","version":"${manifest.version}","private":true} > package.json`,
         '  call npm install node-zklib --no-audit --no-fund --omit=dev',
         ')',
         '',
@@ -287,6 +399,7 @@ function buildOneClickUpdaterBat(device, serverUrl) {
 
 module.exports = {
     compareSemver,
+    resolveBestServerUrl,
     getAgentReleaseManifest,
     evaluateDeviceCompatibility,
     setDeviceUpdatePolicy,
