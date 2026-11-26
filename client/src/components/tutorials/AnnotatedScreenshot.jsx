@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Maximize2, Minimize2, ImageOff } from 'lucide-react';
+import { Maximize2, Minimize2, ImageOff, MousePointerClick } from 'lucide-react';
 
 export default function AnnotatedScreenshot({ image, title, annotations = [] }) {
     const [activePin, setActivePin] = useState(null);
@@ -72,6 +72,13 @@ export default function AnnotatedScreenshot({ image, title, annotations = [] }) 
 
     return (
         <div className="space-y-3">
+            {pins.length > 0 && (
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 px-1">
+                    <MousePointerClick size={13} className="text-rose-600 shrink-0" />
+                    <span>Toca o pasa el cursor sobre los números rojos para resaltar qué hace cada sección en la pantalla.</span>
+                </div>
+            )}
+
             {renderCanvas(false)}
 
             {pins.length > 0 && (

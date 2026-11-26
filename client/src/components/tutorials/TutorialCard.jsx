@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { PlayCircle, FileDown, Clock, CheckCircle2, Layers } from 'lucide-react';
+import { PlayCircle, FileDown, Clock, CheckCircle2, Layers, Compass } from 'lucide-react';
+import { CATEGORY_META } from './tutorialMeta';
 
 export default function TutorialCard({
     tutorial,
@@ -8,8 +9,8 @@ export default function TutorialCard({
     onDownloadPdf
 }) {
     const [imgFailed, setImgFailed] = useState(false);
-    const isPista = tutorial.category === 'pista';
     const stepsCount = Array.isArray(tutorial.steps) ? tutorial.steps.length : 0;
+    const catMeta = CATEGORY_META[tutorial.category] || CATEGORY_META.tienda;
 
     return (
         <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md hover:border-indigo-200 transition-all flex flex-col overflow-hidden group">
@@ -35,11 +36,7 @@ export default function TutorialCard({
                         #{tutorial.order}
                     </span>
                     <span
-                        className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold uppercase tracking-wide ${
-                            isPista
-                                ? 'bg-amber-500/95 text-white'
-                                : 'bg-indigo-600/95 text-white'
-                        }`}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold uppercase tracking-wide ${catMeta.badgeClass}`}
                     >
                         {tutorial.categoryLabel}
                     </span>
@@ -54,7 +51,13 @@ export default function TutorialCard({
             </div>
 
             <div className="p-4 flex-1 flex flex-col justify-between gap-3">
-                <div className="space-y-2">
+                <div className="space-y-1.5">
+                    {tutorial.menuPath && (
+                        <div className="inline-flex items-center gap-1 text-[10.5px] font-bold text-indigo-600 bg-indigo-50/80 px-2 py-0.5 rounded-md max-w-full">
+                            <Compass size={11} className="shrink-0" />
+                            <span className="truncate">{tutorial.menuPath}</span>
+                        </div>
+                    )}
                     <h3
                         onClick={() => onOpen(tutorial)}
                         className="text-sm font-bold text-slate-900 leading-snug group-hover:text-indigo-700 transition-colors cursor-pointer"

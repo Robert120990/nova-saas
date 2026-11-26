@@ -4,11 +4,11 @@ import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
-    GraduationCap, Search, FileDown, CheckCircle2, RefreshCcw, Store, Fuel, Layers
+    GraduationCap, Search, FileDown, CheckCircle2, RefreshCcw, Layers, ListFilter
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { unwrapList } from '../utils/apiUtils';
-import { TutorialCard, RoleGuideCards, TutorialDetailModal } from '../components/tutorials';
+import { TutorialCard, RoleGuideCards, TutorialDetailModal, CATEGORY_META } from '../components/tutorials';
 
 export default function Tutorials() {
     const navigate = useNavigate();
@@ -17,6 +17,8 @@ export default function Tutorials() {
 
     const [search, setSearch] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('all');
+    const [onlyPending, setOnlyPending] = useState(false);
+    const [allModules, setAllModules] = useState(false);
     const [activeTutorial, setActiveTutorial] = useState(null);
     const [exportingPack, setExportingPack] = useState(false);
 
@@ -30,30 +32,41 @@ export default function Tutorials() {
         }
     });
 
+    const isSuperAdminSession = String(user?.role || '').trim().toLowerCase() === 'superadmin';
+
     const { data, isLoading } = useQuery({
-        queryKey: ['tutorials', user?.id, user?.company_id, user?.role],
-        queryFn: async () => (await axios.get('/api/tutorials')).data
+        queryKey: ['tutorials', user?.id, user?.company_id, user?.role, isSuperAdminSession && allModules],
+        queryFn: async () => {
+            const suffix = isSuperAdminSession && allModules ? '?allModules=1' : '';
+            return (await axios.get(`/api/tutorials${suffix}`)).data;
+        }
     });
 
     const tutorials = useMemo(() => unwrapList(data?.tutorials), [data]);
     const categories = useMemo(() => unwrapList(data?.categories), [data]);
     const activeRole = data?.userRole || user?.role || 'Usuario';
+    const isSuperAdmin = Boolean(data?.isSuperAdmin || isSuperAdminSession);
     const roleGuide = useMemo(
         () => data?.roleGuide || (Array.isArray(data?.roleGuides) ? data.roleGuides[0] : null),
         [data]
     );
 
-    const effectiveCategory = categories.length <= 1 ? 'all' : selectedCategory;
+    const effectiveCategory = categories.length <= 1
+        ? 'all'
+        : (selectedCategory !== 'all' && !categories.some(c => c.id === selectedCategory))
+            ? 'all'
+            : selectedCategory;
 
     const filteredTutorials = useMemo(() => {
         const q = search.trim().toLowerCase();
         return tutorials.filter((t) => {
             if (effectiveCategory !== 'all' && t.category !== effectiveCategory) return false;
+            if (onlyPending && completedSlugs.includes(t.slug)) return false;
             if (!q) return true;
-            const hay = `${t.title} ${t.summary} ${(t.steps || []).map(s => `${s.title} ${s.description}`).join(' ')}`.toLowerCase();
+            const hay = `${t.title} ${t.summary} ${t.menuPath || ''} ${t.outcome || ''} ${(t.steps || []).map(s => `${s.title} ${s.description}`).join(' ')}`.toLowerCase();
             return hay.includes(q);
         });
-    }, [tutorials, effectiveCategory, search]);
+    }, [tutorials, effectiveCategory, onlyPending, completedSlugs, search]);
 
     const completedCount = useMemo(
         () => tutorials.filter(t => completedSlugs.includes(t.slug)).length,
@@ -82,9 +95,8 @@ export default function Tutorials() {
     const handleDownloadPackPdf = async () => {
         setExportingPack(true);
         try {
-            const params = new URLSearchParams({
-                category: effectiveCategory
-            });
+            const params = new URLSearchParams({ category: effectiveCategory });
+            if (isSuperAdmin && allModules) params.set('allModules', '1');
             const res = await axios.get(`/api/tutorials/pack/pdf?${params.toString()}`, { responseType: 'blob' });
             const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
             window.open(url, '_blank');
@@ -115,7 +127,7 @@ export default function Tutorials() {
                             </span>
                         </div>
                         <p className="text-xs sm:text-sm text-slate-500 font-medium">
-                            Guías paso a paso exclusivas para tu rol activo ({activeRole}) con capturas reales del sistema y manual descargable en PDF.
+                            Guías paso a paso exclusivas para tu rol ({activeRole}) y empresa activa, con capturas reales y manual PDF descargable.
                         </p>
                     </div>
                 </div>
@@ -144,13 +156,10 @@ export default function Tutorials() {
             </div>
 
             {/* Tarjeta exclusiva del Rol Conectado */}
-            <RoleGuideCards
-                roleGuide={roleGuide}
-                tutorials={tutorials}
-            />
+            <RoleGuideCards roleGuide={roleGuide} tutorials={tutorials} />
 
-            {/* Barra de Filtros y Búsqueda */}
-            <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+            {/* Barra de Filtros, Categorías y Búsqueda */}
+            <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs space-y-3">
                 <div className="flex flex-wrap items-center gap-1.5">
                     {categories.length > 1 ? (
                         <>
@@ -165,7 +174,7 @@ export default function Tutorials() {
                                 <span>Todos ({tutorials.length})</span>
                             </button>
                             {categories.map((c) => {
-                                const Icon = c.id === 'pista' ? Fuel : Store;
+                                const Icon = CATEGORY_META[c.id]?.icon || Layers;
                                 const cnt = tutorials.filter(t => t.category === c.id).length;
                                 return (
                                     <button
@@ -184,21 +193,53 @@ export default function Tutorials() {
                         </>
                     ) : categories.length === 1 ? (
                         <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200/80 text-xs font-bold">
-                            {categories[0].id === 'pista' ? <Fuel size={13} /> : <Store size={13} />}
+                            {(() => { const SingleIcon = CATEGORY_META[categories[0].id]?.icon || Layers; return <SingleIcon size={13} />; })()}
                             <span>{categories[0].label} ({tutorials.length})</span>
                         </span>
                     ) : null}
                 </div>
 
-                <div className="relative w-full md:w-80">
-                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                        type="text"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Buscar tutorial por tema o paso..."
-                        className="w-full pl-9 pr-3 py-2 text-[13px] font-medium rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
-                    />
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                    <div className="relative flex-1 sm:max-w-sm">
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                            type="text"
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            placeholder="Buscar tutorial por tema, menú o paso..."
+                            className="w-full pl-9 pr-3 py-2 text-[13px] font-medium rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                        />
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setOnlyPending(v => !v)}
+                            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border cursor-pointer ${
+                                onlyPending
+                                    ? 'bg-amber-50 border-amber-300 text-amber-800'
+                                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                            }`}
+                        >
+                            <ListFilter size={13} />
+                            <span>Solo pendientes</span>
+                        </button>
+
+                        {isSuperAdmin && (
+                            <button
+                                type="button"
+                                onClick={() => setAllModules(v => !v)}
+                                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border cursor-pointer ${
+                                    allModules
+                                        ? 'bg-indigo-600 border-indigo-600 text-white'
+                                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                                }`}
+                            >
+                                <Layers size={13} />
+                                <span>{allModules ? 'Todos los módulos activos' : 'Solo módulos de esta empresa'}</span>
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -218,7 +259,7 @@ export default function Tutorials() {
                     {tutorials.length > 0 && (
                         <button
                             type="button"
-                            onClick={() => { setSearch(''); setSelectedCategory('all'); }}
+                            onClick={() => { setSearch(''); setSelectedCategory('all'); setOnlyPending(false); }}
                             className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer"
                         >
                             Restablecer filtros

@@ -60,21 +60,44 @@ function drawAnnotatedImage(doc, imagePath, annotations = []) {
 function renderTutorialContent(doc, tutorial) {
     const pageWidth = 552;
     const startX = 30;
+    const innerWidth = pageWidth - 24;
 
-    // Banda de título del tutorial
-    doc.save();
-    doc.roundedRect(startX, doc.y, pageWidth, 44, 6).fill('#eef2ff');
-    doc.fontSize(12).font('Helvetica-Bold').fillColor('#1e1b4b')
-        .text(`${tutorial.order || ''}. ${tutorial.title}`.trim(), startX + 12, doc.y + 8, { width: pageWidth - 24 });
+    const headingText = `${tutorial.order || ''}. ${tutorial.title}`.trim();
     const rolesTxt = Array.isArray(tutorial.roles) ? tutorial.roles.join(', ') : '';
+    const menuTxt = tutorial.menuPath || tutorial.modulePath || '';
+    const metaText = `Área: ${tutorial.categoryLabel}   |   Menú: ${menuTxt}   |   Roles: ${rolesTxt}`;
+
+    doc.fontSize(12).font('Helvetica-Bold');
+    const headingH = doc.heightOfString(headingText, { width: innerWidth });
+    doc.fontSize(8).font('Helvetica');
+    const metaH = doc.heightOfString(metaText, { width: innerWidth });
+    const boxHeight = Math.max(44, Math.ceil(headingH + metaH + 20));
+
+    if (doc.y + boxHeight + 60 > 730) {
+        doc.addPage();
+    }
+
+    const bannerY = doc.y;
+    doc.save();
+    doc.roundedRect(startX, bannerY, pageWidth, boxHeight, 6).fill('#eef2ff');
+    doc.fontSize(12).font('Helvetica-Bold').fillColor('#1e1b4b')
+        .text(headingText, startX + 12, bannerY + 8, { width: innerWidth });
     doc.fontSize(8).font('Helvetica').fillColor('#4338ca')
-        .text(`Área: ${tutorial.categoryLabel}   |   Roles: ${rolesTxt}   |   Ruta: ${tutorial.modulePath}`, startX + 12, doc.y + 2, { width: pageWidth - 24 });
+        .text(metaText, startX + 12, bannerY + 11 + headingH, { width: innerWidth });
     doc.restore();
-    doc.y += 14;
+    doc.y = bannerY + boxHeight + 10;
 
     if (tutorial.summary) {
         doc.fontSize(9).font('Helvetica').fillColor('#334155').text(tutorial.summary, startX, doc.y, { width: pageWidth });
-        doc.moveDown(0.5);
+        doc.moveDown(0.35);
+    }
+
+    if (tutorial.outcome) {
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#047857')
+            .text('Objetivo: ', startX, doc.y, { continued: true });
+        doc.font('Helvetica').fillColor('#065f46')
+            .text(tutorial.outcome, { width: pageWidth - 5 });
+        doc.moveDown(0.4);
     }
 
     if (Array.isArray(tutorial.prerequisites) && tutorial.prerequisites.length > 0) {
@@ -118,7 +141,7 @@ function renderTutorialContent(doc, tutorial) {
         if (step.tip) {
             if (doc.y > 710) doc.addPage();
             doc.fontSize(8).font('Helvetica-Bold').fillColor('#047857')
-                .text(`Consejo práctico: `, startX + 4, doc.y, { continued: true });
+                .text('Consejo práctico: ', startX + 4, doc.y, { continued: true });
             doc.font('Helvetica').fillColor('#065f46').text(step.tip, { width: pageWidth - 10 });
             doc.moveDown(0.5);
         }
@@ -129,6 +152,7 @@ function renderTutorialContent(doc, tutorial) {
         doc.fontSize(9).font('Helvetica-Bold').fillColor('#9a3412').text('Solución de inconvenientes frecuentes:', startX, doc.y);
         doc.moveDown(0.2);
         for (const item of tutorial.troubleshooting) {
+            if (doc.y > 720) doc.addPage();
             doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a').text(`• ${item.issue}: `, startX + 6, doc.y, { continued: true });
             doc.font('Helvetica').fillColor('#334155').text(item.fix, { width: pageWidth - 14 });
         }
@@ -159,6 +183,7 @@ async function generateTutorialPackPdfBuffer(tutorials, title, subtitle, company
     doc.fontSize(10).font('Helvetica-Bold').fillColor('#0f172a').text('Contenido del Manual', 30, doc.y);
     doc.moveDown(0.3);
     tutorials.forEach((tut, idx) => {
+        if (doc.y > 720) doc.addPage();
         doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#4338ca')
             .text(`${idx + 1}. ${tut.title}`, 36, doc.y, { continued: true });
         doc.font('Helvetica').fillColor('#64748b').text(` (${tut.categoryLabel} — ${tut.duration})`);

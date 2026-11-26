@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
     ChevronLeft, ChevronRight, ExternalLink, FileDown, CheckCircle2,
-    Lightbulb, AlertTriangle, CheckSquare, GraduationCap
+    Lightbulb, AlertTriangle, CheckSquare, GraduationCap, Target
 } from 'lucide-react';
 import Modal from '../ui/Modal';
 import AnnotatedScreenshot from './AnnotatedScreenshot';
@@ -18,14 +18,30 @@ export default function TutorialDetailModal({
     const [stepIndex, setStepIndex] = useState(0);
     const [showTroubleshooting, setShowTroubleshooting] = useState(false);
 
+    const steps = Array.isArray(tutorial?.steps) ? tutorial.steps : [];
+
     useEffect(() => {
         setStepIndex(0);
         setShowTroubleshooting(false);
     }, [tutorial?.slug, isOpen]);
 
+    useEffect(() => {
+        if (!isOpen || steps.length <= 1) return undefined;
+        const onKeyDown = (e) => {
+            const tag = e.target?.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+            if (e.key === 'ArrowRight') {
+                setStepIndex((i) => Math.min(steps.length - 1, i + 1));
+            } else if (e.key === 'ArrowLeft') {
+                setStepIndex((i) => Math.max(0, i - 1));
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [isOpen, steps.length]);
+
     if (!isOpen || !tutorial) return null;
 
-    const steps = Array.isArray(tutorial.steps) ? tutorial.steps : [];
     const currentStep = steps[stepIndex] || steps[0] || {};
     const prereqs = Array.isArray(tutorial.prerequisites) ? tutorial.prerequisites : [];
     const troubleList = Array.isArray(tutorial.troubleshooting) ? tutorial.troubleshooting : [];
@@ -37,16 +53,18 @@ export default function TutorialDetailModal({
             onClose={onClose}
             maxWidth="max-w-5xl"
             title={
-                <div className="flex items-center gap-2.5">
-                    <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-xs">
+                <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-xs shrink-0">
                         <GraduationCap size={18} />
                     </div>
                     <div className="min-w-0">
                         <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate">
                             {tutorial.order}. {tutorial.title}
                         </h3>
-                        <p className="text-[11px] text-slate-500">
-                            {tutorial.categoryLabel} • {steps.length} pasos • Duración aprox. {tutorial.duration}
+                        <p className="text-[11px] text-slate-500 truncate">
+                            {tutorial.categoryLabel}
+                            {tutorial.menuPath ? ` • Menú: ${tutorial.menuPath}` : ''}
+                            {` • ${steps.length} pasos • ${tutorial.duration}`}
                         </p>
                     </div>
                 </div>
@@ -84,16 +102,29 @@ export default function TutorialDetailModal({
                     </div>
                 </div>
 
-                {/* Prerrequisitos en Paso 1 */}
-                {stepIndex === 0 && prereqs.length > 0 && (
-                    <div className="p-3 bg-indigo-50/70 border border-indigo-200/80 rounded-2xl text-xs text-indigo-950 space-y-1">
-                        <div className="font-bold flex items-center gap-1.5">
-                            <CheckSquare size={14} className="text-indigo-600" />
-                            <span>Antes de iniciar, verifica:</span>
-                        </div>
-                        <ul className="list-disc pl-5 space-y-0.5 text-[11.5px]">
-                            {prereqs.map((p, i) => <li key={i}>{p}</li>)}
-                        </ul>
+                {/* Objetivo + Prerrequisitos en Paso 1 */}
+                {stepIndex === 0 && (tutorial.outcome || prereqs.length > 0) && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                        {tutorial.outcome && (
+                            <div className="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-2xl text-xs text-emerald-950 space-y-1">
+                                <div className="font-bold flex items-center gap-1.5">
+                                    <Target size={14} className="text-emerald-600 shrink-0" />
+                                    <span>¿Qué lograrás con esta guía?</span>
+                                </div>
+                                <p className="text-[11.5px] leading-relaxed">{tutorial.outcome}</p>
+                            </div>
+                        )}
+                        {prereqs.length > 0 && (
+                            <div className={`p-3 bg-indigo-50/70 border border-indigo-200/80 rounded-2xl text-xs text-indigo-950 space-y-1 ${!tutorial.outcome ? 'md:col-span-2' : ''}`}>
+                                <div className="font-bold flex items-center gap-1.5">
+                                    <CheckSquare size={14} className="text-indigo-600 shrink-0" />
+                                    <span>Antes de iniciar, verifica:</span>
+                                </div>
+                                <ul className="list-disc pl-5 space-y-0.5 text-[11.5px]">
+                                    {prereqs.map((p, i) => <li key={i}>{p}</li>)}
+                                </ul>
+                            </div>
+                        )}
                     </div>
                 )}
 

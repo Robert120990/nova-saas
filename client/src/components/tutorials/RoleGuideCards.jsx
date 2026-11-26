@@ -1,20 +1,5 @@
-import { UserCheck, Store, Fuel, Shield, CheckCircle2 } from 'lucide-react';
-
-const ROLE_ICON_MAP = {
-    Vendedor: UserCheck,
-    'Jefe Tienda': Store,
-    'Jefe Pista': Fuel,
-    SuperAdmin: Shield,
-    Admin: Shield,
-    Supervisor: Shield,
-    Gerencia: Shield
-};
-
-const COLOR_MAP = {
-    indigo: 'bg-indigo-50 border-indigo-200 text-indigo-700',
-    emerald: 'bg-emerald-50 border-emerald-200 text-emerald-700',
-    amber: 'bg-amber-50 border-amber-200 text-amber-700'
-};
+import { UserCheck, CheckCircle2 } from 'lucide-react';
+import { ROLE_ICON_MAP, ROLE_COLOR_MAP } from './tutorialMeta';
 
 export default function RoleGuideCards({
     roleGuide,
@@ -32,7 +17,7 @@ export default function RoleGuideCards({
         <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/90 shadow-xs space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-start sm:items-center gap-3">
-                    <div className={`p-2.5 rounded-2xl border shrink-0 ${COLOR_MAP[guide.color] || COLOR_MAP.indigo}`}>
+                    <div className={`p-2.5 rounded-2xl border shrink-0 ${ROLE_COLOR_MAP[guide.color] || ROLE_COLOR_MAP.indigo}`}>
                         <Icon size={20} />
                     </div>
                     <div className="space-y-0.5">
