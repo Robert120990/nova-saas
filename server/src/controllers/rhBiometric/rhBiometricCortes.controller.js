@@ -1,4 +1,6 @@
 const rhBiometricCortesService = require('../../services/rhBiometricCortes.service');
+const rhBiometricCortesReportService = require('../../services/rhBiometricCortesReport.service');
+const { executeExcelServiceInWorker } = require('../../services/reportWorkerPool.service');
 
 /**
  * Obtener resumen del rango pendiente de reportar y último corte congelado
@@ -91,6 +93,42 @@ const batchUpdateOvertimeEntries = async (req, res) => {
     }
 };
 
+/**
+ * Exportar período congelado en PDF o Excel (Resumen Global con firmas por fila o Detallado por Persona)
+ */
+const exportCorteReport = async (req, res) => {
+    try {
+        const corteId = Number(req.params.id);
+        if (!corteId) {
+            return res.status(400).json({ message: 'ID de corte inválido.' });
+        }
+        const format = String(req.query.format || 'pdf').toLowerCase();
+        const scope = String(req.query.scope || 'global').toLowerCase() === 'person' ? 'detallado' : 'global';
+
+        if (format === 'excel' || format === 'xlsx') {
+            const buffer = await executeExcelServiceInWorker(
+                {
+                    serviceRelativePath: 'services/rhBiometricCortesReport.service',
+                    methodName: 'generateCorteExcel',
+                    args: [req.company_id, corteId, req.query]
+                },
+                () => rhBiometricCortesReportService.generateCorteExcel(req.company_id, corteId, req.query)
+            );
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', `attachment; filename="control_horas_corte_${corteId}_${scope}.xlsx"`);
+            return res.send(buffer);
+        }
+
+        const pdfBuffer = await rhBiometricCortesReportService.generateCortePdf(req.company_id, corteId, req.query);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="control_horas_corte_${corteId}_${scope}.pdf"`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('Error al exportar corte biométrico:', error);
+        res.status(500).json({ message: error.message || 'Error al exportar reporte del período congelado.' });
+    }
+};
+
 module.exports = {
     getPendingOvertimeSummary,
     getDailyOvertimeRows,
@@ -98,5 +136,6 @@ module.exports = {
     batchUpdateOvertimeEntries,
     freezePeriod,
     getCortesList,
-    unfreezeCorte
+    unfreezeCorte,
+    exportCorteReport
 };

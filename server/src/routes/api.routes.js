@@ -1453,6 +1453,7 @@ router.put('/rh/biometric/cortes/overtime-entry', tenantMiddleware, checkPermiss
 router.post('/rh/biometric/cortes/overtime-batch', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.batchUpdateOvertimeEntries);
 router.post('/rh/biometric/cortes/freeze', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.freezePeriod);
 router.get('/rh/biometric/cortes', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.getCortesList);
+router.get('/rh/biometric/cortes/:id/export', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.exportCorteReport);
 router.post('/rh/biometric/cortes/:id/unfreeze', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.unfreezeCorte);
 router.get('/rh/biometric/zk-import/folders', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.getZkFolders);
 router.post('/rh/biometric/zk-import/preview', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.previewZkFolder);

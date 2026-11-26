@@ -10,6 +10,7 @@ import { unwrapList } from '../../../utils/apiUtils';
 import { useAuth } from '../../../context/AuthContext';
 import BiometricEditOvertimeModal from '../BiometricEditOvertimeModal';
 import BiometricFreezePeriodModal from '../BiometricFreezePeriodModal';
+import BiometricCorteExportModal from '../BiometricCorteExportModal';
 import BiometricImportZkModal from '../BiometricImportZkModal';
 import BiometricCortesHistoryTable from '../BiometricCortesHistoryTable';
 import BiometricOvertimeTable from '../BiometricOvertimeTable';
@@ -21,6 +22,7 @@ const BiometricOvertimeCortesTab = () => {
     const queryClient = useQueryClient();
     const [subView, setSubView] = useState('pending');
     const [search, setSearch] = useState('');
+    const [selectedEmployeeKey, setSelectedEmployeeKey] = useState('all');
     const [onlyOvertime, setOnlyOvertime] = useState(false);
     const [selectedCorte, setSelectedCorte] = useState(null);
     const [isExporting, setIsExporting] = useState(false);
@@ -29,6 +31,7 @@ const BiometricOvertimeCortesTab = () => {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [selectedEntry, setSelectedEntry] = useState(null);
     const [isFreezeModalOpen, setIsFreezeModalOpen] = useState(false);
+    const [exportCorteTarget, setExportCorteTarget] = useState(null);
     const [isZkImportModalOpen, setIsZkImportModalOpen] = useState(false);
 
     const {
@@ -70,7 +73,7 @@ const BiometricOvertimeCortesTab = () => {
     };
 
     const {
-        data: overtimeData = { rows: [], summary: {} },
+        data: overtimeData = { rows: [], employees: [], summary: {} },
         isLoading: isOvertimeLoading,
         isFetching: isOvertimeFetching,
         refetch: refetchOvertime
@@ -82,6 +85,7 @@ const BiometricOvertimeCortesTab = () => {
             activeStartDate,
             activeEndDate,
             search,
+            selectedEmployeeKey,
             onlyOvertime
         ],
         queryFn: async () => {
@@ -91,10 +95,11 @@ const BiometricOvertimeCortesTab = () => {
                     startDate: activeStartDate || undefined,
                     endDate: activeEndDate || undefined,
                     search: search.trim() || undefined,
+                    employeeKey: selectedEmployeeKey !== 'all' ? selectedEmployeeKey : undefined,
                     onlyOvertime: onlyOvertime ? 1 : 0
                 }
             });
-            return res.data || { rows: [], summary: {} };
+            return res.data || { rows: [], employees: [], summary: {} };
         },
         enabled: !!(activeStartDate && activeEndDate)
     });
@@ -181,82 +186,45 @@ const BiometricOvertimeCortesTab = () => {
     };
 
     const rows = Array.isArray(overtimeData?.rows) ? overtimeData.rows : [];
+    const employees = Array.isArray(overtimeData?.employees) ? overtimeData.employees : [];
+    const selectedEmployee = employees.find(e => e.employee_key === selectedEmployeeKey) || null;
     const summary = overtimeData?.summary || {};
-    const bannerRange = {
-        ...pendingRange,
-        fecha_inicio: activeStartDate || pendingRange.fecha_inicio,
-        fecha_fin: activeEndDate || pendingRange.fecha_fin
-    };
+    const bannerRange = { ...pendingRange, fecha_inicio: activeStartDate || pendingRange.fecha_inicio, fecha_fin: activeEndDate || pendingRange.fecha_fin };
+    const handleSwitchSubView = (view) => { setSubView(view); setSelectedCorte(null); setSelectedEmployeeKey('all'); };
+    const handleSelectCorte = (c) => { setSelectedCorte(c); setSelectedEmployeeKey('all'); };
 
     return (
         <div className="space-y-6">
             {/* Selector de Sub-vistas */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/80 shadow-sm">
                 <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
-                    <button
-                        type="button"
-                        onClick={() => { setSubView('pending'); setSelectedCorte(null); }}
-                        className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                            subView === 'pending' && !selectedCorte
-                                ? 'bg-white text-indigo-700 shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                    >
-                        <Clock className="w-3.5 h-3.5" />
-                        <span>Horas Pendientes de Reportar</span>
+                    <button type="button" onClick={() => handleSwitchSubView('pending')}
+                        className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${subView === 'pending' && !selectedCorte ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>
+                        <Clock className="w-3.5 h-3.5" /><span>Horas Pendientes de Reportar</span>
                     </button>
-                    <button
-                        type="button"
-                        onClick={() => { setSubView('history'); }}
-                        className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                            subView === 'history' || selectedCorte
-                                ? 'bg-white text-indigo-700 shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                    >
-                        <Lock className="w-3.5 h-3.5" />
-                        <span>Historial de Períodos Congelados</span>
+                    <button type="button" onClick={() => { setSubView('history'); setSelectedEmployeeKey('all'); }}
+                        className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${subView === 'history' || selectedCorte ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>
+                        <Lock className="w-3.5 h-3.5" /><span>Historial de Períodos Congelados</span>
                     </button>
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
-                    <button
-                        type="button"
-                        onClick={() => setIsZkImportModalOpen(true)}
-                        className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all shadow-sm"
-                        title="Cargar y validar archivos quincenales de ZKTeco (.xls)"
-                    >
-                        <FolderArchive className="w-4 h-4 text-indigo-600" />
-                        <span>Cargar Archivos ZK</span>
+                    <button type="button" onClick={() => setIsZkImportModalOpen(true)} title="Cargar y validar archivos quincenales de ZKTeco (.xls)"
+                        className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all shadow-sm">
+                        <FolderArchive className="w-4 h-4 text-indigo-600" /><span>Cargar Archivos ZK</span>
                     </button>
-                    <button
-                        type="button"
-                        onClick={handleExportQuincenal}
-                        disabled={isExporting || !activeStartDate || !activeEndDate}
-                        className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 rounded-xl transition-all shadow-sm disabled:opacity-50"
-                        title="Descargar formato oficial de Horas Extras Quincenal (.xlsx)"
-                    >
-                        {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
-                        <span>Exportar XLSX</span>
+                    <button type="button" onClick={handleExportQuincenal} disabled={isExporting || !activeStartDate || !activeEndDate} title="Descargar formato oficial de Horas Extras Quincenal (.xlsx)"
+                        className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 rounded-xl transition-all shadow-sm disabled:opacity-50">
+                        {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}<span>Exportar XLSX</span>
                     </button>
                     {subView === 'pending' && !selectedCorte && (
-                        <button
-                            type="button"
-                            onClick={() => setIsFreezeModalOpen(true)}
-                            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-xl transition-all shadow-sm shadow-sky-200"
-                            title="Congelar el rango actual para corte de planilla"
-                        >
-                            <Lock className="w-4 h-4" />
-                            <span>Congelar Período</span>
+                        <button type="button" onClick={() => setIsFreezeModalOpen(true)} title="Congelar el rango actual para corte de planilla"
+                            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-xl transition-all shadow-sm shadow-sky-200">
+                            <Lock className="w-4 h-4" /><span>Congelar Período</span>
                         </button>
                     )}
-                    <button
-                        type="button"
-                        onClick={handleRefreshAll}
-                        disabled={isOvertimeFetching}
-                        className="p-2 text-slate-500 hover:text-slate-800 bg-slate-50 border border-slate-200 hover:bg-slate-100 rounded-xl transition-all disabled:opacity-50"
-                        title="Actualizar registros"
-                    >
+                    <button type="button" onClick={handleRefreshAll} disabled={isOvertimeFetching} title="Actualizar registros"
+                        className="p-2 text-slate-500 hover:text-slate-800 bg-slate-50 border border-slate-200 hover:bg-slate-100 rounded-xl transition-all disabled:opacity-50">
                         <RefreshCw className={`w-4 h-4 ${isOvertimeFetching ? 'animate-spin text-indigo-600' : ''}`} />
                     </button>
                 </div>
@@ -267,13 +235,19 @@ const BiometricOvertimeCortesTab = () => {
                     pendingRange={bannerRange}
                     lastCorte={lastCorte}
                     summary={summary}
+                    selectedEmployee={selectedEmployee}
+                    onClearEmployee={() => setSelectedEmployeeKey('all')}
                 />
             )}
 
             {selectedCorte && (
                 <BiometricFrozenBanner
                     selectedCorte={selectedCorte}
-                    onBack={() => setSelectedCorte(null)}
+                    summary={summary}
+                    selectedEmployee={selectedEmployee}
+                    onClearEmployee={() => setSelectedEmployeeKey('all')}
+                    onOpenExport={() => setExportCorteTarget(selectedCorte)}
+                    onBack={() => handleSelectCorte(null)}
                     onUnfreeze={() => {
                         if (window.confirm(`¿Está seguro de descongelar y reabrir el corte "${selectedCorte.nombre}"? Volverá al rango pendiente.`)) {
                             unfreezeMutation.mutate(selectedCorte.id);
@@ -287,7 +261,8 @@ const BiometricOvertimeCortesTab = () => {
                 <BiometricCortesHistoryTable
                     cortesList={cortesList}
                     isLoading={isCortesLoading}
-                    onSelectCorte={(c) => setSelectedCorte(c)}
+                    onSelectCorte={handleSelectCorte}
+                    onExportCorte={(c) => setExportCorteTarget(c)}
                 />
             )}
 
@@ -297,6 +272,9 @@ const BiometricOvertimeCortesTab = () => {
                     isLoading={isOvertimeLoading}
                     search={search}
                     onSearchChange={setSearch}
+                    employees={employees}
+                    selectedEmployeeKey={selectedEmployeeKey}
+                    onSelectedEmployeeChange={setSelectedEmployeeKey}
                     startDate={startDate}
                     onStartDateChange={(val) => handleDateChange('start', val)}
                     endDate={endDate}
@@ -307,38 +285,22 @@ const BiometricOvertimeCortesTab = () => {
                     isFrozenView={!!selectedCorte}
                     onOpenEdit={handleOpenEdit}
                     isBatchPending={batchOvertimeMutation.isPending}
-                    onBatchAction={(payload, onDone) => {
-                        batchOvertimeMutation.mutate(payload, { onSuccess: () => onDone && onDone() });
-                    }}
+                    onBatchAction={(payload, onDone) => { batchOvertimeMutation.mutate(payload, { onSuccess: () => onDone && onDone() }); }}
                 />
             )}
 
-            <BiometricEditOvertimeModal
-                open={isEditModalOpen}
-                onClose={() => setIsEditModalOpen(false)}
-                entry={selectedEntry}
-                onSuccess={() => refetchOvertime()}
+            <BiometricEditOvertimeModal open={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} entry={selectedEntry} onSuccess={() => refetchOvertime()} />
+            <BiometricFreezePeriodModal open={isFreezeModalOpen} onClose={() => setIsFreezeModalOpen(false)} suggestedRange={bannerRange}
+                onSuccess={() => { hasInitializedRange.current = false; setStartDate(''); setEndDate(''); refetchSummary(); refetchOvertime(); refetchCortes(); }} />
+            <BiometricCorteExportModal
+                open={!!exportCorteTarget}
+                onClose={() => setExportCorteTarget(null)}
+                corte={exportCorteTarget}
+                employees={selectedCorte?.id === exportCorteTarget?.id ? employees : []}
+                defaultEmployeeKey={selectedCorte?.id === exportCorteTarget?.id ? selectedEmployeeKey : 'all'}
+                defaultOnlyOvertime={onlyOvertime}
             />
-
-            <BiometricFreezePeriodModal
-                open={isFreezeModalOpen}
-                onClose={() => setIsFreezeModalOpen(false)}
-                suggestedRange={bannerRange}
-                onSuccess={() => {
-                    hasInitializedRange.current = false;
-                    setStartDate('');
-                    setEndDate('');
-                    refetchSummary();
-                    refetchOvertime();
-                    refetchCortes();
-                }}
-            />
-
-            <BiometricImportZkModal
-                open={isZkImportModalOpen}
-                onClose={() => setIsZkImportModalOpen(false)}
-                onSuccess={() => handleRefreshAll()}
-            />
+            <BiometricImportZkModal open={isZkImportModalOpen} onClose={() => setIsZkImportModalOpen(false)} onSuccess={() => handleRefreshAll()} />
         </div>
     );
 };

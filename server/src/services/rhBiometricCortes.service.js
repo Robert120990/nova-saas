@@ -88,11 +88,17 @@ async function getPendingRangeSummary(companyId) {
     };
 }
 
+function getRowEmployeeKey(row) {
+    return row?.empleado_id ? `emp_${row.empleado_id}` : `uid_${row?.device_uid || 'unknown'}`;
+}
+
 /**
  * Obtener detalle de horas extra y asistencia diaria para un rango o corte
  */
 async function getDailyOvertimeRows(companyId, filters = {}) {
     const { corteId, search, departmentId } = filters;
+    const rawEmpKey = String(filters.employeeKey || filters.employee_key || '').trim();
+    const activeEmployeeKey = rawEmpKey && rawEmpKey !== 'all' && rawEmpKey !== 'todos' ? rawEmpKey : '';
     const onlyOvertimeFlag = filters.onlyOvertime === true
         || filters.onlyOvertime === 1
         || filters.onlyOvertime === '1'
@@ -100,6 +106,7 @@ async function getDailyOvertimeRows(companyId, filters = {}) {
 
     let rawStart = filters.startDate || filters.start_date;
     let rawEnd = filters.endDate || filters.end_date;
+    let corteInfo = null;
 
     if (corteId) {
         const [corteRows] = await pool.query(
@@ -107,8 +114,14 @@ async function getDailyOvertimeRows(companyId, filters = {}) {
             [corteId, companyId]
         );
         if (corteRows.length > 0) {
-            rawStart = extractDateOnly(corteRows[0].fecha_inicio);
-            rawEnd = extractDateOnly(corteRows[0].fecha_fin);
+            const c = corteRows[0];
+            rawStart = extractDateOnly(c.fecha_inicio);
+            rawEnd = extractDateOnly(c.fecha_fin);
+            corteInfo = {
+                ...c,
+                fecha_inicio: rawStart,
+                fecha_fin: rawEnd
+            };
         }
     }
 
@@ -207,15 +220,40 @@ async function getDailyOvertimeRows(companyId, filters = {}) {
 
     const rows = [];
     const empSet = new Set();
+    const employeesMap = new Map();
     let totalMinutosTrabajados = 0;
     let totalHorasExtraCalculadas = 0;
     let totalHorasExtraAprobadas = 0;
     let totalHorasExtraDiurnas = 0;
     let totalHorasExtraNocturnas = 0;
+    let totalLlegadasTarde = 0;
+    let totalMinutosTardanza = 0;
     let totalEditados = 0;
     let totalIncompletas = 0;
 
     for (const item of grouped.values()) {
+        const rowEmpKey = getRowEmployeeKey(item);
+        if (!employeesMap.has(rowEmpKey)) {
+            employeesMap.set(rowEmpKey, {
+                employee_key: rowEmpKey,
+                empleado_id: item.empleado_id || null,
+                device_uid: item.device_uid,
+                codigo: item.codigo,
+                nombre: item.nombre,
+                cargo: item.cargo,
+                departamento: item.departamento
+            });
+        }
+
+        if (activeEmployeeKey) {
+            const matchesEmployee = rowEmpKey === activeEmployeeKey
+                || (item.empleado_id && String(item.empleado_id) === activeEmployeeKey)
+                || String(item.device_uid) === activeEmployeeKey;
+            if (!matchesEmployee) {
+                continue;
+            }
+        }
+
         const [, m, d] = item.fecha.split('-');
         const esFestivo = holidayMap.has(`${m}-${d}`);
 
@@ -260,16 +298,21 @@ async function getDailyOvertimeRows(companyId, filters = {}) {
         }
 
         totalMinutosTrabajados += calc.minutosTrabajados;
-        empSet.add(item.empleado_id || item.device_uid);
+        empSet.add(rowEmpKey);
         totalHorasExtraCalculadas += calc.horasExtraCalculadas;
         totalHorasExtraAprobadas += horasExtraAprobadas;
         totalHorasExtraDiurnas += heDiurnas;
         totalHorasExtraNocturnas += heNocturnas;
+        if (calc.esLlegadaTarde) {
+            totalLlegadasTarde++;
+            totalMinutosTardanza += Number(calc.minutosTardanza || 0);
+        }
         if (isEdited) totalEditados++;
         if (calc.esMarcacionIncompleta) totalIncompletas++;
 
         rows.push({
             id: adj?.id || null,
+            employee_key: rowEmpKey,
             empleado_id: item.empleado_id,
             device_uid: item.device_uid,
             codigo: item.codigo,
@@ -299,8 +342,14 @@ async function getDailyOvertimeRows(companyId, filters = {}) {
         });
     }
 
+    const employees = Array.from(employeesMap.values()).sort((a, b) =>
+        String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es')
+    );
+
     return {
         rows,
+        employees,
+        corte: corteInfo,
         summary: {
             total_filas: rows.length,
             total_empleados: empSet.size,
@@ -309,6 +358,8 @@ async function getDailyOvertimeRows(companyId, filters = {}) {
             total_horas_extra_aprobadas: parseFloat(totalHorasExtraAprobadas.toFixed(2)),
             total_horas_extra_diurnas: parseFloat(totalHorasExtraDiurnas.toFixed(2)),
             total_horas_extra_nocturnas: parseFloat(totalHorasExtraNocturnas.toFixed(2)),
+            total_llegadas_tarde: totalLlegadasTarde,
+            total_minutos_tardanza: totalMinutosTardanza,
             total_editados: totalEditados,
             total_incompletas: totalIncompletas
         },

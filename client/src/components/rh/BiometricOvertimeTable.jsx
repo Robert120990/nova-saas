@@ -17,6 +17,9 @@ const BiometricOvertimeTable = ({
     isLoading,
     search,
     onSearchChange,
+    employees = [],
+    selectedEmployeeKey = 'all',
+    onSelectedEmployeeChange,
     startDate,
     onStartDateChange,
     endDate,
@@ -30,6 +33,7 @@ const BiometricOvertimeTable = ({
     isBatchPending = false
 }) => {
     const safeRows = Array.isArray(rows) ? rows : [];
+    const safeEmployees = Array.isArray(employees) ? employees : [];
     const [selectedKeys, setSelectedKeys] = useState([]);
     const [capValue, setCapValue] = useState('2.0');
 
@@ -80,7 +84,7 @@ const BiometricOvertimeTable = ({
             {/* Barra de Filtros */}
             <div className="p-4 bg-slate-50/70 border-b border-slate-100 space-y-3 text-xs">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-center">
-                    <div className="relative lg:col-span-4">
+                    <div className={`relative ${isFrozenView ? 'lg:col-span-4' : 'lg:col-span-3'}`}>
                         <input
                             type="text"
                             placeholder="Buscar colaborador, código, cargo..."
@@ -91,18 +95,36 @@ const BiometricOvertimeTable = ({
                         <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
                     </div>
 
+                    {onSelectedEmployeeChange && (
+                        <div className={isFrozenView ? 'lg:col-span-4' : 'lg:col-span-3'}>
+                            <select
+                                value={selectedEmployeeKey}
+                                onChange={(e) => onSelectedEmployeeChange(e.target.value)}
+                                aria-label="Filtrar por colaborador"
+                                className="w-full text-xs font-semibold border border-slate-300 rounded-xl px-2.5 py-2 outline-none focus:ring-2 focus:ring-indigo-500/20 bg-white text-slate-700"
+                            >
+                                <option value="all">Todos los colaboradores ({safeEmployees.length})</option>
+                                {safeEmployees.map((emp) => (
+                                    <option key={emp.employee_key} value={emp.employee_key}>
+                                        {emp.nombre} [{emp.codigo}]
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
                     {!isFrozenView && (
-                        <div className="flex items-center gap-2 sm:col-span-2 lg:col-span-5">
+                        <div className="flex items-center gap-2 sm:col-span-2 lg:col-span-4">
                             <input type="date" value={startDate} onChange={(e) => onStartDateChange(e.target.value)} className="w-full text-xs font-semibold border border-slate-300 rounded-xl px-2.5 py-1.5 outline-none bg-white" />
                             <span className="text-slate-400 font-bold shrink-0">a</span>
                             <input type="date" value={endDate} onChange={(e) => onEndDateChange(e.target.value)} className="w-full text-xs font-semibold border border-slate-300 rounded-xl px-2.5 py-1.5 outline-none bg-white" />
                         </div>
                     )}
 
-                    <div className="flex items-center gap-2 lg:col-span-3">
+                    <div className={`flex items-center gap-2 ${isFrozenView ? 'lg:col-span-4' : 'lg:col-span-2'}`}>
                         <label className="flex items-center gap-2 cursor-pointer select-none">
                             <input type="checkbox" checked={onlyOvertime} onChange={(e) => onOnlyOvertimeChange(e.target.checked)} className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500" />
-                            <span className="font-bold text-slate-700 text-xs">Solo registros con Horas Extra</span>
+                            <span className="font-bold text-slate-700 text-xs">Solo con H.E.</span>
                         </label>
                     </div>
                 </div>

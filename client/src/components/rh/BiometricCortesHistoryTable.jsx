@@ -1,7 +1,7 @@
-import { Lock, Edit3 } from 'lucide-react';
+import { Lock, Edit3, Printer } from 'lucide-react';
 import { formatDate } from '../../utils/dateUtils';
 
-const BiometricCortesHistoryTable = ({ cortesList, isLoading, onSelectCorte }) => {
+const BiometricCortesHistoryTable = ({ cortesList, isLoading, onSelectCorte, onExportCorte }) => {
     return (
         <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
             <div className="p-4 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between">
@@ -62,15 +62,28 @@ const BiometricCortesHistoryTable = ({ cortesList, isLoading, onSelectCorte }) =
                                         {c.created_by_name || 'Sistema'}
                                     </td>
                                     <td className="py-3 px-4 text-center">
-                                        <button
-                                            type="button"
-                                            onClick={() => onSelectCorte(c)}
-                                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-200"
-                                            title="Ver y editar horas extra de este corte"
-                                        >
-                                            <Edit3 className="w-3.5 h-3.5" />
-                                            <span>Ver / Editar Horas</span>
-                                        </button>
+                                        <div className="inline-flex items-center justify-center gap-1.5 flex-wrap">
+                                            {onExportCorte && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onExportCorte(c)}
+                                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors border border-emerald-200"
+                                                    title="Imprimir PDF o exportar Excel con firmas de aceptación"
+                                                >
+                                                    <Printer className="w-3.5 h-3.5" />
+                                                    <span>Imprimir / Excel</span>
+                                                </button>
+                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={() => onSelectCorte(c)}
+                                                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-200"
+                                                title="Ver y editar horas extra de este corte"
+                                            >
+                                                <Edit3 className="w-3.5 h-3.5" />
+                                                <span>Ver / Editar Horas</span>
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))
