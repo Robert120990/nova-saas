@@ -155,7 +155,7 @@ export default function TutorialDetailModal({
                             className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold cursor-pointer"
                         >
                             <ExternalLink size={13} />
-                            <span>Ir a la pantalla</span>
+                            <span>{tutorial.modulePath === '__ctrl_k__' ? 'Probar Ctrl + K' : 'Ir a la pantalla'}</span>
                         </button>
                         <button
                             type="button"

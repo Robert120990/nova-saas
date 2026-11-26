@@ -12,6 +12,7 @@ const normalizeRole = (name) => String(name || '').trim().toLowerCase();
 async function resolveUserRoleContext(req) {
     const userId = req.user?.id;
     const companyId = req.company_id;
+    const tokenIsSuperAdmin = normalizeRole(req.user?.role) === 'superadmin';
     let roleName = req.user?.role || 'Vendedor';
     let userPerms = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
 
@@ -25,7 +26,9 @@ async function resolveUserRoleContext(req) {
             [userId, companyId]
         );
         if (rows.length > 0) {
-            roleName = rows[0].role_name || roleName;
+            if (!tokenIsSuperAdmin) {
+                roleName = rows[0].role_name || roleName;
+            }
             try {
                 const parsed = typeof rows[0].permissions === 'string'
                     ? JSON.parse(rows[0].permissions)
@@ -35,7 +38,8 @@ async function resolveUserRoleContext(req) {
         }
     }
 
-    const isSuperAdmin = normalizeRole(roleName) === 'superadmin';
+    const isSuperAdmin = tokenIsSuperAdmin || normalizeRole(roleName) === 'superadmin';
+    if (isSuperAdmin) roleName = 'SuperAdmin';
     return { roleName, userPerms, isSuperAdmin };
 }
 
@@ -54,19 +58,49 @@ function resolveSingleRoleGuide(roleName, tutorials) {
     };
 }
 
-function filterTutorialsForUser(tutorials, { roleName, userPerms, isSuperAdmin }, { category } = {}) {
+function filterTutorialsForUser(tutorials, { roleName, userPerms, isSuperAdmin }, { category, role } = {}) {
+    if (isSuperAdmin) {
+        const roleFilter = role && role !== 'all' ? normalizeRole(role) : null;
+        return tutorials
+            .filter((t) => {
+                const isUniversal = Array.isArray(t.roles) && t.roles.includes('*');
+                if (roleFilter && !isUniversal) {
+                    const hasRole = Array.isArray(t.roles) && t.roles.some(r => normalizeRole(r) === roleFilter);
+                    if (!hasRole) return false;
+                }
+                if (category && category !== 'all' && t.category !== category) {
+                    return false;
+                }
+                return true;
+            })
+            .map((t) => {
+                const isUniversal = Array.isArray(t.roles) && t.roles.includes('*');
+                const roles = isUniversal
+                    ? ['Todos los roles']
+                    : (Array.isArray(t.roles) ? t.roles : []);
+                return {
+                    ...t,
+                    roles,
+                    isUniversal,
+                    isRecommendedForUser: true
+                };
+            })
+            .sort((a, b) => (a.order || 999) - (b.order || 999));
+    }
+
     const activeRoleKey = normalizeRole(roleName);
     const roleHasExplicitMapping = TUTORIALS_CATALOG.some(
-        t => Array.isArray(t.roles) && t.roles.some(r => normalizeRole(r) === activeRoleKey)
+        t => Array.isArray(t.roles) && t.roles.some(r => r !== '*' && normalizeRole(r) === activeRoleKey)
     );
 
     return tutorials
         .filter((t) => {
-            const matchesPerm = isSuperAdmin || !Array.isArray(t.requiredPermissions) || t.requiredPermissions.length === 0
+            const isUniversal = Array.isArray(t.roles) && t.roles.includes('*');
+            const matchesPerm = !Array.isArray(t.requiredPermissions) || t.requiredPermissions.length === 0
                 ? true
                 : t.requiredPermissions.some(p => userPerms.includes(p));
 
-            const matchesRole = isSuperAdmin
+            const matchesRole = isUniversal
                 ? true
                 : roleHasExplicitMapping
                     ? (Array.isArray(t.roles) && t.roles.some(r => normalizeRole(r) === activeRoleKey))
@@ -83,6 +117,7 @@ function filterTutorialsForUser(tutorials, { roleName, userPerms, isSuperAdmin }
         .map((t) => ({
             ...t,
             roles: [roleName],
+            isUniversal: Array.isArray(t.roles) && t.roles.includes('*'),
             isRecommendedForUser: true
         }))
         .sort((a, b) => (a.order || 999) - (b.order || 999));
@@ -95,16 +130,21 @@ const getTutorials = async (req, res) => {
         const availableCategoryIds = new Set(allRoleTutorials.map(t => t.category));
         const categories = TUTORIAL_CATEGORIES.filter(c => availableCategoryIds.has(c.id));
         const roleGuide = resolveSingleRoleGuide(ctx.roleName, allRoleTutorials);
+        const roleGuides = ctx.isSuperAdmin
+            ? ROLE_GUIDES.filter(g => normalizeRole(g.role) !== 'superadmin')
+            : [roleGuide];
 
-        const tutorials = req.query.category && req.query.category !== 'all'
-            ? allRoleTutorials.filter(t => t.category === req.query.category)
-            : allRoleTutorials;
+        const tutorials = filterTutorialsForUser(TUTORIALS_CATALOG, ctx, {
+            category: req.query.category,
+            role: ctx.isSuperAdmin ? req.query.role : undefined
+        });
 
         res.json({
             success: true,
             userRole: ctx.roleName,
+            isSuperAdmin: ctx.isSuperAdmin,
             roleGuide,
-            roleGuides: [roleGuide],
+            roleGuides,
             categories,
             tutorials
         });
@@ -123,7 +163,9 @@ const getTutorialPdf = async (req, res) => {
         }
 
         const ctx = await resolveUserRoleContext(req);
-        const allowed = filterTutorialsForUser([tutorial], ctx);
+        const allowed = ctx.isSuperAdmin
+            ? filterTutorialsForUser([tutorial], ctx)
+            : filterTutorialsForUser([tutorial], ctx);
         if (allowed.length === 0) {
             return res.status(403).json({ success: false, message: 'Su rol actual no tiene acceso a este tutorial' });
         }
@@ -141,9 +183,13 @@ const getTutorialPdf = async (req, res) => {
 
 const getTutorialPackPdf = async (req, res) => {
     try {
-        const { category = 'all' } = req.query;
+        const { category = 'all', role = 'all' } = req.query;
         const ctx = await resolveUserRoleContext(req);
-        const tutorials = filterTutorialsForUser(TUTORIALS_CATALOG, ctx, { category });
+        const activeRoleFilter = ctx.isSuperAdmin ? role : 'all';
+        const tutorials = filterTutorialsForUser(TUTORIALS_CATALOG, ctx, {
+            category,
+            role: activeRoleFilter
+        });
 
         if (tutorials.length === 0) {
             return res.status(404).json({ success: false, message: 'No hay tutoriales disponibles para exportar con ese filtro' });
@@ -155,11 +201,24 @@ const getTutorialPackPdf = async (req, res) => {
             const cat = TUTORIAL_CATEGORIES.find(c => c.id === category);
             if (cat) titleParts.push(cat.label.toUpperCase());
         }
-        const subtitle = `ROL ACTIVO: ${ctx.roleName.toUpperCase()} (${tutorials.length} GUÍAS)`;
-        const safeRoleSlug = String(ctx.roleName || 'Usuario')
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .replace(/[^a-zA-Z0-9_-]+/g, '_');
+
+        let subtitle;
+        let fileName;
+        if (ctx.isSuperAdmin && activeRoleFilter && activeRoleFilter !== 'all') {
+            subtitle = `ROL: ${activeRoleFilter.toUpperCase()} (${tutorials.length} GUÍAS)`;
+            const safeSlug = String(activeRoleFilter).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9_-]+/g, '_');
+            fileName = `Manual_Operativo_${safeSlug}.pdf`;
+        } else if (ctx.isSuperAdmin) {
+            subtitle = `SUPERADMIN — TODOS LOS TUTORIALES (${tutorials.length} GUÍAS)`;
+            fileName = 'Manual_Operativo_Completo_SuperAdmin.pdf';
+        } else {
+            subtitle = `ROL ACTIVO: ${ctx.roleName.toUpperCase()} (${tutorials.length} GUÍAS)`;
+            const safeRoleSlug = String(ctx.roleName || 'Usuario')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-zA-Z0-9_-]+/g, '_');
+            fileName = `Manual_Operativo_${safeRoleSlug}.pdf`;
+        }
 
         const pdfBuffer = await tutorialPdfService.generateTutorialPackPdfBuffer(
             tutorials,
@@ -169,7 +228,7 @@ const getTutorialPackPdf = async (req, res) => {
         );
 
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename="Manual_Operativo_${safeRoleSlug}.pdf"`);
+        res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
         res.send(pdfBuffer);
     } catch (error) {
         console.error('[tutorialController.getTutorialPackPdf] Error:', error);

@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
-    GraduationCap, Search, FileDown, CheckCircle2, RefreshCcw, Store, Fuel, Layers
+    GraduationCap, Search, FileDown, CheckCircle2, RefreshCcw, Store, Fuel, Layers, Keyboard
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { unwrapList } from '../utils/apiUtils';
@@ -17,6 +17,7 @@ export default function Tutorials() {
 
     const [search, setSearch] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('all');
+    const [selectedRole, setSelectedRole] = useState('all');
     const [activeTutorial, setActiveTutorial] = useState(null);
     const [exportingPack, setExportingPack] = useState(false);
 
@@ -37,23 +38,35 @@ export default function Tutorials() {
 
     const tutorials = useMemo(() => unwrapList(data?.tutorials), [data]);
     const categories = useMemo(() => unwrapList(data?.categories), [data]);
+    const roleGuides = useMemo(() => unwrapList(data?.roleGuides), [data]);
+    const isSuperAdmin = Boolean(data?.isSuperAdmin) || String(user?.role || '').toLowerCase() === 'superadmin';
     const activeRole = data?.userRole || user?.role || 'Usuario';
     const roleGuide = useMemo(
-        () => data?.roleGuide || (Array.isArray(data?.roleGuides) ? data.roleGuides[0] : null),
-        [data]
+        () => data?.roleGuide || (roleGuides[0] || null),
+        [data, roleGuides]
     );
 
+    const effectiveRole = isSuperAdmin ? selectedRole : 'all';
     const effectiveCategory = categories.length <= 1 ? 'all' : selectedCategory;
+
+    const handleSelectRole = (nextRole) => {
+        setSelectedRole(nextRole);
+        setSelectedCategory('all');
+    };
 
     const filteredTutorials = useMemo(() => {
         const q = search.trim().toLowerCase();
         return tutorials.filter((t) => {
+            if (isSuperAdmin && effectiveRole !== 'all') {
+                const matchesRole = t.isUniversal || (Array.isArray(t.roles) && t.roles.some(r => r.toLowerCase() === effectiveRole.toLowerCase()));
+                if (!matchesRole) return false;
+            }
             if (effectiveCategory !== 'all' && t.category !== effectiveCategory) return false;
             if (!q) return true;
             const hay = `${t.title} ${t.summary} ${(t.steps || []).map(s => `${s.title} ${s.description}`).join(' ')}`.toLowerCase();
             return hay.includes(q);
         });
-    }, [tutorials, effectiveCategory, search]);
+    }, [tutorials, isSuperAdmin, effectiveRole, effectiveCategory, search]);
 
     const completedCount = useMemo(
         () => tutorials.filter(t => completedSlugs.includes(t.slug)).length,
@@ -82,9 +95,10 @@ export default function Tutorials() {
     const handleDownloadPackPdf = async () => {
         setExportingPack(true);
         try {
-            const params = new URLSearchParams({
-                category: effectiveCategory
-            });
+            const params = new URLSearchParams({ category: effectiveCategory });
+            if (isSuperAdmin && effectiveRole !== 'all') {
+                params.set('role', effectiveRole);
+            }
             const res = await axios.get(`/api/tutorials/pack/pdf?${params.toString()}`, { responseType: 'blob' });
             const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
             window.open(url, '_blank');
@@ -115,7 +129,9 @@ export default function Tutorials() {
                             </span>
                         </div>
                         <p className="text-xs sm:text-sm text-slate-500 font-medium">
-                            Guías paso a paso exclusivas para tu rol activo ({activeRole}) con capturas reales del sistema y manual descargable en PDF.
+                            {isSuperAdmin
+                                ? 'Acceso completo a todas las guías del sistema con capturas reales, filtro por rol y manual descargable en PDF.'
+                                : `Guías paso a paso exclusivas para tu rol activo (${activeRole}) con capturas reales del sistema y manual descargable en PDF.`}
                         </p>
                     </div>
                 </div>
@@ -143,10 +159,14 @@ export default function Tutorials() {
                 </div>
             </div>
 
-            {/* Tarjeta exclusiva del Rol Conectado */}
+            {/* Guía de Rol (SuperAdmin ve todos los roles; otros roles ven únicamente el suyo) */}
             <RoleGuideCards
+                isSuperAdmin={isSuperAdmin}
                 roleGuide={roleGuide}
+                roleGuides={roleGuides}
                 tutorials={tutorials}
+                selectedRole={effectiveRole}
+                onSelectRole={handleSelectRole}
             />
 
             {/* Barra de Filtros y Búsqueda */}
@@ -165,7 +185,7 @@ export default function Tutorials() {
                                 <span>Todos ({tutorials.length})</span>
                             </button>
                             {categories.map((c) => {
-                                const Icon = c.id === 'pista' ? Fuel : Store;
+                                const Icon = c.id === 'pista' ? Fuel : c.id === 'general' ? Keyboard : Store;
                                 const cnt = tutorials.filter(t => t.category === c.id).length;
                                 return (
                                     <button
@@ -184,7 +204,7 @@ export default function Tutorials() {
                         </>
                     ) : categories.length === 1 ? (
                         <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200/80 text-xs font-bold">
-                            {categories[0].id === 'pista' ? <Fuel size={13} /> : <Store size={13} />}
+                            {categories[0].id === 'pista' ? <Fuel size={13} /> : categories[0].id === 'general' ? <Keyboard size={13} /> : <Store size={13} />}
                             <span>{categories[0].label} ({tutorials.length})</span>
                         </span>
                     ) : null}
@@ -218,7 +238,7 @@ export default function Tutorials() {
                     {tutorials.length > 0 && (
                         <button
                             type="button"
-                            onClick={() => { setSearch(''); setSelectedCategory('all'); }}
+                            onClick={() => { setSearch(''); setSelectedCategory('all'); setSelectedRole('all'); }}
                             className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer"
                         >
                             Restablecer filtros
@@ -232,6 +252,7 @@ export default function Tutorials() {
                             key={tut.slug}
                             tutorial={tut}
                             completed={completedSlugs.includes(tut.slug)}
+                            showRoles={isSuperAdmin}
                             onOpen={(t) => setActiveTutorial(t)}
                             onDownloadPdf={handleDownloadSinglePdf}
                         />
@@ -248,6 +269,12 @@ export default function Tutorials() {
                 onDownloadPdf={handleDownloadSinglePdf}
                 onNavigateModule={(routePath) => {
                     setActiveTutorial(null);
+                    if (routePath === '__ctrl_k__') {
+                        setTimeout(() => {
+                            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
+                        }, 80);
+                        return;
+                    }
                     navigate(routePath);
                 }}
             />

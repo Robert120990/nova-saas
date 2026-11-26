@@ -5,6 +5,11 @@
 
 const TUTORIAL_CATEGORIES = [
     {
+        id: 'general',
+        label: 'Herramientas y Atajos',
+        description: 'Uso de Ctrl+K: buscador rápido de pantallas, calculadora comercial con IVA 13% y tickets de soporte.'
+    },
+    {
         id: 'tienda',
         label: 'Tienda y POS',
         description: 'Facturación DTE, historial y PDFs, productos, promos/combos, clientes, corte de caja y remesas.'
@@ -131,11 +136,82 @@ const ROLE_GUIDES = [
 
 const TUTORIALS_CATALOG = [
     // =========================================================================
+    // HERRAMIENTAS GLOBALES Y ATAJOS
+    // =========================================================================
+    {
+        slug: 'atajo-ctrl-k',
+        order: 1,
+        category: 'general',
+        categoryLabel: 'Herramientas y Atajos',
+        title: 'Cómo Usar Ctrl + K (Buscador Rápido, Calculadora IVA y Tickets)',
+        summary: 'Abre el comando rápido desde cualquier pantalla para saltar entre módulos, calcular operaciones con IVA 13% al instante y reportar tickets con captura.',
+        duration: '3 min',
+        modulePath: '__ctrl_k__',
+        roles: ['*'],
+        requiredPermissions: [],
+        coverImage: 'ctrl-k-calculator.png',
+        prerequisites: [
+            'Funciona en cualquier pantalla del sistema presionando Ctrl + K (o Cmd + K en Mac).'
+        ],
+        steps: [
+            {
+                title: 'Abrir el comando rápido con Ctrl + K desde cualquier pantalla',
+                description: 'Presiona simultáneamente Ctrl + K en tu teclado (Cmd + K en macOS) o haz clic en "Buscar (Ctrl+K)" en la parte superior del menú lateral. Se abrirá la paleta de comandos lista para escribir de inmediato.',
+                image: 'ctrl-k-open.png',
+                annotations: [
+                    { n: 1, x: 29, y: 12, w: 42, h: 7.5, label: 'Barra de comandos Ctrl + K: lista para buscar pantallas, calcular o crear tickets.' },
+                    { n: 2, x: 35, y: 20, w: 30, h: 14, label: 'Guía rápida integrada: cálculo de ejemplo (2x2), comando "ticket" y botón de captura.' },
+                    { n: 3, x: 29, y: 35.8, w: 42, h: 4.5, label: 'Atajos de teclado: flechas arriba/abajo para moverte, Enter para elegir y Esc para cerrar.' }
+                ],
+                tip: 'No necesitas cerrar tu pantalla ni usar el ratón; Ctrl + K responde al instante aunque estés dentro de otro formulario.'
+            },
+            {
+                title: 'Buscar y abrir pantallas del sistema al instante',
+                description: 'Escribe una palabra clave del módulo o reporte que necesitas (por ejemplo: "ventas", "cierre", "lecturas", "productos"). El listado agrupa automáticamente únicamente las opciones habilitadas para tu rol conectado.',
+                image: 'ctrl-k-search.png',
+                annotations: [
+                    { n: 1, x: 29, y: 12, w: 42, h: 7.5, label: 'Escribe parte del nombre del módulo, reporte o grupo (ej. "ventas").' },
+                    { n: 2, x: 29, y: 20, w: 42, h: 39, label: 'Resultados filtrados por los permisos de tu rol y agrupados por área.' },
+                    { n: 3, x: 29, y: 60.2, w: 42, h: 4.5, label: 'Navega con las flechas del teclado y presiona Enter para ir directo a la pantalla.' }
+                ],
+                tip: 'Si tienes cambios sin guardar en pantalla, el navegador te pedirá confirmación antes de cambiar de módulo para proteger tu trabajo.'
+            },
+            {
+                title: 'Usar la Calculadora Instantánea y el desglose comercial de IVA (13%)',
+                description: 'Digita cualquier operación matemática (+, -, *, /, x, %, paréntesis o prefijo "=") directamente en Ctrl + K (por ejemplo: 250 * 4, 100 + 13% o 500 - 15%). Obtendrás el resultado y 4 tarjetas con desglose de IVA 13% (El Salvador); haz clic en "Copiar" o en cualquiera de los 4 montos para copiarlo al portapapeles.',
+                image: 'ctrl-k-calculator.png',
+                annotations: [
+                    { n: 1, x: 29, y: 12, w: 42, h: 7.5, label: 'Escribe operaciones matemáticas (ej. 250 * 4), porcentajes o expresiones con "=".' },
+                    { n: 2, x: 29.5, y: 20, w: 31, h: 12, label: 'Resultado automático en la Calculadora Instantánea sin salir de tu trabajo.' },
+                    { n: 3, x: 61.5, y: 23.5, w: 8, h: 5.5, label: 'Botón Copiar: copia el monto resultante sin comas listo para pegar en formularios.' },
+                    { n: 4, x: 29.5, y: 32.5, w: 40.5, h: 7.5, label: 'Desglose IVA 13%: "+ IVA 13%", "IVA (13%)", "Neto (sin IVA)" e "IVA Desglosado" copiables en 1 clic.' }
+                ],
+                tip: 'Puedes escribir porcentajes directos como "125 + 13%" o "200 - 10%", y también hacer clic directo en "Neto (sin IVA)" para extraer el valor gravado de un precio con IVA incluido.'
+            },
+            {
+                title: 'Crear un Ticket de Soporte técnico con captura de pantalla',
+                description: 'Si encuentras algún inconveniente en la pantalla actual, abre Ctrl + K y escribe "ticket" o "ticket: descripción breve" (también puedes usar el atajo directo Ctrl + Shift + K). Presiona Enter o clic en la tarjeta para tomar la captura automática de la pantalla y notificar a soporte.',
+                image: 'ctrl-k-ticket.png',
+                annotations: [
+                    { n: 1, x: 29, y: 12, w: 42, h: 7.5, label: 'Escribe "ticket" o "ticket: asunto del problema" para prellenar el reporte.' },
+                    { n: 2, x: 29.5, y: 19.8, w: 41, h: 6.8, label: 'Presiona Enter o clic aquí para capturar tu pantalla actual y enviar el ticket por Telegram.' }
+                ],
+                tip: 'Al escribir "ticket: Error al emitir factura", el texto después de los dos puntos se coloca automáticamente como asunto del ticket.'
+            }
+        ],
+        troubleshooting: [
+            { issue: 'Uso Mac y Ctrl + K no responde', fix: 'En macOS el atajo funciona con Cmd + K (⌘ + K) desde cualquier pantalla.' },
+            { issue: 'Busco una pantalla y no aparece en la lista', fix: 'Ctrl + K muestra únicamente las pantallas activas para la empresa actual y habilitadas para los permisos de tu rol.' },
+            { issue: 'La calculadora no muestra resultado al escribir un solo número', fix: 'Incluye un operador (+, -, *, /, x, %), paréntesis o antepón el signo "=" (por ejemplo "=100") para activar el cálculo y ver el desglose de IVA.' }
+        ]
+    },
+
+    // =========================================================================
     // FASE 1A: TIENDA Y POS
     // =========================================================================
     {
         slug: 'facturar-pos',
-        order: 1,
+        order: 2,
         category: 'tienda',
         categoryLabel: 'Tienda y POS',
         title: 'Cómo Facturar en el Punto de Venta (POS)',
@@ -193,7 +269,7 @@ const TUTORIALS_CATALOG = [
     },
     {
         slug: 'ver-dte-descargar-pdf',
-        order: 2,
+        order: 3,
         category: 'tienda',
         categoryLabel: 'Tienda y POS',
         title: 'Ver DTE, Descargar PDF y Corregir Rechazos de Hacienda',
@@ -247,7 +323,7 @@ const TUTORIALS_CATALOG = [
     },
     {
         slug: 'crear-productos-categorias',
-        order: 3,
+        order: 4,
         category: 'tienda',
         categoryLabel: 'Tienda y POS',
         title: 'Crear Productos, Categorías y Precios por Sucursal',
@@ -291,7 +367,7 @@ const TUTORIALS_CATALOG = [
     },
     {
         slug: 'combos-promociones-descuentos',
-        order: 4,
+        order: 5,
         category: 'tienda',
         categoryLabel: 'Tienda y POS',
         title: 'Combos de Productos, Promociones y Descuentos',
@@ -344,7 +420,7 @@ const TUTORIALS_CATALOG = [
     },
     {
         slug: 'gestion-clientes',
-        order: 5,
+        order: 6,
         category: 'tienda',
         categoryLabel: 'Tienda y POS',
         title: 'Crear y Configurar Clientes (DUI, NIT, NRC, Distrito y Sucursales)',
@@ -387,7 +463,7 @@ const TUTORIALS_CATALOG = [
     },
     {
         slug: 'corte-de-caja-tienda',
-        order: 6,
+        order: 7,
         category: 'tienda',
         categoryLabel: 'Tienda y POS',
         title: 'Cómo Hacer el Corte de Caja (Apertura, Arqueo y Cierre de Turno)',
@@ -439,7 +515,7 @@ const TUTORIALS_CATALOG = [
     },
     {
         slug: 'remesas-reportes-tienda',
-        order: 7,
+        order: 8,
         category: 'tienda',
         categoryLabel: 'Tienda y POS',
         title: 'Entrega de Remesas y Reportes Operativos de Tienda',
@@ -486,7 +562,7 @@ const TUTORIALS_CATALOG = [
     // =========================================================================
     {
         slug: 'cierre-lecturas-pista',
-        order: 8,
+        order: 9,
         category: 'pista',
         categoryLabel: 'Pista / Gasolinera',
         title: 'Cómo Hacer el Cierre de Lecturas de Pista (Paso a Paso)',
@@ -552,7 +628,7 @@ const TUTORIALS_CATALOG = [
     },
     {
         slug: 'historial-lecturas-reportes-pista',
-        order: 9,
+        order: 10,
         category: 'pista',
         categoryLabel: 'Pista / Gasolinera',
         title: 'Historial de Lecturas, Precios de Combustible y Reportes de Pista',
@@ -603,7 +679,7 @@ const TUTORIALS_CATALOG = [
     },
     {
         slug: 'remesas-cupones-anticipos-pista',
-        order: 10,
+        order: 11,
         category: 'pista',
         categoryLabel: 'Pista / Gasolinera',
         title: 'Remesas de Pista, Liquidación de Cupones, Anticipos y Trupput',

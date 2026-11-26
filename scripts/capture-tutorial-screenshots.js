@@ -53,6 +53,19 @@ function checkUrl(url) {
     });
 }
 
+function checkClientHtml(url) {
+    return new Promise((resolve) => {
+        const mod = url.startsWith('https') ? https : http;
+        const req = mod.get(url, { rejectUnauthorized: false, timeout: 2000 }, (res) => {
+            let body = '';
+            res.on('data', d => { body += d; if (body.length > 4096) body = body.slice(0, 4096); });
+            res.on('end', () => resolve(res.statusCode === 200 && body.includes('<div id="root"')));
+        });
+        req.on('error', () => resolve(false));
+        req.on('timeout', () => { req.destroy(); resolve(false); });
+    });
+}
+
 async function waitForUrl(url, maxWaitMs = 30000) {
     const start = Date.now();
     while (Date.now() - start < maxWaitMs) {
@@ -237,6 +250,84 @@ function killTree(pid) {
     try { require('child_process').execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' }); } catch { /* ignore */ }
 }
 
+async function captureCtrlKScreens(cdp, clientBaseUrl) {
+    await cdp.send('Page.navigate', { url: `${clientBaseUrl}/dashboard` });
+    await waitForPageReady(cdp, 2500, 18000);
+
+    await cdp.send('Runtime.evaluate', {
+        expression: `
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
+            'OPENED';
+        `
+    });
+    await sleep(400);
+
+    const setPaletteQuery = async (textToType = '') => {
+        await cdp.send('Runtime.evaluate', {
+            expression: `(() => {
+                const clearBtn = document.querySelector('[data-ticket-modal="true"] button[title="Limpiar búsqueda"]');
+                if (clearBtn) clearBtn.click();
+                const inp = document.querySelector('[data-ticket-modal="true"] input');
+                if (inp) inp.focus();
+                return inp ? inp.value : null;
+            })()`
+        });
+        await sleep(180);
+        if (textToType) {
+            await cdp.send('Input.insertText', { text: textToType });
+            await sleep(450);
+        }
+    };
+
+    const measureModal = async () => {
+        const res = await cdp.send('Runtime.evaluate', {
+            expression: `(() => {
+                const modal = document.querySelector('[data-ticket-modal="true"] > div:nth-child(2)');
+                if (!modal) return JSON.stringify({ found: false });
+                const toPct = (el) => {
+                    if (!el) return null;
+                    const r = el.getBoundingClientRect();
+                    return {
+                        x: Number(((r.left / 1480) * 100).toFixed(1)),
+                        y: Number(((r.top / 880) * 100).toFixed(1)),
+                        w: Number(((r.width / 1480) * 100).toFixed(1)),
+                        h: Number(((r.height / 880) * 100).toFixed(1))
+                    };
+                };
+                const inputRow = modal.children[0];
+                const calcBlock = modal.querySelector('[data-index]');
+                const listBox = modal.querySelector('.custom-scrollbar');
+                const footer = modal.lastElementChild;
+                return JSON.stringify({
+                    found: true,
+                    modal: toPct(modal),
+                    inputRow: toPct(inputRow),
+                    calcBlock: toPct(calcBlock),
+                    listBox: toPct(listBox),
+                    footer: toPct(footer)
+                });
+            })()`
+        });
+        return res.result?.value || '{}';
+    };
+
+    const cases = [
+        { file: 'ctrl-k-open.png', query: '' },
+        { file: 'ctrl-k-search.png', query: 'ventas' },
+        { file: 'ctrl-k-calculator.png', query: '250 * 4' },
+        { file: 'ctrl-k-ticket.png', query: 'ticket: Error al emitir factura' }
+    ];
+
+    for (const c of cases) {
+        await setPaletteQuery(c.query);
+        const dims = await measureModal();
+        const shot = await cdp.send('Page.captureScreenshot', { format: 'png' });
+        const outPath = path.join(OUT_DIR, c.file);
+        fs.writeFileSync(outPath, Buffer.from(shot.data, 'base64'));
+        console.log(`📸 ${c.file} (${(fs.statSync(outPath).size / 1024).toFixed(1)} KB) | dims: ${dims}`);
+    }
+}
+
 async function run() {
     fs.mkdirSync(OUT_DIR, { recursive: true });
     const chromeExe = CHROME_PATHS.find(p => fs.existsSync(p));
@@ -250,21 +341,26 @@ async function run() {
     try {
         if (!(await checkUrl('http://127.0.0.1:4000/api/catalogs/departments'))) {
             console.log('Iniciando backend temporal en :4000...');
-            serverProc = spawn('node', ['src/index.js'], { cwd: path.join(__dirname, '../server'), stdio: 'ignore' });
-            await waitForUrl('http://127.0.0.1:4000/api/catalogs/departments', 30000);
+            serverProc = spawn(process.execPath, ['src/index.js'], { cwd: path.join(__dirname, '../server'), stdio: 'ignore' });
+            await waitForUrl('http://127.0.0.1:4000/api/catalogs/departments', 45000);
         }
 
         let clientBaseUrl = 'https://127.0.0.1:3000';
-        let clientUp = await checkUrl(clientBaseUrl);
-        if (!clientUp && await checkUrl('http://127.0.0.1:3000')) {
+        let clientUp = await checkClientHtml(clientBaseUrl);
+        if (!clientUp && await checkClientHtml('http://127.0.0.1:3000')) {
             clientBaseUrl = 'http://127.0.0.1:3000';
             clientUp = true;
         }
         if (!clientUp) {
-            console.log('Iniciando frontend Vite temporal en :3000...');
-            clientProc = spawn('cmd.exe', ['/c', 'npx', 'vite', '--port', '3000'], { cwd: path.join(__dirname, '../client'), stdio: 'ignore' });
-            await waitForUrl('https://127.0.0.1:3000', 35000);
-            clientBaseUrl = 'https://127.0.0.1:3000';
+            clientBaseUrl = 'https://127.0.0.1:3099';
+            console.log('Iniciando frontend Vite temporal en :3099...');
+            clientProc = spawn('cmd.exe', ['/c', 'npx', 'vite', '--port', '3099', '--strictPort'], { cwd: path.join(__dirname, '../client'), stdio: 'ignore' });
+            const startVite = Date.now();
+            while (Date.now() - startVite < 35000) {
+                if (await checkClientHtml(clientBaseUrl)) { clientUp = true; break; }
+                await sleep(500);
+            }
+            if (!clientUp) throw new Error(`Timeout esperando a Vite en ${clientBaseUrl}`);
         }
 
         const ctx = await buildCaptureContext();
@@ -297,7 +393,8 @@ async function run() {
         });
 
         const onlyPos = process.argv.includes('--only-pos');
-        if (!onlyPos) {
+        const onlyCtrlK = process.argv.includes('--only-ctrlk');
+        if (!onlyPos && !onlyCtrlK) {
             for (const scr of SCREENS) {
                 await cdp.send('Page.navigate', { url: `${clientBaseUrl}${scr.route}` });
                 const meta = await waitForPageReady(cdp, scr.minWaitMs, scr.maxWaitMs);
@@ -309,28 +406,34 @@ async function run() {
             }
         }
 
-        // Capturar terminal POS activo (desbloqueado con turno abierto, vendedor asignado y producto en carrito)
-        const sellerKey = `sipe_pos_seller_session_${ctx.userObj.id}_${ctx.userObj.company_id}_${ctx.userObj.branch_id}`;
-        const draftKey = `sipe_pos_sale_draft_${ctx.userObj.id}_${ctx.userObj.company_id}_${ctx.userObj.branch_id}`;
-        await cdp.send('Runtime.evaluate', {
-            expression: `
-                sessionStorage.setItem(${JSON.stringify(sellerKey)}, ${JSON.stringify(JSON.stringify(ctx.sellerSession))});
-                localStorage.setItem(${JSON.stringify(draftKey)}, ${JSON.stringify(JSON.stringify(ctx.posDraft))});
-                'OK';
-            `
-        });
-        await cdp.send('Page.navigate', { url: `${clientBaseUrl}/ventas/nueva` });
-        await waitForPageReady(cdp, 2200, 16000);
-        const posShot = await cdp.send('Page.captureScreenshot', { format: 'png' });
-        fs.writeFileSync(path.join(OUT_DIR, 'pos-terminal.png'), Buffer.from(posShot.data, 'base64'));
-        console.log(`📸 pos-terminal.png (${(fs.statSync(path.join(OUT_DIR, 'pos-terminal.png')).size / 1024).toFixed(1)} KB)`);
+        if (!onlyCtrlK) {
+            // Capturar terminal POS activo (desbloqueado con turno abierto, vendedor asignado y producto en carrito)
+            const sellerKey = `sipe_pos_seller_session_${ctx.userObj.id}_${ctx.userObj.company_id}_${ctx.userObj.branch_id}`;
+            const draftKey = `sipe_pos_sale_draft_${ctx.userObj.id}_${ctx.userObj.company_id}_${ctx.userObj.branch_id}`;
+            await cdp.send('Runtime.evaluate', {
+                expression: `
+                    sessionStorage.setItem(${JSON.stringify(sellerKey)}, ${JSON.stringify(JSON.stringify(ctx.sellerSession))});
+                    localStorage.setItem(${JSON.stringify(draftKey)}, ${JSON.stringify(JSON.stringify(ctx.posDraft))});
+                    'OK';
+                `
+            });
+            await cdp.send('Page.navigate', { url: `${clientBaseUrl}/ventas/nueva` });
+            await waitForPageReady(cdp, 2200, 16000);
+            const posShot = await cdp.send('Page.captureScreenshot', { format: 'png' });
+            fs.writeFileSync(path.join(OUT_DIR, 'pos-terminal.png'), Buffer.from(posShot.data, 'base64'));
+            console.log(`📸 pos-terminal.png (${(fs.statSync(path.join(OUT_DIR, 'pos-terminal.png')).size / 1024).toFixed(1)} KB)`);
 
-        if (!onlyPos && ctx.latestCloseoutId) {
-            await cdp.send('Page.navigate', { url: `${clientBaseUrl}/gas-station/cierre-lecturas?editId=${ctx.latestCloseoutId}` });
-            await waitForPageReady(cdp, 1800, 15000);
-            const sheetShot = await cdp.send('Page.captureScreenshot', { format: 'png' });
-            fs.writeFileSync(path.join(OUT_DIR, 'gas-closeout-sheet.png'), Buffer.from(sheetShot.data, 'base64'));
-            console.log(`📸 gas-closeout-sheet.png (${(fs.statSync(path.join(OUT_DIR, 'gas-closeout-sheet.png')).size / 1024).toFixed(1)} KB)`);
+            if (!onlyPos && ctx.latestCloseoutId) {
+                await cdp.send('Page.navigate', { url: `${clientBaseUrl}/gas-station/cierre-lecturas?editId=${ctx.latestCloseoutId}` });
+                await waitForPageReady(cdp, 1800, 15000);
+                const sheetShot = await cdp.send('Page.captureScreenshot', { format: 'png' });
+                fs.writeFileSync(path.join(OUT_DIR, 'gas-closeout-sheet.png'), Buffer.from(sheetShot.data, 'base64'));
+                console.log(`📸 gas-closeout-sheet.png (${(fs.statSync(path.join(OUT_DIR, 'gas-closeout-sheet.png')).size / 1024).toFixed(1)} KB)`);
+            }
+        }
+
+        if (!onlyPos) {
+            await captureCtrlKScreens(cdp, clientBaseUrl);
         }
 
         cdp.close();
