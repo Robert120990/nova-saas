@@ -68,15 +68,31 @@ const getCortesList = async (req, res) => {
 };
 
 /**
- * Descongelar o reabrir corte
+ * Eliminar / descongelar un corte congelado para volver a hacerlo
  */
 const unfreezeCorte = async (req, res) => {
     try {
-        const result = await rhBiometricCortesService.unfreezeCorte(req.company_id, req.params.id);
+        const resetMode = req.body?.resetMode || req.query?.resetMode || 'clean_all';
+        const result = await rhBiometricCortesService.unfreezeCorte(req.company_id, req.params.id, { resetMode });
         res.json(result);
     } catch (error) {
-        console.error('Error al descongelar corte:', error);
-        res.status(400).json({ message: error.message || 'Error al descongelar corte' });
+        console.error('Error al eliminar/descongelar corte:', error);
+        res.status(400).json({ message: error.message || 'Error al eliminar el corte' });
+    }
+};
+
+/**
+ * Recalcular y volver a congelar un corte en un solo paso
+ */
+const recalculateCorte = async (req, res) => {
+    try {
+        const resetMode = req.body?.resetMode || 'clean_all';
+        const includeDeficit = !!(req.body?.includeDeficit || req.body?.include_deficit);
+        const result = await rhBiometricCortesService.recalculateCorte(req.company_id, req.user?.id, req.params.id, { resetMode, includeDeficit });
+        res.json(result);
+    } catch (error) {
+        console.error('Error al recalcular corte:', error);
+        res.status(400).json({ message: error.message || 'Error al recalcular el corte' });
     }
 };
 
@@ -137,5 +153,7 @@ module.exports = {
     freezePeriod,
     getCortesList,
     unfreezeCorte,
+    deleteCorte: unfreezeCorte,
+    recalculateCorte,
     exportCorteReport
 };

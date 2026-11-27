@@ -10,6 +10,7 @@ import { unwrapList } from '../../../utils/apiUtils';
 import { useAuth } from '../../../context/AuthContext';
 import BiometricEditOvertimeModal from '../BiometricEditOvertimeModal';
 import BiometricFreezePeriodModal from '../BiometricFreezePeriodModal';
+import BiometricDeleteCorteModal from '../BiometricDeleteCorteModal';
 import BiometricCorteExportModal from '../BiometricCorteExportModal';
 import BiometricImportZkModal from '../BiometricImportZkModal';
 import BiometricCortesHistoryTable from '../BiometricCortesHistoryTable';
@@ -25,6 +26,8 @@ const BiometricOvertimeCortesTab = () => {
     const [search, setSearch] = useState('');
     const [selectedEmployeeKey, setSelectedEmployeeKey] = useState('all');
     const [onlyOvertime, setOnlyOvertime] = useState(false);
+    const [includeDeficit, setIncludeDeficit] = useState(false);
+    const [onlyNegative, setOnlyNegative] = useState(false);
     const [selectedCorte, setSelectedCorte] = useState(null);
     const [isExporting, setIsExporting] = useState(false);
 
@@ -32,24 +35,19 @@ const BiometricOvertimeCortesTab = () => {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [selectedEntry, setSelectedEntry] = useState(null);
     const [isFreezeModalOpen, setIsFreezeModalOpen] = useState(false);
+    const [deleteCorteTarget, setDeleteCorteTarget] = useState(null);
+    const [redoDraft, setRedoDraft] = useState(null);
     const [exportCorteTarget, setExportCorteTarget] = useState(null);
     const [isZkImportModalOpen, setIsZkImportModalOpen] = useState(false);
 
-    const {
-        data: summaryData = {},
-        refetch: refetchSummary
-    } = useQuery({
+    const { data: summaryData = {}, refetch: refetchSummary } = useQuery({
         queryKey: ['rh-biometric-cortes-summary', companyId],
         queryFn: async () => (await axios.get('/api/rh/biometric/cortes/summary')).data || {}
     });
 
     const lastCorte = summaryData?.ultimo_corte || null;
     const pendingRange = summaryData?.rango_pendiente || {
-        fecha_inicio: '',
-        fecha_fin: '',
-        total_empleados: 0,
-        total_horas_extra_aprobadas: 0,
-        total_editados: 0
+        fecha_inicio: '', fecha_fin: '', total_empleados: 0, total_horas_extra_aprobadas: 0, total_editados: 0
     };
 
     const [startDate, setStartDate] = useState('');
@@ -73,22 +71,8 @@ const BiometricOvertimeCortesTab = () => {
         setEndDate(next.endDate);
     };
 
-    const {
-        data: overtimeData = { rows: [], employees: [], summary: {} },
-        isLoading: isOvertimeLoading,
-        isFetching: isOvertimeFetching,
-        refetch: refetchOvertime
-    } = useQuery({
-        queryKey: [
-            'rh-biometric-cortes-daily-overtime',
-            companyId,
-            selectedCorte?.id || 'pending',
-            activeStartDate,
-            activeEndDate,
-            search,
-            selectedEmployeeKey,
-            onlyOvertime
-        ],
+    const { data: overtimeData = { rows: [], employees: [], summary: {} }, isLoading: isOvertimeLoading, isFetching: isOvertimeFetching, refetch: refetchOvertime } = useQuery({
+        queryKey: ['rh-biometric-cortes-daily-overtime', companyId, selectedCorte?.id || 'pending', activeStartDate, activeEndDate, search, selectedEmployeeKey, onlyOvertime, includeDeficit, onlyNegative],
         queryFn: async () => {
             const res = await axios.get('/api/rh/biometric/cortes/daily-overtime', {
                 params: {
@@ -97,7 +81,9 @@ const BiometricOvertimeCortesTab = () => {
                     endDate: activeEndDate || undefined,
                     search: search.trim() || undefined,
                     employeeKey: selectedEmployeeKey !== 'all' ? selectedEmployeeKey : undefined,
-                    onlyOvertime: onlyOvertime ? 1 : 0
+                    onlyOvertime: onlyOvertime ? 1 : 0,
+                    includeDeficit: !selectedCorte && includeDeficit ? 1 : 0,
+                    onlyNegative: onlyNegative ? 1 : 0
                 }
             });
             return res.data || { rows: [], employees: [], summary: {} };
@@ -105,34 +91,39 @@ const BiometricOvertimeCortesTab = () => {
         enabled: !!(activeStartDate && activeEndDate)
     });
 
-    const {
-        data: rawCortesList = [],
-        isLoading: isCortesLoading,
-        refetch: refetchCortes
-    } = useQuery({
+    const { data: rawCortesList = [], isLoading: isCortesLoading, refetch: refetchCortes } = useQuery({
         queryKey: ['rh-biometric-cortes-list', companyId],
         queryFn: async () => unwrapList(await axios.get('/api/rh/biometric/cortes')),
         enabled: subView === 'history'
     });
     const cortesList = Array.isArray(rawCortesList) ? rawCortesList : [];
 
-    const unfreezeMutation = useMutation({
-        mutationFn: async (corteId) => (await axios.post(`/api/rh/biometric/cortes/${corteId}/unfreeze`)).data,
-        onSuccess: (data) => {
-            toast.success(data?.message || 'Corte descongelado y reabierto.');
-            hasInitializedRange.current = false;
-            setSelectedCorte(null);
+    const handleCorteDeleted = (deletedCorte, openToRedo) => {
+        setSelectedCorte(null);
+        setSelectedEmployeeKey('all');
+        if (openToRedo && deletedCorte?.fecha_inicio && deletedCorte?.fecha_fin) {
+            hasInitializedRange.current = true;
             setSubView('pending');
+            setStartDate(deletedCorte.fecha_inicio);
+            setEndDate(deletedCorte.fecha_fin);
+            setRedoDraft(deletedCorte);
+        } else {
+            hasInitializedRange.current = false;
+            setRedoDraft(null);
             setStartDate('');
             setEndDate('');
-            queryClient.invalidateQueries({ queryKey: ['rh-biometric-cortes-summary'] });
-            queryClient.invalidateQueries({ queryKey: ['rh-biometric-cortes-daily-overtime'] });
-            queryClient.invalidateQueries({ queryKey: ['rh-biometric-cortes-list'] });
-        },
-        onError: (err) => {
-            toast.error(err.response?.data?.message || 'Error al descongelar el corte');
+            setSubView('history');
         }
-    });
+    };
+
+    const handleCorteRecalculated = (recalcData) => {
+        if (selectedCorte && recalcData?.recalculatedCorte) {
+            setSelectedCorte(prev => ({ ...prev, ...recalcData.recalculatedCorte }));
+        }
+        refetchSummary();
+        refetchOvertime();
+        refetchCortes();
+    };
 
     const batchOvertimeMutation = useMutation({
         mutationFn: async (payload) => (await axios.post('/api/rh/biometric/cortes/overtime-batch', payload)).data,
@@ -165,6 +156,7 @@ const BiometricOvertimeCortesTab = () => {
                     endDate: activeEndDate,
                     corteId: selectedCorte?.id || undefined,
                     corteNombre: selectedCorte?.nombre || undefined,
+                    includeDeficit: !selectedCorte && includeDeficit ? 1 : 0,
                     format: 'andelsa_excel',
                     template: 'andelsa'
                 },
@@ -240,6 +232,14 @@ const BiometricOvertimeCortesTab = () => {
                     summary={summary}
                     selectedEmployee={selectedEmployee}
                     onClearEmployee={() => setSelectedEmployeeKey('all')}
+                    redoDraft={redoDraft}
+                    onOpenFreeze={() => setIsFreezeModalOpen(true)}
+                    onCancelRedo={() => {
+                        setRedoDraft(null);
+                        hasInitializedRange.current = false;
+                        setStartDate(pendingRange.fecha_inicio || '');
+                        setEndDate(pendingRange.fecha_fin || '');
+                    }}
                 />
             )}
 
@@ -251,12 +251,8 @@ const BiometricOvertimeCortesTab = () => {
                     onClearEmployee={() => setSelectedEmployeeKey('all')}
                     onOpenExport={() => setExportCorteTarget(selectedCorte)}
                     onBack={() => handleSelectCorte(null)}
-                    onUnfreeze={() => {
-                        if (window.confirm(`¿Está seguro de descongelar y reabrir el corte "${selectedCorte.nombre}"? Volverá al rango pendiente.`)) {
-                            unfreezeMutation.mutate(selectedCorte.id);
-                        }
-                    }}
-                    isUnfreezing={unfreezeMutation.isPending}
+                    onUnfreeze={() => setDeleteCorteTarget(selectedCorte)}
+                    isUnfreezing={false}
                 />
             )}
 
@@ -266,6 +262,7 @@ const BiometricOvertimeCortesTab = () => {
                     isLoading={isCortesLoading}
                     onSelectCorte={handleSelectCorte}
                     onExportCorte={(c) => setExportCorteTarget(c)}
+                    onDeleteCorte={(c) => setDeleteCorteTarget(c)}
                 />
             )}
 
@@ -296,6 +293,12 @@ const BiometricOvertimeCortesTab = () => {
                     onApplyRange={(s, e) => { setStartDate(s); setEndDate(e); }}
                     onlyOvertime={onlyOvertime}
                     onOnlyOvertimeChange={setOnlyOvertime}
+                    includeDeficit={includeDeficit}
+                    onIncludeDeficitChange={(next) => { setIncludeDeficit(next); if (!next) setOnlyNegative(false); }}
+                    onlyNegative={onlyNegative}
+                    onOnlyNegativeChange={setOnlyNegative}
+                    negativeCount={summary.total_negativos_count || 0}
+                    negativeHours={summary.total_horas_negativas || 0}
                     isFrozenView={!!selectedCorte}
                     onOpenEdit={handleOpenEdit}
                     isBatchPending={batchOvertimeMutation.isPending}
@@ -304,8 +307,23 @@ const BiometricOvertimeCortesTab = () => {
             )}
 
             <BiometricEditOvertimeModal open={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} entry={selectedEntry} onSuccess={() => refetchOvertime()} />
-            <BiometricFreezePeriodModal open={isFreezeModalOpen} onClose={() => setIsFreezeModalOpen(false)} suggestedRange={bannerRange}
-                onSuccess={() => { hasInitializedRange.current = false; setStartDate(''); setEndDate(''); refetchSummary(); refetchOvertime(); refetchCortes(); }} />
+            <BiometricFreezePeriodModal
+                open={isFreezeModalOpen}
+                onClose={() => setIsFreezeModalOpen(false)}
+                suggestedRange={bannerRange}
+                initialDraft={redoDraft}
+                lastCorte={lastCorte}
+                includeDeficit={includeDeficit}
+                onIncludeDeficitChange={setIncludeDeficit}
+                onSuccess={() => { hasInitializedRange.current = false; setRedoDraft(null); setStartDate(''); setEndDate(''); refetchSummary(); refetchOvertime(); refetchCortes(); }}
+            />
+            <BiometricDeleteCorteModal
+                open={!!deleteCorteTarget}
+                onClose={() => setDeleteCorteTarget(null)}
+                corte={deleteCorteTarget}
+                onDeleted={handleCorteDeleted}
+                onRecalculated={handleCorteRecalculated}
+            />
             <BiometricCorteExportModal
                 open={!!exportCorteTarget}
                 onClose={() => setExportCorteTarget(null)}

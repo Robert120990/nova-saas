@@ -109,6 +109,17 @@ async function getDailyOvertimeRows(companyId, filters = {}) {
         || filters.onlyOvertime === 1
         || filters.onlyOvertime === '1'
         || filters.onlyOvertime === 'true';
+    const includeDeficitFlag = filters.includeDeficit === true
+        || filters.includeDeficit === 1
+        || filters.includeDeficit === '1'
+        || filters.includeDeficit === 'true'
+        || filters.include_deficit === 1
+        || filters.include_deficit === '1'
+        || filters.include_deficit === true;
+    const onlyNegativeFlag = filters.onlyNegative === true
+        || filters.onlyNegative === 1
+        || filters.onlyNegative === '1'
+        || filters.onlyNegative === 'true';
 
     let rawStart = filters.startDate || filters.start_date;
     let rawEnd = filters.endDate || filters.end_date;
@@ -226,7 +237,7 @@ async function getDailyOvertimeRows(companyId, filters = {}) {
         getHolidays(companyId, settings.pais_festivos || 'SV'),
         corteId ? getSavedCorteSaldos(companyId, corteId) : Promise.resolve(null),
         getPreviousCorteCarryover(companyId, startDate, corteId || null),
-        !corteId && rules.compensar_sabado ? getExcusedAbsenceSet(companyId, startDate, endDate) : Promise.resolve(new Set())
+        !corteId && (rules.compensar_sabado || includeDeficitFlag) ? getExcusedAbsenceSet(companyId, startDate, endDate) : Promise.resolve(new Set())
     ]);
 
     const holidayMap = new Set();
@@ -342,6 +353,7 @@ async function getDailyOvertimeRows(companyId, filters = {}) {
     for (const item of grouped.values()) {
         const [, m, d] = item.fecha.split('-');
         const esFestivo = holidayMap.has(`${m}-${d}`);
+        const isExcusedDay = !!(item.empleado_id && excusedSet.has(`${item.empleado_id}_${item.fecha}`));
         const calc = evaluateDayAttendance(item.punches, {
             fecha: item.fecha,
             horaEntradaEsperada: item.hora_entrada_esperada,
@@ -349,12 +361,14 @@ async function getDailyOvertimeRows(companyId, filters = {}) {
             jornadaHoras: item.jornada_horas,
             exentoHorasExtras: item.exento_horas_extras,
             esFestivo,
+            esAusenciaJustificada: isExcusedDay,
             modoCalculoJornada: rules.modo_calculo_jornada,
             redondeoMinutos: rules.redondeo_horas_extra_minutos,
             umbralRedondeoMinutos: rules.umbral_redondeo_minutos,
             compensarSabado: rules.compensar_sabado,
             horasJornadaSabado: rules.horas_jornada_sabado,
-            permitirSaldoNegativo: rules.permitir_saldo_negativo
+            permitirSaldoNegativo: rules.permitir_saldo_negativo || includeDeficitFlag,
+            incluirDeficitDiario: !corteId && includeDeficitFlag
         });
 
         const adj = adjustmentMap.get(`${item.device_uid}_${item.fecha}`)
@@ -369,7 +383,9 @@ async function getDailyOvertimeRows(companyId, filters = {}) {
             ? parseFloat(Number(adj.horas_extra_aprobadas).toFixed(2))
             : horasExtraCalc;
         const horasExtraAvicola = parseFloat(Number(adj?.horas_extra_avicola || 0).toFixed(2));
-        const observacion = adj?.observacion || (item.es_dia_compensacion ? 'Compensación sábado (44h sem.)' : '');
+        const observacion = adj?.observacion
+            || (item.es_dia_compensacion ? 'Compensación sábado (44h sem.)' : '')
+            || (!corteId && includeDeficitFlag && !calc.esSabado && !calc.esDomingo && horasExtraCalc < 0 ? 'Déficit de jornada (compensable)' : '');
         const entrada = hasPunches ? extractTime(calc.horaEntrada) : (adj?.entrada ? String(adj.entrada).slice(0, 8) : '---');
         const salida = hasPunches ? extractTime(calc.horaSalida) : (adj?.salida ? String(adj.salida).slice(0, 8) : '---');
 
@@ -434,17 +450,20 @@ async function getDailyOvertimeRows(companyId, filters = {}) {
     const { employeeSummaries: allEmployeeSummaries, categoryTotals: fullCategoryTotals } = buildEmployeeSaldosSummary(allRows, {
         carryover,
         savedSaldos,
-        permitirSaldoNegativo: rules.permitir_saldo_negativo
+        permitirSaldoNegativo: rules.permitir_saldo_negativo || includeDeficitFlag
     });
 
     const hasEmpFilter = !!(employeeKey && employeeKey !== 'todos' && employeeKey !== 'all');
     const scopedRows = hasEmpFilter ? allRows.filter(r => r.employee_key === employeeKey) : allRows;
-    const rows = onlyOvertimeFlag
+    let rows = onlyOvertimeFlag
         ? scopedRows.filter(r => r.horas_extra_calculadas !== 0 || r.horas_extra_aprobadas !== 0 || r.horas_extra_avicola > 0)
         : scopedRows;
+    if (onlyNegativeFlag) {
+        rows = rows.filter(r => r.horas_extra_aprobadas < 0 || r.horas_extra_calculadas < 0);
+    }
 
     const { employeeSummaries: scopedSummaries, categoryTotals } = hasEmpFilter
-        ? buildEmployeeSaldosSummary(scopedRows, { carryover, savedSaldos, permitirSaldoNegativo: rules.permitir_saldo_negativo })
+        ? buildEmployeeSaldosSummary(scopedRows, { carryover, savedSaldos, permitirSaldoNegativo: rules.permitir_saldo_negativo || includeDeficitFlag })
         : { employeeSummaries: allEmployeeSummaries, categoryTotals: fullCategoryTotals };
 
     const totalHorasTrabajadas = parseFloat(rows.reduce((s, r) => s + Number(r.horas_trabajadas || 0), 0).toFixed(2));
@@ -456,6 +475,9 @@ async function getDailyOvertimeRows(companyId, filters = {}) {
     const totalIncompletas = rows.filter(r => r.es_marcacion_incompleta).length;
     const totalLlegadasTarde = rows.filter(r => r.es_llegada_tarde).length;
     const totalMinutosTardanza = rows.reduce((s, r) => s + Number(r.minutos_tardanza || 0), 0);
+    const negativeRows = scopedRows.filter(r => Number(r.horas_extra_aprobadas || 0) < 0);
+    const totalNegativosCount = negativeRows.length;
+    const totalHorasNegativas = parseFloat(negativeRows.reduce((s, r) => s + Number(r.horas_extra_aprobadas || 0), 0).toFixed(2));
 
     return {
         rows,
@@ -474,6 +496,9 @@ async function getDailyOvertimeRows(companyId, filters = {}) {
             total_minutos_tardanza: totalMinutosTardanza,
             total_editados: totalEditados,
             total_incompletas: totalIncompletas,
+            total_negativos_count: totalNegativosCount,
+            total_horas_negativas: totalHorasNegativas,
+            include_deficit_diario: includeDeficitFlag,
             ...categoryTotals
         },
         periodTotals: fullCategoryTotals,
@@ -491,5 +516,6 @@ module.exports = {
     batchUpdateOvertimeEntries: writeOps.batchUpdateOvertimeEntries,
     freezePeriod: (companyId, userId, data) => writeOps.freezePeriod(companyId, userId, data, getDailyOvertimeRows),
     getCortesList: writeOps.getCortesList,
-    unfreezeCorte: writeOps.unfreezeCorte
+    unfreezeCorte: writeOps.unfreezeCorte,
+    recalculateCorte: (companyId, userId, corteId, options) => writeOps.recalculateCorte(companyId, userId, corteId, options, getDailyOvertimeRows)
 };

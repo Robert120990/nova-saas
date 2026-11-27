@@ -1,7 +1,7 @@
-import { Lock, Edit3, Printer } from 'lucide-react';
+import { Lock, Edit3, Printer, Trash2 } from 'lucide-react';
 import { formatDate } from '../../utils/dateUtils';
 
-const BiometricCortesHistoryTable = ({ cortesList, isLoading, onSelectCorte, onExportCorte }) => {
+const BiometricCortesHistoryTable = ({ cortesList, isLoading, onSelectCorte, onExportCorte, onDeleteCorte }) => {
     return (
         <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
             <div className="p-4 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between">
@@ -87,8 +87,19 @@ const BiometricCortesHistoryTable = ({ cortesList, isLoading, onSelectCorte, onE
                                                 title="Ver y editar horas extra de este corte"
                                             >
                                                 <Edit3 className="w-3.5 h-3.5" />
-                                                <span>Ver / Editar Horas</span>
+                                                <span>Ver / Editar</span>
                                             </button>
+                                            {onDeleteCorte && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onDeleteCorte(c)}
+                                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors border border-rose-200"
+                                                    title="Eliminar este corte para recalcularlo y volver a hacerlo"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                    <span>Eliminar / Rehacer</span>
+                                                </button>
+                                            )}
                                         </div>
                                     </td>
                                 </tr>

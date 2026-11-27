@@ -90,13 +90,15 @@ function evaluateDayAttendance(rawPunches, options = {}) {
         jornadaHoras = 8.0,
         exentoHorasExtras = false,
         esFestivo = false,
+        esAusenciaJustificada = false,
         debounceMinutes = DEFAULT_DEBOUNCE_MINUTES,
         modoCalculoJornada = 'neto_sin_almuerzo',
         redondeoMinutos = 0,
         umbralRedondeoMinutos = 15,
         compensarSabado = false,
         horasJornadaSabado = 4.0,
-        permitirSaldoNegativo = false
+        permitirSaldoNegativo = false,
+        incluirDeficitDiario = false
     } = options;
 
     const { punches: sorted, removedDuplicates } = debouncePunches(rawPunches, debounceMinutes);
@@ -189,11 +191,14 @@ function evaluateDayAttendance(rawPunches, options = {}) {
                     minutosExtra = deltaSab;
                     horasExtraCalculadas = roundOvertimeMinutesToHours(deltaSab, redondeoMinutos, umbralRedondeoMinutos);
                 }
-            } else if (!esFestivo && permitirSaldoNegativo) {
+            } else if (!esFestivo && !esAusenciaJustificada && permitirSaldoNegativo) {
                 minutosExtra = -sabadoMins;
                 horasExtraCalculadas = roundOvertimeMinutesToHours(-sabadoMins, redondeoMinutos, umbralRedondeoMinutos);
             }
         } else if (minutosTrabajados > jornadaMins) {
+            minutosExtra = minutosTrabajados - jornadaMins;
+            horasExtraCalculadas = roundOvertimeMinutesToHours(minutosExtra, redondeoMinutos, umbralRedondeoMinutos);
+        } else if (incluirDeficitDiario && !esFestivo && !esAusenciaJustificada && minutosTrabajados > 0 && minutosTrabajados < jornadaMins) {
             minutosExtra = minutosTrabajados - jornadaMins;
             horasExtraCalculadas = roundOvertimeMinutesToHours(minutosExtra, redondeoMinutos, umbralRedondeoMinutos);
         }

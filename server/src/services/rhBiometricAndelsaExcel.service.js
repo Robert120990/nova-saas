@@ -18,6 +18,7 @@ function calculateDayTimes(rawTimeStrings, dateStr, jornadaHoras = 9, options = 
         compensarSabado = true,
         horasJornadaSabado = 4,
         permitirSaldoNegativo = true,
+        incluirDeficitDiario = false,
         esFestivo = false,
         esExcusado = false
     } = options;
@@ -81,6 +82,8 @@ function calculateDayTimes(rawTimeStrings, dateStr, jornadaHoras = 9, options = 
         deltaMins = spanMins;
     } else if (esSabado && compensarSabado) {
         deltaMins = spanMins - sabadoMins;
+    } else if (incluirDeficitDiario && !esFestivo && !esExcusado && spanMins > 0 && spanMins < jornadaMins) {
+        deltaMins = spanMins - jornadaMins;
     } else {
         deltaMins = Math.max(0, spanMins - jornadaMins);
     }
@@ -269,6 +272,7 @@ async function generateAndelsaOvertimeExcel(companyId, filters = {}) {
                 compensarSabado: settings.compensar_sabado !== undefined ? !!settings.compensar_sabado : true,
                 horasJornadaSabado: parseFloat(settings.horas_jornada_sabado || 4),
                 permitirSaldoNegativo: settings.permitir_saldo_negativo !== undefined ? !!settings.permitir_saldo_negativo : true,
+                incluirDeficitDiario: !!(filters.includeDeficit === true || filters.includeDeficit === 1 || filters.includeDeficit === '1' || filters.includeDeficit === 'true'),
                 esFestivo: !!holidayName,
                 esExcusado: isExcused
             });

@@ -1460,6 +1460,8 @@ router.post('/rh/biometric/cortes/freeze', tenantMiddleware, checkPermission('ma
 router.get('/rh/biometric/cortes', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.getCortesList);
 router.get('/rh/biometric/cortes/:id/export', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.exportCorteReport);
 router.post('/rh/biometric/cortes/:id/unfreeze', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.unfreezeCorte);
+router.delete('/rh/biometric/cortes/:id', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.deleteCorte);
+router.post('/rh/biometric/cortes/:id/recalculate', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.recalculateCorte);
 router.get('/rh/biometric/zk-import/folders', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.getZkFolders);
 router.post('/rh/biometric/zk-import/preview', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.previewZkFolder);
 router.post('/rh/biometric/zk-import/import', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.importZkFolder);

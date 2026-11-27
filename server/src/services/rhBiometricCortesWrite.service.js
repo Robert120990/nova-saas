@@ -105,10 +105,12 @@ async function freezePeriod(companyId, userId, data, getDailyOvertimeRowsFn) {
         throw new Error(`El rango colisiona con el corte congelado "${o.nombre}" (${extractDateOnly(o.fecha_inicio)} al ${extractDateOnly(o.fecha_fin)}).`);
     }
 
+    const includeDeficit = !!(data.include_deficit || data.includeDeficit);
     const periodData = await getDailyOvertimeRowsFn(companyId, {
         startDate: fecha_inicio,
         endDate: fecha_fin,
-        onlyOvertime: 0
+        onlyOvertime: 0,
+        includeDeficit: includeDeficit ? 1 : 0
     });
 
     const summary = periodData.summary || {};
@@ -222,38 +224,86 @@ async function freezePeriod(companyId, userId, data, getDailyOvertimeRowsFn) {
 
 async function getCortesList(companyId) {
     const [rows] = await pool.query(
-        `SELECT c.*, COALESCE(u.nombre, u.username) as created_by_name
+        `SELECT c.*, COALESCE(u.nombre, u.username) as created_by_name,
+                (SELECT COUNT(*) FROM rh_biometric_daily_overtime o WHERE o.corte_id = c.id AND o.company_id = c.company_id) as daily_records_count,
+                (SELECT COUNT(*) FROM rh_biometric_daily_overtime o WHERE o.corte_id = c.id AND o.company_id = c.company_id AND o.es_editado = 1) as manual_edits_count
          FROM rh_biometric_cortes c
          LEFT JOIN users u ON u.id = c.created_by
          WHERE c.company_id = ?
          ORDER BY c.fecha_fin DESC, c.id DESC`,
         [companyId]
     );
-    return rows.map(c => ({
+    return rows.map((c, idx) => ({
         ...c,
         fecha_inicio: extractDateOnly(c.fecha_inicio),
-        fecha_fin: extractDateOnly(c.fecha_fin)
+        fecha_fin: extractDateOnly(c.fecha_fin),
+        later_cortes_count: idx
     }));
 }
 
-async function unfreezeCorte(companyId, corteId) {
+/**
+ * Eliminar / descongelar un corte para volver a hacerlo.
+ * resetMode:
+ *  - 'clean_all' (default): borra los cálculos previos del corte para recalcular 100% limpio desde el reloj.
+ *  - 'keep_manual': conserva ajustes editados manualmente (es_editado = 1) y libera las marcaciones.
+ */
+async function unfreezeCorte(companyId, corteId, options = {}) {
+    const resetMode = options?.resetMode === 'keep_manual' ? 'keep_manual' : 'clean_all';
     const conn = await pool.getConnection();
     try {
         await conn.beginTransaction();
 
-        await conn.query(
-            `UPDATE rh_biometric_attendance_logs
-             SET congelado = 0, corte_id = NULL
-             WHERE company_id = ? AND corte_id = ?`,
-            [companyId, corteId]
+        const [corteRows] = await conn.query(
+            `SELECT id, nombre, fecha_inicio, fecha_fin, observaciones
+             FROM rh_biometric_cortes
+             WHERE id = ? AND company_id = ?
+             LIMIT 1`,
+            [corteId, companyId]
+        );
+        if (!corteRows.length) {
+            throw new Error('Corte biométrico no encontrado.');
+        }
+
+        const corte = {
+            id: corteRows[0].id,
+            nombre: corteRows[0].nombre,
+            fecha_inicio: extractDateOnly(corteRows[0].fecha_inicio),
+            fecha_fin: extractDateOnly(corteRows[0].fecha_fin),
+            observaciones: corteRows[0].observaciones || ''
+        };
+
+        const [[laterRow]] = await conn.query(
+            `SELECT COUNT(*) as cnt FROM rh_biometric_cortes
+             WHERE company_id = ? AND estado = 'congelado' AND fecha_inicio > ?`,
+            [companyId, corte.fecha_fin]
         );
 
         await conn.query(
-            `UPDATE rh_biometric_daily_overtime
-             SET congelado = 0, corte_id = NULL
-             WHERE company_id = ? AND corte_id = ?`,
-            [companyId, corteId]
+            `UPDATE rh_biometric_attendance_logs
+             SET congelado = 0, corte_id = NULL${resetMode === 'clean_all' ? ', horas_extra = 0' : ''}
+             WHERE company_id = ? AND (corte_id = ? OR (punch_time >= ? AND punch_time <= ?))`,
+            [companyId, corteId, `${corte.fecha_inicio} 00:00:00`, `${corte.fecha_fin} 23:59:59`]
         );
+
+        if (resetMode === 'clean_all') {
+            await conn.query(
+                `DELETE FROM rh_biometric_daily_overtime
+                 WHERE company_id = ? AND (corte_id = ? OR (fecha >= ? AND fecha <= ? AND congelado = 1))`,
+                [companyId, corteId, corte.fecha_inicio, corte.fecha_fin]
+            );
+        } else {
+            await conn.query(
+                `DELETE FROM rh_biometric_daily_overtime
+                 WHERE company_id = ? AND corte_id = ? AND COALESCE(es_editado, 0) = 0`,
+                [companyId, corteId]
+            );
+            await conn.query(
+                `UPDATE rh_biometric_daily_overtime
+                 SET congelado = 0, corte_id = NULL
+                 WHERE company_id = ? AND corte_id = ?`,
+                [companyId, corteId]
+            );
+        }
 
         await conn.query(
             `DELETE FROM rh_biometric_corte_saldos WHERE company_id = ? AND corte_id = ?`,
@@ -266,13 +316,51 @@ async function unfreezeCorte(companyId, corteId) {
         );
 
         await conn.commit();
-        return { success: true, message: 'Corte descongelado y reabierto correctamente.' };
+        return {
+            success: true,
+            resetMode,
+            deletedCorte: corte,
+            subsequentCortesCount: Number(laterRow?.cnt || 0),
+            message: resetMode === 'clean_all'
+                ? `Corte "${corte.nombre}" eliminado. El rango quedó limpio para volver a generarlo desde el reloj.`
+                : `Corte "${corte.nombre}" reabierto conservando los ajustes manuales.`
+        };
     } catch (err) {
         await conn.rollback();
         throw err;
     } finally {
         conn.release();
     }
+}
+
+/**
+ * Recalcular y rehacer un corte congelado en 1 paso (conserva nombre, fechas y observaciones).
+ */
+async function recalculateCorte(companyId, userId, corteId, options = {}, getDailyOvertimeRowsFn) {
+    const resetMode = options?.resetMode === 'keep_manual' ? 'keep_manual' : 'clean_all';
+    const includeDeficit = !!(options?.includeDeficit || options?.include_deficit);
+    const removed = await unfreezeCorte(companyId, corteId, { resetMode });
+    const c = removed.deletedCorte;
+    const rebuilt = await freezePeriod(companyId, userId, {
+        nombre: c.nombre,
+        fecha_inicio: c.fecha_inicio,
+        fecha_fin: c.fecha_fin,
+        observaciones: c.observaciones,
+        include_deficit: includeDeficit ? 1 : 0
+    }, getDailyOvertimeRowsFn);
+
+    return {
+        ...rebuilt,
+        previous_corte_id: Number(corteId),
+        recalculatedCorte: {
+            id: rebuilt.corte_id,
+            nombre: c.nombre,
+            fecha_inicio: c.fecha_inicio,
+            fecha_fin: c.fecha_fin
+        },
+        subsequentCortesCount: removed.subsequentCortesCount,
+        message: `Corte "${c.nombre}" recalculado y vuelto a congelar con éxito.`
+    };
 }
 
 /**
@@ -363,5 +451,6 @@ module.exports = {
     batchUpdateOvertimeEntries,
     freezePeriod,
     getCortesList,
-    unfreezeCorte
+    unfreezeCorte,
+    recalculateCorte
 };

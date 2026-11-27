@@ -1,4 +1,4 @@
-import { Lock, Unlock, ArrowLeft, Printer, UserCheck, X } from 'lucide-react';
+import { Lock, Trash2, ArrowLeft, Printer, UserCheck, X, RotateCcw } from 'lucide-react';
 import { formatDate, formatDecimalHours } from '../../utils/dateUtils';
 
 const SelectedEmployeeTotalsStrip = ({ selectedEmployee, summary, onClear, isFrozen }) => {
@@ -73,10 +73,45 @@ export const BiometricPendingBanner = ({
     lastCorte,
     summary,
     selectedEmployee = null,
-    onClearEmployee
+    onClearEmployee,
+    redoDraft = null,
+    onOpenFreeze,
+    onCancelRedo
 }) => {
     return (
         <div className="p-4 sm:p-5 bg-gradient-to-r from-indigo-900 to-slate-900 text-white rounded-2xl shadow-md space-y-4">
+            {redoDraft && (
+                <div className="p-3 bg-amber-400/15 border border-amber-400/40 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+                    <div className="flex items-start gap-2 text-amber-100">
+                        <RotateCcw className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
+                        <span>
+                            <strong>Rehaciendo corte:</strong> {redoDraft.nombre} ({formatDate(redoDraft.fecha_inicio)} al {formatDate(redoDraft.fecha_fin)}). Revise o ajuste los registros y vuelva a congelar cuando esté listo.
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                        {onOpenFreeze && (
+                            <button
+                                type="button"
+                                onClick={onOpenFreeze}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-sky-500 hover:bg-sky-400 text-white shadow-sm"
+                            >
+                                <Lock className="w-3.5 h-3.5" />
+                                <span>Volver a Congelar</span>
+                            </button>
+                        )}
+                        {onCancelRedo && (
+                            <button
+                                type="button"
+                                onClick={onCancelRedo}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-slate-200"
+                            >
+                                <X className="w-3.5 h-3.5" />
+                                <span>Salir</span>
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -230,11 +265,11 @@ export const BiometricFrozenBanner = ({
                         type="button"
                         onClick={onUnfreeze}
                         disabled={isUnfreezing}
-                        className="flex items-center gap-1 px-3 py-2.5 text-xs font-semibold text-rose-300 hover:text-rose-100 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 rounded-xl transition-colors disabled:opacity-50"
-                        title="Descongelar y reabrir este corte"
+                        className="flex items-center gap-1.5 px-3 py-2.5 text-xs font-bold text-rose-200 hover:text-white bg-rose-500/25 hover:bg-rose-500/40 border border-rose-400/40 rounded-xl transition-colors disabled:opacity-50"
+                        title="Eliminar este corte para recalcularlo o volver a hacerlo"
                     >
-                        <Unlock className="w-3.5 h-3.5" />
-                        <span>{isUnfreezing ? 'Descongelando...' : 'Descongelar'}</span>
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Eliminar / Rehacer</span>
                     </button>
                 </div>
             </div>
