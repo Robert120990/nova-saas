@@ -5,6 +5,7 @@ const generation = require('../../services/rhPayroll/generation.service');
 const synchronization = require('../../services/rhPayroll/synchronization.service');
 const calculation = require('../../services/rhPayroll/calculation.service');
 const commissions = require('../../services/rhPayroll/commissions.service');
+const biometricCorte = require('../../services/rhPayroll/biometricCortePayroll.service');
 const mutation = (handler) => async (req, res) => {
     const result = await executePayrollMutation(handler, req);
     res.status(result.statusCode).json(result.body);
@@ -21,4 +22,5 @@ module.exports = {
     sincronizarPlanilla: mutation(synchronization.sincronizarPlanilla),
     calcular: mutation(calculation.calcular),
     syncIndustrialCommissions: mutation(commissions.syncIndustrialCommissions),
+    aplicarCorteBiometrico: mutation(biometricCorte.applyBiometricCorte),
 };

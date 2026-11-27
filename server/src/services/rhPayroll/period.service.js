@@ -1,5 +1,6 @@
 const { TABLE, LABEL } = require('./shared');
 const { releasePayrollCommissions } = require('./commissionPayroll.service');
+const { releasePayrollBiometricCortes } = require('./biometricCortePayroll.service');
 
 const descontarCuotas = async (companyId, empleadoIds, quincena, pool) => {
     if (!empleadoIds || empleadoIds.length === 0) return;
@@ -99,6 +100,7 @@ const eliminarPeriodo = async (req, res, pool) => {
             [req.company_id, periodo_anio, periodo_mes, quincena]
         );
         await releasePayrollCommissions(pool, req.company_id, payrolls.map(payroll => payroll.id));
+        await releasePayrollBiometricCortes(pool, req.company_id, periodo_anio, periodo_mes, quincena);
 
         const [result] = await pool.query(
             `DELETE FROM ${TABLE} WHERE company_id = ? AND periodo_anio = ? AND periodo_mes = ? AND quincena = ?`,

@@ -1,9 +1,9 @@
-import { Loader2, CheckCircle, Zap, RefreshCw, Award } from 'lucide-react';
+import { Loader2, CheckCircle, Zap, RefreshCw, Award, Clock } from 'lucide-react';
 
 
 import { fieldCls, labelCls, years, months } from './planillaUtils';
 const PlanillaHeader = ({ model }) => {
-    const { periodoAnio, changePeriod, periodoBloqueado, periodoGenerado, periodoMes, quincena, diasTrabajados, handleDiasTrabajadosChange, handleSincronizar, sincronizarMutation, handleSincronizarComisionesHuevo, syncingHuevo, handleGenerar, generando, hayOtraAbierta } = model;
+    const { periodoAnio, changePeriod, periodoBloqueado, periodoGenerado, periodoMes, quincena, diasTrabajados, handleDiasTrabajadosChange, handleSincronizar, sincronizarMutation, handleSincronizarComisionesHuevo, syncingHuevo, handleOpenBiometricCorteModal, handleGenerar, generando, hayOtraAbierta } = model;
     return (<div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 items-end">
                             <div>
@@ -78,6 +78,16 @@ const PlanillaHeader = ({ model }) => {
                                             >
                                                 <Award size={12} className={syncingHuevo ? 'animate-spin text-amber-600' : 'text-amber-600'} />
                                                 <span>{syncingHuevo ? 'Sincronizando Huevo...' : 'Comisiones Huevo ($1K)'}</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleOpenBiometricCorteModal}
+                                                disabled={model.empleadoData?.totales?.estado === 'pagada'}
+                                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200/80 rounded-lg text-[11px] font-bold transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                                                title="Importar horas extra desde un corte congelado del Marcador Digital"
+                                            >
+                                                <Clock size={12} className="text-sky-600" />
+                                                <span>Corte de Horas</span>
                                             </button>
                                         </div>
                                         <button

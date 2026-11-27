@@ -2,6 +2,7 @@ const { pool, TABLE, LABEL, parseIdList } = require('../../services/rhPayroll/sh
 
 const { payrollRevision } = require('../../services/rhPayroll/revision.service');
 const { executePayrollMutation } = require('../../services/rhPayroll/transaction.service');
+const { listAvailableCortes, previewBiometricCorte } = require('../../services/rhPayroll/biometricCortePayroll.service');
 const getPlanillas = async (req, res) => {
     try {
         const { search, page = 1, limit = 15, anio, mes, quincena, branch_ids, departamento_ids } = req.query;
@@ -203,6 +204,8 @@ const getCuentasActivas = async (req, res) => {
 
 module.exports = {
     getPlanillas, getGruposPlanilla, getPlanillasAbiertas, getCuentasActivas,
+    getCortesBiometricos: (req, res) => listAvailableCortes(req, res, pool),
+    previewCorteBiometrico: (req, res) => previewBiometricCorte(req, res, pool),
     getPlanilla: async (req, res) => {
         const result = await executePayrollMutation(getPlanilla, req);
         res.status(result.statusCode).json(result.body);

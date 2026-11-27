@@ -5,3 +5,4 @@ export { default as PlanillaItemsTable } from './PlanillaItemsTable';
 export { default as PlanillaTotalsSidebar } from './PlanillaTotalsSidebar';
 export { default as PlanillaModals } from './PlanillaModals';
 export { default as PlanillaConflictModal } from './PlanillaConflictModal';
+export { default as PlanillaBiometricCorteModal } from './PlanillaBiometricCorteModal';

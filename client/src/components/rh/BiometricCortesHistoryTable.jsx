@@ -1,6 +1,8 @@
 import { Lock, Edit3, Printer, Trash2 } from 'lucide-react';
 import { formatDate } from '../../utils/dateUtils';
 
+const MESES_CORTOS = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
 const BiometricCortesHistoryTable = ({ cortesList, isLoading, onSelectCorte, onExportCorte, onDeleteCorte }) => {
     return (
         <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
@@ -63,6 +65,11 @@ const BiometricCortesHistoryTable = ({ cortesList, isLoading, onSelectCorte, onE
                                             <Lock className="w-2.5 h-2.5" />
                                             Congelado
                                         </span>
+                                        {c.planilla_anio && c.planilla_mes && c.planilla_quincena && (
+                                            <span className="block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
+                                                En Planilla: {MESES_CORTOS[Number(c.planilla_mes)] || c.planilla_mes} {c.planilla_anio} ({c.planilla_quincena === 'primera' ? '1ra' : '2da'} Q.)
+                                            </span>
+                                        )}
                                     </td>
                                     <td className="py-3 px-4 text-slate-500 text-[11px]">
                                         {c.created_by_name || 'Sistema'}

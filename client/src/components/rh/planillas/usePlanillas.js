@@ -26,6 +26,7 @@ export default function usePlanillas() {
     const [page, setPage] = useState(1);
 
     const [isEmpModalOpen, setIsEmpModalOpen] = useState(false);
+    const [isBiometricCorteModalOpen, setIsBiometricCorteModalOpen] = useState(false);
     const [previewPeriodo, setPreviewPeriodo] = useState(null);
     const [exportModalConfig, setExportModalConfig] = useState(null);
 
@@ -627,6 +628,19 @@ export default function usePlanillas() {
         }
     };
 
+    const handleOpenBiometricCorteModal = async () => {
+        try { if ((autoSaveRef.current || savingRef.current) && empleadoIdRef.current) await saveCurrentEmployee({ silent: true }); } catch { return; }
+        setIsBiometricCorteModalOpen(true);
+    };
+
+    const handleBiometricCorteSuccess = () => {
+        queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
+        queryClient.invalidateQueries({ queryKey: ['rh-planillas-abiertas'] });
+        if (empleadoIdRef.current) {
+            loadEmpleado(empleadoIdRef.current);
+        }
+    };
+
     const excluirMutation = useMutation({
         mutationFn: ({ id, revision }) => axios.delete(`/api/rh/planillas/${id}`, { data: { expected_revision: revision } }),
         onSuccess: () => {
@@ -1048,5 +1062,5 @@ const changePeriod = async (field, value) => {
         setQuincena(field === 'quincena' ? value : previous.quincena);
     };
     
-return { hasConflict, conflict, setConflict, reviewConflict, resolveConflict, activeTab, changePeriod, unsaved, saveError, loadingEmployee, handleNuevaPlanillaClick, tieneAbiertas, primeraAbierta, handleVerDetalle, handleCerrarPeriodo, filterAnio, setFilterAnio, setPage, filterMes, setFilterMes, filterQuincena, setFilterQuincena, items, isLoading, handleEliminarPeriodo, setExportModalConfig, page, response, handleVolverListado, periodoBloqueado, periodoGenerado, periodoMes, periodoAnio, quincena, handleVerPlanillaActual, handleVerRecibosActual, esEstePeriodoAbierto, cerrarMutation, setPeriodoAnio, setPeriodoMes, setQuincena, diasTrabajados, handleDiasTrabajadosChange, handleSincronizar, sincronizarMutation, handleSincronizarComisionesHuevo, syncingHuevo, setPeriodoBloqueado, handleGenerar, generando, hayOtraAbierta, employeeInputRef, codigoInput, setCodigoInput, handleCodigoSearch, setIsEmpModalOpen, empleadoData, saveCurrentEmployee, guardandoManual, savingRef, selected, handleExcluirEmpleado, excluirMutation, handleAgregarEmpleado, autoSaveRef, sinEmpleado, detalles, handleValorChange, sueldoQuincActual, ingresosAdicActual, percTotal, calculando, calculo, otrasDedActual, otraAbiertaItem, isEmpModalOpen, handleSelectEmployee, previewPeriodo, setPreviewPeriodo, exportModalConfig, handleConfirmExport };
+return { hasConflict, conflict, setConflict, reviewConflict, resolveConflict, activeTab, changePeriod, unsaved, saveError, loadingEmployee, handleNuevaPlanillaClick, tieneAbiertas, primeraAbierta, handleVerDetalle, handleCerrarPeriodo, filterAnio, setFilterAnio, setPage, filterMes, setFilterMes, filterQuincena, setFilterQuincena, items, isLoading, handleEliminarPeriodo, setExportModalConfig, page, response, handleVolverListado, periodoBloqueado, periodoGenerado, periodoMes, periodoAnio, quincena, handleVerPlanillaActual, handleVerRecibosActual, esEstePeriodoAbierto, cerrarMutation, setPeriodoAnio, setPeriodoMes, setQuincena, diasTrabajados, handleDiasTrabajadosChange, handleSincronizar, sincronizarMutation, handleSincronizarComisionesHuevo, syncingHuevo, isBiometricCorteModalOpen, setIsBiometricCorteModalOpen, handleOpenBiometricCorteModal, handleBiometricCorteSuccess, setPeriodoBloqueado, handleGenerar, generando, hayOtraAbierta, employeeInputRef, codigoInput, setCodigoInput, handleCodigoSearch, setIsEmpModalOpen, empleadoData, saveCurrentEmployee, guardandoManual, savingRef, selected, handleExcluirEmpleado, excluirMutation, handleAgregarEmpleado, autoSaveRef, sinEmpleado, detalles, handleValorChange, sueldoQuincActual, ingresosAdicActual, percTotal, calculando, calculo, otrasDedActual, otraAbiertaItem, isEmpModalOpen, handleSelectEmployee, previewPeriodo, setPreviewPeriodo, exportModalConfig, handleConfirmExport };
 }
