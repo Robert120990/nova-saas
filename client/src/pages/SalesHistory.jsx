@@ -21,7 +21,9 @@ import {
     EditarClienteDteModal, 
     SalesIntegrityAuditModal,
     RegenerateDteModal,
-    CorregirDteModal
+    CorregirDteModal,
+    SaleCreditNoteDocIndicator,
+    SaleCreditNoteStatusTag
 } from '../components/sales';
 import { useAuth } from '../context/AuthContext';
 
@@ -87,6 +89,7 @@ const SalesHistory = () => {
     const [endDate, setEndDate] = useState('');
     const [tipoDocumento, setTipoDocumento] = useState('');
     const [status, setStatus] = useState('');
+    const [hasNc, setHasNc] = useState(false);
     const [selectedSaleId, setSelectedSaleId] = useState(null);
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
     const [isVoidModalOpen, setIsVoidModalOpen] = useState(false);
@@ -149,7 +152,7 @@ const SalesHistory = () => {
     });
 
     const { data: salesData = { data: [], totalItems: 0, totalPages: 0 }, isLoading, isFetching } = useQuery({
-        queryKey: ['sales-history', debouncedSearch, page, limit, startDate, endDate, tipoDocumento, status, sortBy, sortDir],
+        queryKey: ['sales-history', debouncedSearch, page, limit, startDate, endDate, tipoDocumento, status, hasNc, sortBy, sortDir],
         queryFn: async () => {
             const params = {
                 page,
@@ -159,6 +162,7 @@ const SalesHistory = () => {
                 end_date: endDate || undefined,
                 tipo_documento: tipoDocumento || undefined,
                 status: status || undefined,
+                has_nc: hasNc ? 'true' : undefined,
                 sort_by: sortBy,
                 sort_dir: sortDir
             };
@@ -264,9 +268,10 @@ const SalesHistory = () => {
         if (endDate) count++;
         if (tipoDocumento) count++;
         if (status) count++;
+        if (hasNc) count++;
         if (sortBy !== 'fecha' || sortDir !== 'desc') count++;
         return count;
-    }, [search, startDate, endDate, tipoDocumento, status, sortBy, sortDir]);
+    }, [search, startDate, endDate, tipoDocumento, status, hasNc, sortBy, sortDir]);
 
     const handleClearFilters = () => {
         setSearch('');
@@ -275,6 +280,7 @@ const SalesHistory = () => {
         setEndDate('');
         setTipoDocumento('');
         setStatus('');
+        setHasNc(false);
         setSortBy('fecha');
         setSortDir('desc');
         setPage(1);
@@ -860,6 +866,21 @@ const SalesHistory = () => {
                         >
                             <span>⚡ Complementarias</span>
                         </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setHasNc(prev => !prev);
+                                setPage(1);
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                                hasNc
+                                    ? 'bg-violet-600 text-white shadow-sm'
+                                    : 'bg-violet-50 hover:bg-violet-100 text-violet-700 border border-violet-200/80'
+                            }`}
+                            title="Filtrar solo documentos originales a los que ya se les emitió Nota de Crédito"
+                        >
+                            <span>↩ Con Nota de Crédito</span>
+                        </button>
                         {activeFiltersCount > 0 && (
                             <button
                                 type="button"
@@ -1020,6 +1041,10 @@ const SalesHistory = () => {
                                          {!sale.numero_control && !sale.codigo_generacion && (
                                              <span className="text-[8px] px-1 bg-slate-100 text-slate-400 rounded w-fit font-bold uppercase tracking-widest">Sin DTE</span>
                                          )}
+                                         <SaleCreditNoteDocIndicator
+                                             sale={sale}
+                                             onViewSale={handleViewSale}
+                                         />
                                      </div>
                                  </div>
                              </td>
@@ -1050,8 +1075,12 @@ const SalesHistory = () => {
                                 </div>
                             </td>
                             <td className="px-4 py-1">
-                                <div className="flex items-center gap-2">
+                                <div className="flex flex-wrap items-center gap-1.5">
                                     {getStatusBadge(sale.dte_status, sale)}
+                                    <SaleCreditNoteStatusTag
+                                        sale={sale}
+                                        onViewSale={handleViewSale}
+                                    />
                                     {sale.dte_status === 'ACCEPTED' && (
                                         <div 
                                             className={`p-1 rounded-full ${sale.dte_email_sent ? 'text-emerald-500 bg-emerald-50' : 'text-slate-300 bg-slate-50'}`}
@@ -1304,6 +1333,7 @@ const SalesHistory = () => {
                 isOpen={isViewModalOpen}
                 onClose={() => setIsViewModalOpen(false)}
                 initialView={viewType}
+                onSelectSale={(id) => handleViewSale(id)}
             />
 
             {/* Modal de Anulación */}

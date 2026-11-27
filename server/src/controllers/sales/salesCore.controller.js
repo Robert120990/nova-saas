@@ -23,6 +23,7 @@ const {
 } = require('./salesUtils');
 const eggReturnableService = require('../../services/eggReturnableService');
 const { formatDeliveryDteJson } = require('../../utils/dteDeliveryHelper');
+const salesCreditNoteLinkService = require('../../services/salesCreditNoteLink.service');
 
 
 // --- CREACIÓN, CONSULTA Y ANULACIÓN DE VENTAS ---
@@ -517,6 +518,12 @@ const createSale = async (req, res) => {
                     if (dteRows.length > 0 && dteRows[0].codigo_generacion) {
                         docNum = dteRows[0].codigo_generacion;
                         genType = 1;
+                    } else {
+                        const err = new Error(
+                            `El documento relacionado "${docNum}" no existe en la base de datos local (DTE externo). Para evitar rechazo de Hacienda (Código 096), ingrese directamente su Código de Generación (UUID de 36 caracteres) impreso en el documento original.`
+                        );
+                        err.status = 400;
+                        throw err;
                     }
                 } else if (/^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/.test(docNum)) {
                     genType = 1;
@@ -709,7 +716,8 @@ const getSales = async (req, res) => {
         dte_status,
         branch_id,
         only_processed, 
-        exclude_has_nc, 
+        exclude_has_nc,
+        has_nc,
         shift_id, 
         has_dte,
         sort_by = 'fecha',
@@ -797,19 +805,20 @@ const getSales = async (req, res) => {
             whereClause += " AND (d_c.status = 'ACCEPTED' OR d_v.status = 'ACCEPTED')";
         }
 
-        if (exclude_has_nc === 'true') {
-            whereClause += ` AND NOT EXISTS (
-                SELECT 1 FROM sales_linked_documents ld 
-                JOIN sales_headers h2 ON ld.sale_id = h2.id 
-                WHERE h2.tipo_documento = '05' AND h2.estado = 'emitido'
-                AND (
-                    (ld.doc_number = h.codigo_generacion COLLATE utf8mb4_unicode_ci AND h.codigo_generacion IS NOT NULL AND h.codigo_generacion != '') OR 
-                    (ld.doc_number = h.numero_control COLLATE utf8mb4_unicode_ci AND h.numero_control IS NOT NULL AND h.numero_control != '') OR 
-                    (ld.doc_number = d_c.numero_control COLLATE utf8mb4_unicode_ci AND d_c.numero_control IS NOT NULL AND d_c.numero_control != '') OR
-                    (ld.doc_number = d_v.numero_control COLLATE utf8mb4_unicode_ci AND d_v.numero_control IS NOT NULL AND d_v.numero_control != '') OR
-                    (ld.doc_number = CAST(h.id AS CHAR) COLLATE utf8mb4_unicode_ci)
-                )
-            )`;
+        if (has_nc === 'true' || exclude_has_nc === 'true') {
+            const ncOrigIds = await salesCreditNoteLinkService.getOriginalSaleIdsWithActiveNC(req.company_id);
+            if (has_nc === 'true') {
+                if (ncOrigIds.length === 0) {
+                    whereClause += ' AND 1 = 0';
+                } else {
+                    whereClause += ' AND h.id IN (?)';
+                    whereParams.push(ncOrigIds);
+                }
+            }
+            if (exclude_has_nc === 'true' && ncOrigIds.length > 0) {
+                whereClause += ' AND h.id NOT IN (?)';
+                whereParams.push(ncOrigIds);
+            }
         }
 
         const safeDir = String(sort_dir || 'desc').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
@@ -868,6 +877,8 @@ const getSales = async (req, res) => {
 
         const [rows] = await pool.query(sql, params);
         const [totalRows] = await pool.query(countSql, countParams);
+
+        await salesCreditNoteLinkService.enrichSalesWithCreditNoteInfo(rows, req.company_id);
 
         const totalItems = totalRows[0]?.total || 0;
 
@@ -960,6 +971,8 @@ const getSaleById = async (req, res) => {
         );
         const [payments] = await pool.query('SELECT * FROM sales_payments WHERE sale_id = ? ORDER BY id ASC', [id]);
         const [linkedDocs] = await pool.query('SELECT * FROM sales_linked_documents WHERE sale_id = ? ORDER BY id ASC', [id]);
+
+        await salesCreditNoteLinkService.enrichSalesWithCreditNoteInfo([sale], req.company_id);
 
         res.json({
             ...sale,

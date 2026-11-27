@@ -5,8 +5,9 @@ import Modal from '../ui/Modal';
 import Money from '../ui/Money';
 import { FileText, User, Tag, MapPin, Building2, Truck, ShoppingCart, CreditCard, Banknote, Code, Info, Terminal, Download, Copy, Check } from 'lucide-react';
 import { toast } from 'sonner';
+import SaleCreditNoteRelationsCard from './SaleCreditNoteRelationsCard';
 
-const SaleDetailModal = ({ saleId, isOpen, onClose, initialView = 'detalle' }) => {
+const SaleDetailModal = ({ saleId, isOpen, onClose, initialView = 'detalle', onSelectSale }) => {
     const [view, setView] = useState(initialView);
     const [downloadingPDF, setDownloadingPDF] = useState(false);
     const [copiedJSON, setCopiedJSON] = useState(false);
@@ -283,6 +284,12 @@ const SaleDetailModal = ({ saleId, isOpen, onClose, initialView = 'detalle' }) =
                                 </div>
                             </div>
                         </div>
+
+                        {/* Relaciones con Notas de Crédito / Documentos Originales */}
+                        <SaleCreditNoteRelationsCard
+                            saleDetail={saleDetail}
+                            onSelectSale={onSelectSale}
+                        />
 
                         {/* Listado de Ítems */}
                         <div className="space-y-4">
