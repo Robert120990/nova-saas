@@ -1,5 +1,10 @@
 const pool = require('../config/db');
 const { getRrsPool } = require('../config/rrsDb');
+const { getBankSyncTargets } = require('../config/sipeAdminDb');
+const {
+    syncGasOrderTransferToSipeAdmin,
+    syncGasOrderChequesToSipeAdmin
+} = require('../services/sipeAdminBank.service');
 
 /**
  * Helper to fetch rrs_id_empresa configured for branch or company
@@ -481,11 +486,22 @@ exports.receiveOrder = async (req, res) => {
         const ncrMonto = parseFloat(ncr_monto) || 0;
         const obs = (observacion || '').trim();
         const doc = documento.trim();
+        const targets = getBankSyncTargets();
 
         let cPago = "";
         let pagoTotal = 0;
         let cuponesMonto = 0;
         let finalObs = obs;
+
+        // Capture previous vouchers linked to this order before RRS clears them
+        const [previousRrsVouchers] = await conn.query(
+            `SELECT numero_cuenta, cheque, llave FROM vouchers WHERE id_origen = ?`,
+            [id]
+        );
+
+        // Prepared metadata for db_sipe_admin sync after RRS transaction commits
+        let transferSyncPayload = null;
+        const rrsVoucherMetaMap = new Map();
 
         if (metodoPago === 'TRANSFERENCIA') {
             // === LÓGICA DE TRANSFERENCIA BANCARIA (frm_descarga_pedido2.vb) ===
@@ -506,31 +522,6 @@ exports.receiveOrder = async (req, res) => {
                 return res.status(400).json({ error: 'Monto Incorrecto.' });
             }
 
-            // Validar que la transferencia no esté repetida en movimientos_bancarios
-            const [dup] = await conn.query(
-                `SELECT COUNT(*) AS total FROM movimientos_bancarios WHERE numero_cuenta = ? AND documento = ? AND centro_costo != ?`,
-                [numCta, refDoc, id]
-            );
-            if (dup[0]?.total > 0) {
-                await conn.rollback();
-                return res.status(400).json({ error: 'Transferencia Repetida. Ya existe un movimiento bancario con esa cuenta y referencia.' });
-            }
-
-            // Obtener id_empresa de la cuenta bancaria
-            const [ctaRows] = await conn.query(
-                `SELECT id_empresa FROM cuentas_bancarias WHERE numero = ? LIMIT 1`,
-                [numCta]
-            );
-            const cIdEmpresa = ctaRows[0]?.id_empresa || 'E-1';
-
-            // Generar llave correlativa atómica para movimientos_bancarios (MVB...)
-            const [corrRows] = await conn.query(
-                `SELECT COALESCE(MAX(CAST(SUBSTRING(llave, 4) AS UNSIGNED)), 0) + 1 AS next_corr
-                 FROM movimientos_bancarios WHERE llave LIKE 'MVB%' FOR UPDATE`
-            );
-            const nextCorr = corrRows[0]?.next_corr || 1;
-            const cLlave = 'MVB' + String(nextCorr).padStart(17, '0');
-
             // Formatear fecha de pago bancario a DD/MM/YYYY
             let formattedFechaPago = (fecha_pago || fecha_descarga || '').trim();
             if (/^\d{4}-\d{2}-\d{2}$/.test(formattedFechaPago)) {
@@ -540,44 +531,82 @@ exports.receiveOrder = async (req, res) => {
 
             const cConcepto = (concepto || '').trim() || `PAGO DE PIPA CCF# ${doc}`;
 
-            // Eliminar movimiento bancario anterior de este pedido si existía
-            await conn.query(`DELETE FROM movimientos_bancarios WHERE centro_costo = ?`, [id]);
+            transferSyncPayload = {
+                orderId: id,
+                companyId,
+                numeroCuenta: numCta,
+                referencia: refDoc,
+                monto: montoTransfer,
+                fechaPago: formattedFechaPago,
+                concepto: cConcepto,
+                previousRrsVouchers
+            };
 
-            // Insertar en movimientos_bancarios
-            await conn.query(
-                `INSERT INTO movimientos_bancarios (
-                    id_empresa, llave, cod_remesa, documento, numero_cuenta, concepto,
-                    cargo, abono, fecha_aplicado, fecha, monto, es_contabilizado,
-                    cod_destino, tipo_destino, id_rubro, num_partida, centro_costo
-                 ) VALUES (
-                    ?, ?, '02', ?, ?, ?,
-                    0.0, ?, ?, ?, ?, 'N',
-                    '', '', '', '', ?
-                 )`,
-                [
-                    cIdEmpresa,
-                    cLlave,
-                    refDoc,
-                    numCta,
-                    cConcepto,
-                    montoTransfer,
-                    formattedFechaPago,
-                    formattedFechaPago,
-                    montoTransfer,
-                    id
-                ]
-            );
+            if (targets.writeRrs) {
+                // Validar que la transferencia no esté repetida en movimientos_bancarios
+                const [dup] = await conn.query(
+                    `SELECT COUNT(*) AS total FROM movimientos_bancarios WHERE numero_cuenta = ? AND documento = ? AND centro_costo != ?`,
+                    [numCta, refDoc, id]
+                );
+                if (dup[0]?.total > 0) {
+                    await conn.rollback();
+                    return res.status(400).json({ error: 'Transferencia Repetida. Ya existe un movimiento bancario con esa cuenta y referencia.' });
+                }
 
-            // Liberar cheques de vouchers que hayan estado asignados previamente a este pedido
-            await conn.query(
-                `UPDATE vouchers SET
-                    es_reservado = 1,
-                    concepto = '***** CHEQUE NO EMITIDO *****',
-                    valor = 0.0,
-                    fecha = ''
-                 WHERE id_origen = ?`,
-                [id]
-            );
+                // Obtener id_empresa de la cuenta bancaria
+                const [ctaRows] = await conn.query(
+                    `SELECT id_empresa FROM cuentas_bancarias WHERE numero = ? LIMIT 1`,
+                    [numCta]
+                );
+                const cIdEmpresa = ctaRows[0]?.id_empresa || 'E-1';
+
+                // Generar llave correlativa atómica para movimientos_bancarios (MVB...)
+                const [corrRows] = await conn.query(
+                    `SELECT COALESCE(MAX(CAST(SUBSTRING(llave, 4) AS UNSIGNED)), 0) + 1 AS next_corr
+                     FROM movimientos_bancarios WHERE llave LIKE 'MVB%' FOR UPDATE`
+                );
+                const nextCorr = corrRows[0]?.next_corr || 1;
+                const cLlave = 'MVB' + String(nextCorr).padStart(17, '0');
+
+                // Eliminar movimiento bancario anterior de este pedido si existía
+                await conn.query(`DELETE FROM movimientos_bancarios WHERE centro_costo = ?`, [id]);
+
+                // Insertar en movimientos_bancarios
+                await conn.query(
+                    `INSERT INTO movimientos_bancarios (
+                        id_empresa, llave, cod_remesa, documento, numero_cuenta, concepto,
+                        cargo, abono, fecha_aplicado, fecha, monto, es_contabilizado,
+                        cod_destino, tipo_destino, id_rubro, num_partida, centro_costo
+                     ) VALUES (
+                        ?, ?, '02', ?, ?, ?,
+                        0.0, ?, ?, ?, ?, 'N',
+                        '', '', '', '', ?
+                     )`,
+                    [
+                        cIdEmpresa,
+                        cLlave,
+                        refDoc,
+                        numCta,
+                        cConcepto,
+                        montoTransfer,
+                        formattedFechaPago,
+                        formattedFechaPago,
+                        montoTransfer,
+                        id
+                    ]
+                );
+
+                // Liberar cheques de vouchers que hayan estado asignados previamente a este pedido
+                await conn.query(
+                    `UPDATE vouchers SET
+                        es_reservado = 1,
+                        concepto = '***** CHEQUE NO EMITIDO *****',
+                        valor = 0.0,
+                        fecha = ''
+                     WHERE id_origen = ?`,
+                    [id]
+                );
+            }
 
             // Construir observación automática si no fue personalizada
             const ctaLast4 = numCta.length >= 4 ? numCta.slice(-4) : numCta;
@@ -597,19 +626,21 @@ exports.receiveOrder = async (req, res) => {
                 cPago = originalFormaPago;
             }
 
-            // Liberar vouchers anteriores del pedido
-            await conn.query(
-                `UPDATE vouchers SET
-                    es_reservado = 1,
-                    concepto = '***** CHEQUE NO EMITIDO *****',
-                    valor = 0.0,
-                    fecha = ''
-                 WHERE id_origen = ?`,
-                [id]
-            );
+            if (targets.writeRrs) {
+                // Liberar vouchers anteriores del pedido
+                await conn.query(
+                    `UPDATE vouchers SET
+                        es_reservado = 1,
+                        concepto = '***** CHEQUE NO EMITIDO *****',
+                        valor = 0.0,
+                        fecha = ''
+                     WHERE id_origen = ?`,
+                    [id]
+                );
 
-            // Eliminar movimientos_bancarios si antes se había recibido por transferencia
-            await conn.query(`DELETE FROM movimientos_bancarios WHERE centro_costo = ?`, [id]);
+                // Eliminar movimientos_bancarios si antes se había recibido por transferencia
+                await conn.query(`DELETE FROM movimientos_bancarios WHERE centro_costo = ?`, [id]);
+            }
 
             let totalCheques = 0;
             for (const chq of cheques) {
@@ -622,16 +653,28 @@ exports.receiveOrder = async (req, res) => {
 
                 totalCheques += valor;
 
-                await conn.query(
-                    `UPDATE vouchers SET
-                        es_reservado = 0,
-                        concepto = ?,
-                        valor = ?,
-                        fecha = ?,
-                        id_origen = ?
-                     WHERE numero_cuenta = ? AND cheque = ?`,
-                    [cConcepto, valor, formattedFechaDescarga, id, numCta, numCheque]
-                );
+                if (targets.writeSipeAdmin) {
+                    const [metaRows] = await conn.query(
+                        `SELECT llave, a_nombre, es_pago_contado FROM vouchers WHERE numero_cuenta = ? AND cheque = ? LIMIT 1`,
+                        [numCta, numCheque]
+                    );
+                    if (metaRows[0]) {
+                        rrsVoucherMetaMap.set(`${numCta}|${numCheque}`, metaRows[0]);
+                    }
+                }
+
+                if (targets.writeRrs) {
+                    await conn.query(
+                        `UPDATE vouchers SET
+                            es_reservado = 0,
+                            concepto = ?,
+                            valor = ?,
+                            fecha = ?,
+                            id_origen = ?
+                         WHERE numero_cuenta = ? AND cheque = ?`,
+                        [cConcepto, valor, formattedFechaDescarga, id, numCta, numCheque]
+                    );
+                }
 
                 const ctaLast4 = numCta.length >= 4 ? numCta.slice(-4) : numCta;
                 const valorFmt = valor.toLocaleString('es-SV', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -736,6 +779,30 @@ exports.receiveOrder = async (req, res) => {
 
         await conn.commit();
 
+        let sipeAdminSynced = null;
+        if (targets.writeSipeAdmin) {
+            try {
+                if (metodoPago === 'TRANSFERENCIA') {
+                    await syncGasOrderTransferToSipeAdmin(transferSyncPayload);
+                } else {
+                    await syncGasOrderChequesToSipeAdmin({
+                        orderId: id,
+                        companyId,
+                        fechaDescarga: formattedFechaDescarga,
+                        documento: doc,
+                        cheques,
+                        previousRrsVouchers,
+                        rrsVoucherMetaMap
+                    });
+                }
+                sipeAdminSynced = true;
+            } catch (sipeErr) {
+                if (targets.isSipeAdminPrimary) throw sipeErr;
+                console.error(`[SIPE_ADMIN_SYNC] Error syncing gas order #${id}:`, sipeErr.message);
+                sipeAdminSynced = false;
+            }
+        }
+
         res.json({
             success: true,
             message: `Pedido #${order.numero || id} recibido exitosamente mediante ${metodoPago === 'TRANSFERENCIA' ? 'Transferencia Bancaria' : 'Cheque'}.`,
@@ -759,7 +826,8 @@ exports.receiveOrder = async (req, res) => {
                 costo_r: costoR,
                 costo_s: costoS,
                 costo_i: costoI,
-                flete: flete
+                flete: flete,
+                sipe_admin_synced: sipeAdminSynced
             }
         });
     } catch (error) {

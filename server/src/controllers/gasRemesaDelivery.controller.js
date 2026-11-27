@@ -1,6 +1,13 @@
 const pool = require('../config/db');
 const notificationService = require('../services/notification.service');
 const { getRrsPool } = require('../config/rrsDb');
+const { getBankSyncTargets } = require('../config/sipeAdminDb');
+const {
+    toIsoDate,
+    syncGasRemesaToSipeAdmin,
+    checkRemesaContabilizadoInSipeAdmin,
+    revertRemesaFromSipeAdmin
+} = require('../services/sipeAdminBank.service');
 
 exports.getPendingRemesas = async (req, res) => {
     try {
@@ -381,7 +388,10 @@ exports.revertirEntregado = async (req, res) => {
         }
 
         const [deliveries] = await pool.query(
-            `SELECT id, entregado, branch_id, referencia FROM gas_station_remesa_deliveries WHERE id = ? AND company_id = ?`,
+            `SELECT d.*, b.nombre as branch_name
+             FROM gas_station_remesa_deliveries d
+             LEFT JOIN branches b ON d.branch_id = b.id
+             WHERE d.id = ? AND d.company_id = ?`,
             [id, companyId]
         );
 
@@ -393,7 +403,9 @@ exports.revertirEntregado = async (req, res) => {
             return res.status(400).json({ message: 'La entrega no está marcada como entregada' });
         }
 
-        // 1. Obtener código de empresa en RRS para esta sucursal/empresa
+        const targets = getBankSyncTargets();
+
+        // 1. Obtener código de empresa y cuenta en RRS para esta sucursal/empresa
         const [empresaRows] = await pool.query(
             `SELECT setting_value FROM gas_station_settings 
              WHERE company_id = ? AND (branch_id = ? OR (branch_id IS NULL AND ? IS NULL))
@@ -402,76 +414,144 @@ exports.revertirEntregado = async (req, res) => {
         );
         const rrsIdEmpresa = empresaRows[0]?.setting_value || '015';
 
-        // 2. Revertir y eliminar movimientos bancarios en RRS
-        let rrsDeleted = 0;
-        let rrsMessage = '';
-        try {
-            const rrsPool = getRrsPool();
-            const llave = `${rrsIdEmpresa}-G${delivery.id}`;
-            const legacyLlave = `${rrsIdEmpresa}-${delivery.id}`;
-            // Obtener cuenta de pista para no borrar por error remesas de tienda si coincidieran con legacy
-            const [settingsRows] = await pool.query(
-                `SELECT setting_value FROM gas_station_settings 
-                 WHERE company_id = ? AND (branch_id = ? OR (branch_id IS NULL AND ? IS NULL))
-                 AND setting_key = 'cuenta_bancaria_pista'`,
-                [companyId, delivery.branch_id || null, delivery.branch_id || null]
-            );
-            const last4 = (settingsRows[0]?.setting_value || '').replace(/\s/g, '').slice(-4);
-            let cuentaNumero = null;
-            if (last4.length === 4) {
-                const [cuentas] = await rrsPool.query(
-                    `SELECT numero FROM cuentas_bancarias WHERE numero LIKE ?`,
-                    [`%${last4}`]
-                );
-                if (cuentas.length > 0) {
-                    cuentaNumero = cuentas[0].numero;
+        const [settingsRows] = await pool.query(
+            `SELECT setting_value FROM gas_station_settings 
+             WHERE company_id = ? AND (branch_id = ? OR (branch_id IS NULL AND ? IS NULL))
+             AND setting_key = 'cuenta_bancaria_pista'`,
+            [companyId, delivery.branch_id || null, delivery.branch_id || null]
+        );
+        const rawAccount = settingsRows[0]?.setting_value || '';
+        const documento = (delivery.referencia || '').trim() || String(delivery.id).padStart(7, '0');
+        const d = new Date(delivery.fecha);
+        const fechaStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+        const hora = delivery.hora ? String(delivery.hora).substring(0, 5) : '00:00';
+        const conceptoFallback = `${delivery.branch_name || 'Sucursal'} - ${fechaStr} ${hora}`;
+        const [remesasExtraRows] = await pool.query(
+            `SELECT descripcion FROM gas_station_delivery_remesas_extra WHERE delivery_id = ?`,
+            [delivery.id]
+        );
+        const sipeConceptos = [
+            conceptoFallback,
+            ...remesasExtraRows.map(x => String(x.descripcion || 'OTRAS REMESAS').trim().toUpperCase())
+        ];
+        const sipeRevertParams = {
+            sourceType: 'gas_remesa',
+            sourceId: String(delivery.id),
+            extraSourceType: 'gas_remesa_extra',
+            rawAccount,
+            documento,
+            fechaIso: toIsoDate(delivery.fecha),
+            conceptos: sipeConceptos
+        };
+
+        // 2. Verificar estado contabilizado en RRS y db_sipe_admin antes de eliminar en cualquiera de las dos
+        let rrsPool = null;
+        let llave = null;
+        let legacyLlave = null;
+        let cuentaNumero = null;
+
+        if (targets.writeRrs) {
+            try {
+                rrsPool = getRrsPool();
+                llave = `${rrsIdEmpresa}-G${delivery.id}`;
+                legacyLlave = `${rrsIdEmpresa}-${delivery.id}`;
+                const last4 = rawAccount.replace(/\s/g, '').slice(-4);
+                if (last4.length === 4) {
+                    const [cuentas] = await rrsPool.query(
+                        `SELECT numero FROM cuentas_bancarias WHERE numero LIKE ?`,
+                        [`%${last4}`]
+                    );
+                    if (cuentas.length > 0) {
+                        cuentaNumero = cuentas[0].numero;
+                    }
                 }
-            }
 
-            // Verificar si el movimiento o extras ya están contabilizados en RRS
-            const [checkMovs] = await rrsPool.query(
-                cuentaNumero
-                    ? `SELECT num_partida, es_contabilizado FROM movimientos_bancarios 
-                       WHERE llave = ? OR (llave = ? AND numero_cuenta = ?) OR llave LIKE ? OR (llave LIKE ? AND numero_cuenta = ?)`
-                    : `SELECT num_partida, es_contabilizado FROM movimientos_bancarios 
-                       WHERE llave = ? OR llave LIKE ?`,
-                cuentaNumero
-                    ? [llave, legacyLlave, cuentaNumero, `${rrsIdEmpresa}-G${delivery.id}-E%`, `${legacyLlave}-E%`, cuentaNumero]
-                    : [llave, `${rrsIdEmpresa}-G${delivery.id}-E%`]
-            );
-            const isContabilizado = checkMovs.some(m => 
-                (m.es_contabilizado === 'S' || m.es_contabilizado == 1) || 
-                (m.num_partida && String(m.num_partida).trim() !== '')
-            );
-            if (isContabilizado) {
-                const partidas = [...new Set(checkMovs.map(m => m.num_partida).filter(Boolean))].join(', ');
-                return res.status(400).json({ 
-                    message: `No se puede revertir esta entrega de remesas porque ya fue contabilizada en RRS (Partida: #${partidas || 'registrada'}). Para modificarla, contabilidad debe desvincular la partida primero.` 
-                });
+                const [checkMovs] = await rrsPool.query(
+                    cuentaNumero
+                        ? `SELECT num_partida, es_contabilizado FROM movimientos_bancarios 
+                           WHERE llave = ? OR (llave = ? AND numero_cuenta = ?) OR llave LIKE ? OR (llave LIKE ? AND numero_cuenta = ?)`
+                        : `SELECT num_partida, es_contabilizado FROM movimientos_bancarios 
+                           WHERE llave = ? OR llave LIKE ?`,
+                    cuentaNumero
+                        ? [llave, legacyLlave, cuentaNumero, `${rrsIdEmpresa}-G${delivery.id}-E%`, `${legacyLlave}-E%`, cuentaNumero]
+                        : [llave, `${rrsIdEmpresa}-G${delivery.id}-E%`]
+                );
+                const isContabilizado = checkMovs.some(m =>
+                    (m.es_contabilizado === 'S' || m.es_contabilizado == 1) ||
+                    (m.num_partida && String(m.num_partida).trim() !== '')
+                );
+                if (isContabilizado) {
+                    const partidas = [...new Set(checkMovs.map(m => m.num_partida).filter(Boolean))].join(', ');
+                    return res.status(400).json({
+                        message: `No se puede revertir esta entrega de remesas porque ya fue contabilizada en RRS (Partida: #${partidas || 'registrada'}). Para modificarla, contabilidad debe desvincular la partida primero.`
+                    });
+                }
+            } catch (rrsCheckError) {
+                console.error('Error al verificar movimientos bancarios en RRS:', rrsCheckError);
             }
-
-            const [delMain] = await rrsPool.query(
-                cuentaNumero
-                    ? `DELETE FROM movimientos_bancarios WHERE llave = ? OR (llave = ? AND numero_cuenta = ?)`
-                    : `DELETE FROM movimientos_bancarios WHERE llave = ?`,
-                cuentaNumero ? [llave, legacyLlave, cuentaNumero] : [llave]
-            );
-            const [delExtras] = await rrsPool.query(
-                cuentaNumero
-                    ? `DELETE FROM movimientos_bancarios WHERE llave LIKE ? OR (llave LIKE ? AND numero_cuenta = ?)`
-                    : `DELETE FROM movimientos_bancarios WHERE llave LIKE ?`,
-                cuentaNumero ? [`${rrsIdEmpresa}-G${delivery.id}-E%`, `${legacyLlave}-E%`, cuentaNumero] : [`${rrsIdEmpresa}-G${delivery.id}-E%`]
-            );
-            rrsDeleted = (delMain.affectedRows || 0) + (delExtras.affectedRows || 0);
-            rrsMessage = rrsDeleted > 0 
-                ? `Se eliminaron ${rrsDeleted} movimiento(s) de RRS.` 
-                : 'No se encontraron movimientos previos en RRS.';
-        } catch (rrsError) {
-            console.error('Error al revertir movimientos bancarios en RRS:', rrsError);
-            rrsMessage = `Aviso RRS: ${rrsError.message}.`;
         }
 
-        // 3. Reactivar entrega en el sistema local (entregado = 0) para permitir edición
+        if (targets.writeSipeAdmin) {
+            try {
+                const sipeCheck = await checkRemesaContabilizadoInSipeAdmin(sipeRevertParams);
+                if (sipeCheck.blocked) {
+                    const partidas = sipeCheck.partidas.join(', ');
+                    return res.status(400).json({
+                        message: `No se puede revertir esta entrega de remesas porque ya fue contabilizada en db_sipe_admin (Partida: #${partidas || 'registrada'}). Para modificarla, contabilidad debe desvincular la partida primero.`
+                    });
+                }
+            } catch (sipeCheckError) {
+                if (targets.isSipeAdminPrimary) throw sipeCheckError;
+                console.error('[SIPE_ADMIN_SYNC] Error checking gas remesa revert status:', sipeCheckError.message);
+            }
+        }
+
+        // 3. Revertir y eliminar movimientos bancarios en los destinos activos
+        let rrsDeleted = 0;
+        let sipeAdminDeleted = 0;
+        const statusParts = [];
+
+        if (targets.writeRrs && rrsPool) {
+            try {
+                const [delMain] = await rrsPool.query(
+                    cuentaNumero
+                        ? `DELETE FROM movimientos_bancarios WHERE llave = ? OR (llave = ? AND numero_cuenta = ?)`
+                        : `DELETE FROM movimientos_bancarios WHERE llave = ?`,
+                    cuentaNumero ? [llave, legacyLlave, cuentaNumero] : [llave]
+                );
+                const [delExtras] = await rrsPool.query(
+                    cuentaNumero
+                        ? `DELETE FROM movimientos_bancarios WHERE llave LIKE ? OR (llave LIKE ? AND numero_cuenta = ?)`
+                        : `DELETE FROM movimientos_bancarios WHERE llave LIKE ?`,
+                    cuentaNumero ? [`${rrsIdEmpresa}-G${delivery.id}-E%`, `${legacyLlave}-E%`, cuentaNumero] : [`${rrsIdEmpresa}-G${delivery.id}-E%`]
+                );
+                rrsDeleted = (delMain.affectedRows || 0) + (delExtras.affectedRows || 0);
+                statusParts.push(rrsDeleted > 0
+                    ? `Se eliminaron ${rrsDeleted} movimiento(s) de RRS.`
+                    : 'No se encontraron movimientos previos en RRS.');
+            } catch (rrsError) {
+                console.error('Error al revertir movimientos bancarios en RRS:', rrsError);
+                statusParts.push(`Aviso RRS: ${rrsError.message}.`);
+            }
+        }
+
+        if (targets.writeSipeAdmin) {
+            try {
+                const sipeRes = await revertRemesaFromSipeAdmin(sipeRevertParams);
+                sipeAdminDeleted = sipeRes.deleted || 0;
+                statusParts.push(sipeAdminDeleted > 0
+                    ? `Se eliminaron ${sipeAdminDeleted} movimiento(s) de db_sipe_admin.`
+                    : 'No se encontraron movimientos previos en db_sipe_admin.');
+            } catch (sipeErr) {
+                if (targets.isSipeAdminPrimary) throw sipeErr;
+                console.error('[SIPE_ADMIN_SYNC] Error reverting gas remesa:', sipeErr.message);
+                statusParts.push(`Aviso db_sipe_admin: ${sipeErr.message}.`);
+            }
+        }
+
+        const rrsMessage = statusParts.join(' ');
+
+        // 4. Reactivar entrega en el sistema local (entregado = 0) para permitir edición
         await pool.query(
             `UPDATE gas_station_remesa_deliveries SET entregado = 0 WHERE id = ? AND company_id = ?`,
             [id, companyId]
@@ -479,7 +559,8 @@ exports.revertirEntregado = async (req, res) => {
 
         res.json({
             message: `Entrega #${id} revertida a pendiente con éxito. ${rrsMessage} Ya puede editar la remesa.`,
-            rrsDeleted
+            rrsDeleted,
+            sipeAdminDeleted
         });
     } catch (error) {
         console.error('Error revertirEntregado:', error);
@@ -544,17 +625,7 @@ const syncGasDeliveryToRrs = async (deliveryId, companyId) => {
         throw new Error('Cuenta bancaria no válida en la configuración: ' + rawAccount);
     }
 
-    const rrsPool = getRrsPool();
-    const [cuentas] = await rrsPool.query(
-        `SELECT id_empresa, numero FROM cuentas_bancarias WHERE numero LIKE ?`,
-        [`%${last4}`]
-    );
-
-    if (cuentas.length === 0) {
-        throw new Error(`No se encontró cuenta bancaria en RRS con terminación ${last4}`);
-    }
-
-    const cuenta = cuentas[0];
+    const targets = getBankSyncTargets();
     const llave = `${rrsIdEmpresa}-G${delivery.id}`;
     const legacyLlave = `${rrsIdEmpresa}-${delivery.id}`;
     const documento = (delivery.referencia || '').trim() || String(delivery.id).padStart(7, '0');
@@ -563,94 +634,133 @@ const syncGasDeliveryToRrs = async (deliveryId, companyId) => {
     const hora = delivery.hora ? String(delivery.hora).substring(0, 5) : '00:00';
     const concepto = `${delivery.branch_name || 'Sucursal'} - ${fechaStr} ${hora}`;
 
-    // 1. Preservar num_partida y es_contabilizado si el movimiento principal ya existía en RRS
-    const [existingMain] = await rrsPool.query(
-        `SELECT num_partida, es_contabilizado FROM movimientos_bancarios 
-         WHERE (llave = ? OR (llave = ? AND numero_cuenta = ?)) 
-         ORDER BY (es_contabilizado = 'S' OR es_contabilizado = 1) DESC LIMIT 1`,
-        [llave, legacyLlave, cuenta.numero]
-    );
-    const prevNumPartida = existingMain[0]?.num_partida || '';
-    const prevEsContabilizado = (existingMain[0]?.es_contabilizado === 'S' || existingMain[0]?.es_contabilizado == 1) ? 'S' : 'N';
+    let resolvedCuentaNumero = rawAccount;
 
-    await rrsPool.query(
-        `DELETE FROM movimientos_bancarios WHERE llave = ? OR (llave = ? AND numero_cuenta = ?)`,
-        [llave, legacyLlave, cuenta.numero]
-    );
-
-    if (montoTotal > 0) {
-        await rrsPool.query(
-            `INSERT INTO movimientos_bancarios 
-             (id_empresa, llave, cod_remesa, documento, numero_cuenta, concepto, cargo, abono, fecha_aplicado, fecha, monto, tipo_destino, num_partida, es_contabilizado) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-                cuenta.id_empresa,
-                llave,
-                '01',
-                documento,
-                cuenta.numero,
-                concepto,
-                montoTotal.toFixed(2),
-                '0.0',
-                '',
-                fechaStr,
-                montoTotal.toFixed(2),
-                'P',
-                prevNumPartida,
-                prevEsContabilizado
-            ]
+    if (targets.writeRrs) {
+        const rrsPool = getRrsPool();
+        const [cuentas] = await rrsPool.query(
+            `SELECT id_empresa, numero FROM cuentas_bancarias WHERE numero LIKE ?`,
+            [`%${last4}`]
         );
-    }
 
-    // 2. Preservar num_partida y es_contabilizado de remesas extras si ya existían
-    const [existingExtras] = await rrsPool.query(
-        `SELECT llave, num_partida, es_contabilizado FROM movimientos_bancarios 
-         WHERE llave LIKE ? OR (llave LIKE ? AND numero_cuenta = ?)`,
-        [`${rrsIdEmpresa}-G${delivery.id}-E%`, `${legacyLlave}-E%`, cuenta.numero]
-    );
-    const extraMetaMap = new Map();
-    for (const em of existingExtras) {
-        extraMetaMap.set(em.llave, {
-            num_partida: em.num_partida || '',
-            es_contabilizado: (em.es_contabilizado === 'S' || em.es_contabilizado == 1) ? 'S' : 'N'
-        });
-    }
+        if (cuentas.length === 0) {
+            throw new Error(`No se encontró cuenta bancaria en RRS con terminación ${last4}`);
+        }
 
-    await rrsPool.query(
-        `DELETE FROM movimientos_bancarios WHERE llave LIKE ? OR (llave LIKE ? AND numero_cuenta = ?)`,
-        [`${rrsIdEmpresa}-G${delivery.id}-E%`, `${legacyLlave}-E%`, cuenta.numero]
-    );
+        const cuenta = cuentas[0];
+        resolvedCuentaNumero = cuenta.numero;
 
-    for (const extra of remesasExtra) {
-        const montoExtra = parseFloat(extra.monto) || 0;
-        if (montoExtra <= 0) continue;
-
-        const llaveExtra = `${rrsIdEmpresa}-G${delivery.id}-E${extra.id}`;
-        const legacyLlaveExtra = `${rrsIdEmpresa}-${delivery.id}-E${extra.id}`;
-        const prevExtra = extraMetaMap.get(llaveExtra) || extraMetaMap.get(legacyLlaveExtra) || {};
-        const conceptoExtra = String(extra.descripcion || 'Otras remesas').trim().toUpperCase().slice(0, 120);
+        // 1. Preservar num_partida y es_contabilizado si el movimiento principal ya existía en RRS
+        const [existingMain] = await rrsPool.query(
+            `SELECT num_partida, es_contabilizado FROM movimientos_bancarios 
+             WHERE (llave = ? OR (llave = ? AND numero_cuenta = ?)) 
+             ORDER BY (es_contabilizado = 'S' OR es_contabilizado = 1) DESC LIMIT 1`,
+            [llave, legacyLlave, cuenta.numero]
+        );
+        const prevNumPartida = existingMain[0]?.num_partida || '';
+        const prevEsContabilizado = (existingMain[0]?.es_contabilizado === 'S' || existingMain[0]?.es_contabilizado == 1) ? 'S' : 'N';
 
         await rrsPool.query(
-            `INSERT INTO movimientos_bancarios 
-             (id_empresa, llave, cod_remesa, documento, numero_cuenta, concepto, cargo, abono, fecha_aplicado, fecha, monto, tipo_destino, num_partida, es_contabilizado) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-                cuenta.id_empresa,
-                llaveExtra,
-                '01',
-                documento,
-                cuenta.numero,
-                conceptoExtra,
-                montoExtra.toFixed(2),
-                '0.0',
-                '',
-                fechaStr,
-                montoExtra.toFixed(2),
-                'P',
-                prevExtra.num_partida || '',
-                prevExtra.es_contabilizado || 'N'
-            ]
+            `DELETE FROM movimientos_bancarios WHERE llave = ? OR (llave = ? AND numero_cuenta = ?)`,
+            [llave, legacyLlave, cuenta.numero]
         );
+
+        if (montoTotal > 0) {
+            await rrsPool.query(
+                `INSERT INTO movimientos_bancarios 
+                 (id_empresa, llave, cod_remesa, documento, numero_cuenta, concepto, cargo, abono, fecha_aplicado, fecha, monto, tipo_destino, num_partida, es_contabilizado) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    cuenta.id_empresa,
+                    llave,
+                    '01',
+                    documento,
+                    cuenta.numero,
+                    concepto,
+                    montoTotal.toFixed(2),
+                    '0.0',
+                    '',
+                    fechaStr,
+                    montoTotal.toFixed(2),
+                    'P',
+                    prevNumPartida,
+                    prevEsContabilizado
+                ]
+            );
+        }
+
+        // 2. Preservar num_partida y es_contabilizado de remesas extras si ya existían
+        const [existingExtras] = await rrsPool.query(
+            `SELECT llave, num_partida, es_contabilizado FROM movimientos_bancarios 
+             WHERE llave LIKE ? OR (llave LIKE ? AND numero_cuenta = ?)`,
+            [`${rrsIdEmpresa}-G${delivery.id}-E%`, `${legacyLlave}-E%`, cuenta.numero]
+        );
+        const extraMetaMap = new Map();
+        for (const em of existingExtras) {
+            extraMetaMap.set(em.llave, {
+                num_partida: em.num_partida || '',
+                es_contabilizado: (em.es_contabilizado === 'S' || em.es_contabilizado == 1) ? 'S' : 'N'
+            });
+        }
+
+        await rrsPool.query(
+            `DELETE FROM movimientos_bancarios WHERE llave LIKE ? OR (llave LIKE ? AND numero_cuenta = ?)`,
+            [`${rrsIdEmpresa}-G${delivery.id}-E%`, `${legacyLlave}-E%`, cuenta.numero]
+        );
+
+        for (const extra of remesasExtra) {
+            const montoExtra = parseFloat(extra.monto) || 0;
+            if (montoExtra <= 0) continue;
+
+            const llaveExtra = `${rrsIdEmpresa}-G${delivery.id}-E${extra.id}`;
+            const legacyLlaveExtra = `${rrsIdEmpresa}-${delivery.id}-E${extra.id}`;
+            const prevExtra = extraMetaMap.get(llaveExtra) || extraMetaMap.get(legacyLlaveExtra) || {};
+            const conceptoExtra = String(extra.descripcion || 'Otras remesas').trim().toUpperCase().slice(0, 120);
+
+            await rrsPool.query(
+                `INSERT INTO movimientos_bancarios 
+                 (id_empresa, llave, cod_remesa, documento, numero_cuenta, concepto, cargo, abono, fecha_aplicado, fecha, monto, tipo_destino, num_partida, es_contabilizado) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    cuenta.id_empresa,
+                    llaveExtra,
+                    '01',
+                    documento,
+                    cuenta.numero,
+                    conceptoExtra,
+                    montoExtra.toFixed(2),
+                    '0.0',
+                    '',
+                    fechaStr,
+                    montoExtra.toFixed(2),
+                    'P',
+                    prevExtra.num_partida || '',
+                    prevExtra.es_contabilizado || 'N'
+                ]
+            );
+        }
+    }
+
+    let sipeAdminSync = null;
+    if (targets.writeSipeAdmin) {
+        try {
+            sipeAdminSync = await syncGasRemesaToSipeAdmin({
+                delivery,
+                companyId,
+                rawAccount,
+                montoTotal,
+                remesasExtra,
+                documento,
+                concepto
+            });
+            if (!targets.writeRrs && sipeAdminSync?.cuenta) {
+                resolvedCuentaNumero = sipeAdminSync.cuenta;
+            }
+        } catch (sipeErr) {
+            if (targets.isSipeAdminPrimary) throw sipeErr;
+            console.error(`[SIPE_ADMIN_SYNC] Error syncing gas remesa delivery #${deliveryId}:`, sipeErr.message);
+            sipeAdminSync = { error: sipeErr.message };
+        }
     }
 
     await pool.query(
@@ -664,7 +774,8 @@ const syncGasDeliveryToRrs = async (deliveryId, companyId) => {
         documento,
         monto: montoTotal,
         fecha: fechaStr,
-        cuenta: cuenta.numero
+        cuenta: resolvedCuentaNumero,
+        sipeAdminSync
     };
 };
 
