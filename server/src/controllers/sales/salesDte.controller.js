@@ -1152,22 +1152,7 @@ const getDteDiagnosis = async (req, res) => {
     const { force } = req.query;
 
     try {
-        // 1. Verificar si ya existe en caché persistente en base de datos
-        if (force !== 'true') {
-            const [cached] = await pool.query(
-                'SELECT * FROM dte_diagnoses WHERE sale_id = ? AND company_id = ? ORDER BY id DESC LIMIT 1',
-                [id, req.company_id]
-            );
-            if (cached.length > 0) {
-                return res.json({
-                    success: true,
-                    cached: true,
-                    data: cached[0]
-                });
-            }
-        }
-
-        // 2. Obtener datos de la venta, cliente y respuesta de Hacienda
+        // 1. Obtener datos de la venta, cliente, JSON enviado y respuesta actual de Hacienda
         const [sales] = await pool.query(`
             SELECT h.*, 
                    COALESCE(c.nombre, h.cliente_nombre, 'Consumidor Final') as customer_name,
@@ -1182,7 +1167,8 @@ const getDteDiagnosis = async (req, res) => {
                    COALESCE(d_c.status, d_v.status) as dte_status,
                    COALESCE(d_c.codigo_generacion, d_v.codigo_generacion, h.codigo_generacion) as dte_codigo_generacion,
                    COALESCE(d_c.numero_control, d_v.numero_control, h.numero_control) as dte_numero_control,
-                   COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as dte_respuesta_hacienda
+                   COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as dte_respuesta_hacienda,
+                   COALESCE(d_c.json_original, d_v.json_original) as dte_json_original
             FROM sales_headers h
             LEFT JOIN customers c ON h.customer_id = c.id
             LEFT JOIN dtes d_c ON d_c.codigo_generacion = h.codigo_generacion AND d_c.company_id = h.company_id
@@ -1199,18 +1185,48 @@ const getDteDiagnosis = async (req, res) => {
         if (typeof errorData === 'string') {
             try { errorData = JSON.parse(errorData); } catch (e) {}
         }
+        const effectiveErrorPayload = errorData || { mensaje: 'Documento en estado rechazado sin detalle de Hacienda' };
+        const currentRawStr = typeof effectiveErrorPayload === 'object'
+            ? JSON.stringify(effectiveErrorPayload)
+            : String(effectiveErrorPayload || '');
+
+        // 2. Verificar caché vigente solo si corresponde exactamente al error actual
+        if (force !== 'true') {
+            const [cached] = await pool.query(
+                'SELECT * FROM dte_diagnoses WHERE sale_id = ? AND company_id = ? ORDER BY id DESC LIMIT 1',
+                [id, req.company_id]
+            );
+            if (cached.length > 0 && cached[0].error_raw === currentRawStr) {
+                return res.json({
+                    success: true,
+                    cached: true,
+                    data: cached[0]
+                });
+            }
+        }
+
+        let jsonOrig = sale.dte_json_original;
+        if (typeof jsonOrig === 'string') {
+            try { jsonOrig = JSON.parse(jsonOrig); } catch { jsonOrig = null; }
+        }
 
         const tipoDocName = getDteTypeName(sale.tipo_documento);
 
         // 3. Invocar al servicio de IA (DeepSeek en la nube con fallback a Gemini Flash y heurística)
         const diagResult = await aiService.diagnoseDteError({
-            errorData: errorData || { mensaje: 'Documento en estado rechazado sin detalle de Hacienda' },
+            errorData: effectiveErrorPayload,
             dteInfo: {
                 tipo_documento: sale.tipo_documento,
                 tipo_documento_name: tipoDocName,
                 codigo_generacion: sale.dte_codigo_generacion,
                 numero_control: sale.dte_numero_control,
-                total_pagar: sale.total_pagar
+                total_pagar: sale.total_pagar,
+                fecEmi: jsonOrig?.identificacion?.fecEmi || null,
+                horEmi: jsonOrig?.identificacion?.horEmi || null,
+                ambiente: jsonOrig?.identificacion?.ambiente || null,
+                version: jsonOrig?.identificacion?.version || null,
+                documentoRelacionado: jsonOrig?.documentoRelacionado || null,
+                resumen: jsonOrig?.resumen || null
             },
             customerInfo: {
                 nombre: sale.customer_name,
@@ -1226,15 +1242,14 @@ const getDteDiagnosis = async (req, res) => {
         });
 
         // 4. Guardar en la tabla de caché dte_diagnoses
-        const codigoMsg = errorData?.codigoMsg || (typeof errorData === 'string' ? 'RECHAZO' : null);
-        const rawStr = typeof errorData === 'object' ? JSON.stringify(errorData) : String(errorData || '');
+        const codigoMsg = effectiveErrorPayload?.codigoMsg || (typeof effectiveErrorPayload === 'string' ? 'RECHAZO' : null);
 
         const insertData = {
             sale_id: sale.id,
             codigo_generacion: sale.dte_codigo_generacion || null,
             company_id: req.company_id,
             codigo_msg: codigoMsg,
-            error_raw: rawStr,
+            error_raw: currentRawStr,
             que_paso: diagResult.data.quePaso,
             normativa: diagResult.data.normativa,
             solucion: diagResult.data.solucion,

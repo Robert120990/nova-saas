@@ -139,10 +139,37 @@ const applyDteCorrection = async (req, res) => {
             });
         }
 
-        // Persistir nueva observación de Hacienda para que el modal muestre el detalle exacto
+        // Preservar o recuperar la respuesta real de Hacienda (sin sobreescribir con objetos vacíos como { fhProcesamiento: null })
+        const rawErr = result.error;
+        const hasUsefulDetail = Boolean(
+            (typeof rawErr === 'string' && rawErr.trim()) ||
+            (rawErr && typeof rawErr === 'object' && (
+                rawErr.codigoMsg || rawErr.descripcionMsg || rawErr.observaciones || rawErr.estado || rawErr.message
+            ))
+        );
+
+        let effectiveError = rawErr;
+        if (hasUsefulDetail) {
+            await pool.query(
+                'UPDATE dtes SET status = "REJECTED", respuesta_hacienda = ? WHERE codigo_generacion = ?',
+                [typeof rawErr === 'string' ? JSON.stringify({ message: rawErr }) : JSON.stringify(rawErr), saved.codigoGeneracion]
+            ).catch(() => {});
+        } else {
+            const [dteRows] = await pool.query(
+                'SELECT respuesta_hacienda FROM dtes WHERE codigo_generacion = ? LIMIT 1',
+                [saved.codigoGeneracion]
+            ).catch(() => [[]]);
+            if (dteRows[0]?.respuesta_hacienda) {
+                effectiveError = typeof dteRows[0].respuesta_hacienda === 'string'
+                    ? (() => { try { return JSON.parse(dteRows[0].respuesta_hacienda); } catch { return dteRows[0].respuesta_hacienda; } })()
+                    : dteRows[0].respuesta_hacienda;
+            }
+        }
+
+        // Invalidar diagnóstico cacheado previo para que el siguiente análisis evalúe el rechazo actual
         await pool.query(
-            'UPDATE dtes SET status = "REJECTED", respuesta_hacienda = ? WHERE codigo_generacion = ?',
-            [JSON.stringify(result.error || { message: 'Rechazado por Hacienda' }), saved.codigoGeneracion]
+            'DELETE FROM dte_diagnoses WHERE sale_id = ? AND company_id = ?',
+            [id, req.company_id]
         ).catch(() => {});
 
         return res.json({
@@ -150,7 +177,7 @@ const applyDteCorrection = async (req, res) => {
             saved: true,
             transmitted: true,
             accepted: false,
-            haciendaError: result.error,
+            haciendaError: effectiveError,
             details: result.details || [],
             message: 'Los cambios se guardaron, pero Hacienda devolvió una observación al reintentar'
         });

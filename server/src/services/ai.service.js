@@ -457,36 +457,53 @@ REGLAS:
      * Safety net: Heurística local de catálogos oficiales MH.
      */
     async diagnoseDteError({ errorData, dteInfo, customerInfo }) {
+        const docRelContext = dteInfo?.documentoRelacionado
+            ? `\n- Documentos Relacionados enviados: ${JSON.stringify(dteInfo.documentoRelacionado)}`
+            : '';
+        const resumenContext = dteInfo?.resumen
+            ? `\n- Resumen enviado: totalGravada=$${dteInfo.resumen.totalGravada ?? 0}, totalExenta=$${dteInfo.resumen.totalExenta ?? 0}, totalIva=$${dteInfo.resumen.totalIva ?? 0}, ivaRete=$${dteInfo.resumen.ivaRete ?? 0}, ivaPerci=$${dteInfo.resumen.ivaPerci ?? 0}, totalPagar=$${dteInfo.resumen.totalPagar ?? 0}`
+            : '';
+
         const prompt = `Eres el especialista tributario y auditor técnico senior del Ministerio de Hacienda de El Salvador (SVFE - Sistema de Transmisión de Documentos Tributarios Electrónicos).
-Analiza el siguiente rechazo oficial de un DTE y genera un diagnóstico profesional, claro y accionable para el contribuyente.
+Analiza el siguiente rechazo oficial de un DTE y genera un diagnóstico profesional, claro y accionable para el contribuyente en SIPE WEB SAAS.
 
 DATOS DEL DOCUMENTO RECHAZADO:
-- Tipo de Documento: ${dteInfo?.tipo_documento_name || dteInfo?.tipo_documento || 'No especificado'}
+- Tipo de Documento: ${dteInfo?.tipo_documento_name || dteInfo?.tipo_documento || 'No especificado'} (código ${dteInfo?.tipo_documento || 'N/A'})
 - Código de Generación: ${dteInfo?.codigo_generacion || 'No generado/N/A'}
 - Número de Control: ${dteInfo?.numero_control || 'N/A'}
-- Monto Total: $${dteInfo?.total_pagar || dteInfo?.monto_total || '0.00'}
+- Fecha / Hora de Emisión: ${dteInfo?.fecEmi || 'N/A'} ${dteInfo?.horEmi || ''} (ambiente ${dteInfo?.ambiente || 'N/A'}, versión ${dteInfo?.version || 'N/A'})
+- Monto Total: $${dteInfo?.total_pagar || dteInfo?.monto_total || '0.00'}${docRelContext}${resumenContext}
 
 DATOS DEL CLIENTE / RECEPTOR:
 - Nombre: ${customerInfo?.nombre || customerInfo?.customer_name || 'Consumidor Final'}
 - Tipo y Número de Documento: ${customerInfo?.tipo_documento || 'N/A'} - ${customerInfo?.num_documento || customerInfo?.customer_dui || customerInfo?.customer_nit || 'N/A'}
 - NRC: ${customerInfo?.nrc || customerInfo?.customer_nrc || 'N/A'}
 - Actividad Económica: ${customerInfo?.actividad_economica || 'N/A'}
-- Dirección / Ubicación: ${customerInfo?.direccion || customerInfo?.customer_address || 'N/A'}, ${customerInfo?.municipio || 'N/A'}, ${customerInfo?.departamento || 'N/A'}
+- Dirección / Ubicación: ${customerInfo?.direccion || customerInfo?.customer_address || 'N/A'}, Municipio ${customerInfo?.municipio || 'N/A'}, Depto ${customerInfo?.departamento || 'N/A'}
 
 RESPUESTA Y ERROR EMITIDO POR HACIENDA:
 ${typeof errorData === 'object' ? JSON.stringify(errorData, null, 2) : String(errorData || 'No se recibió detalle')}
 
+REGLAS TÉCNICAS OFICIALES SVFE (CUMPLIMIENTO ESTRICTO - NO ALUCINAR):
+1. Cuando el rechazo menciona \`#/documentoRelacionado/.../numeroDocumento\` o \`cuerpoDocumento/.../numeroDocumento\`:
+   - Si el documento relacionado es un DTE electrónico (\`tipoGeneracion: 1\`), \`numeroDocumento\` DEBE ser el **Código de Generación (UUID v4 de 36 caracteres en mayúsculas, ej. XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX)** del documento original. **NUNCA** sugieras colocar un \`DTE-01-...\` ni \`DTE-03-...\` como UUID válido.
+   - Si es físico/preimpreso (\`tipoGeneracion: 2\`), lleva el correlativo físico numérico (CAT-007: 1=Físico, 2=Electrónico en catálogo MH, aunque en esquemas FE el formato UUID de 36 caracteres aplica al electrónico).
+   - Nota de Crédito (05) y Nota de Débito (06) SOLO pueden referenciar Crédito Fiscal (03) o Comprobante de Retención (07), nunca Factura Consumidor Final (01).
+   - En NC (05) y ND (06), \`cuerpoDocumento[].numeroDocumento\` debe coincidir exactamente con \`documentoRelacionado[].numeroDocumento\`.
+2. Referencia rápida de códigos MH: \`002\`=esquema/firma/versión; \`003\`=cálculo aritmético/aproximación; \`004\`=código de generación o número de control duplicado en MH; \`005\`/\`020\`=fecha/hora \`fecEmi\` desfasada; \`006\`–\`009\`=firma electrónica, certificado o token MH; \`014\`=NIT/NRC no coincide con padrón; \`016\`=actividad económica CAT-019 inválida; \`017\`=departamento/municipio/distrito inválido (CAT-008/012/013); \`018\`=documento relacionado inválido o fuera de plazo; \`096\`=error de validación JSON Schema en la ruta exacta \`#/...\`.
+3. En SIPE WEB SAAS, la corrección se hace desde Historial de Ventas → botón "Solventar / Corregir DTE" (pestañas: "Cliente / Receptor", "Montos / Aproximación", "Docs. Relacionados", "Exportación / Remisión").
+
 REGLAS PARA EL DIAGNÓSTICO:
-1. Explica en lenguaje humano, directo y profesional qué causó exactamente el rechazo (en "quePaso").
-2. Cita el fundamento legal o acápite técnico oficial de El Salvador (Código Tributario, Guía de Orientación SVFE, CAT-012, CAT-014, CAT-019, CAT-022, etc.) en "normativa".
-3. Proporciona los pasos claros y exactos que el operador debe realizar en el sistema para corregirlo y transmitir con éxito en "solucion".
-4. Clasifica el tipo de corrección en "tipoCorreccion" como uno de: "CLIENTE", "PRODUCTO", "EMISOR", "DATOS_VENTA", "SISTEMA_MH".
+1. Explica en lenguaje humano, directo y técnico qué causó exactamente el rechazo (en "quePaso"), citando la ruta exacta \`#/...\` y el valor enviado si aparece en la respuesta.
+2. Cita el fundamento legal o acápite técnico oficial de El Salvador aplicable (en "normativa").
+3. Proporciona los pasos claros y exactos dentro de SIPE WEB SAAS ("Solventar / Corregir DTE") para resolverlo y retransmitir con éxito (en "solucion").
+4. Clasifica "tipoCorreccion" como uno de: "CLIENTE", "PRODUCTO", "EMISOR", "DATOS_VENTA", "SISTEMA_MH".
 
 Responde ÚNICAMENTE con un objeto JSON estricto:
 {
   "quePaso": "Explicación concisa y clara de la causa del rechazo",
   "normativa": "Base legal o técnica de Hacienda aplicable",
-  "solucion": "Instrucciones numeradas paso a paso para resolver el error",
+  "solucion": "Instrucciones numeradas paso a paso en SIPE WEB SAAS",
   "tipoCorreccion": "CLIENTE | PRODUCTO | EMISOR | DATOS_VENTA | SISTEMA_MH"
 }`;
 
@@ -575,37 +592,118 @@ Responde ÚNICAMENTE con un objeto JSON estricto:
         // 3. Fallback Heurístico (offline / sin API keys)
         return {
             provider: 'heuristic',
-            data: this._heuristicDiagnosis(errorData)
+            data: this._heuristicDiagnosis(errorData, dteInfo)
         };
     }
 
-    _heuristicDiagnosis(errorData) {
+    _heuristicDiagnosis(errorData, dteInfo = null) {
+        const obj = typeof errorData === 'object' && errorData !== null ? errorData : {};
         const str = typeof errorData === 'object' ? JSON.stringify(errorData) : String(errorData || '');
         const lower = str.toLowerCase();
+        const codigoMsg = String(obj.codigoMsg || '').trim();
+        const obsList = Array.isArray(obj.observaciones) ? obj.observaciones : [];
+        const schemaPathMatch = str.match(/#\/[A-Za-z0-9_./-]+/);
+        const schemaPath = schemaPathMatch ? schemaPathMatch[0] : '';
 
-        if (lower.includes('"codigomsg":"004"') || lower.includes('numerocontrol') || lower.includes('ya existe')) {
+        // 0. Respuesta vacía o sin detalle real de MH ({ fhProcesamiento: null })
+        if (!codigoMsg && !obj.descripcionMsg && obsList.length === 0 && (lower.includes('fhprocesamiento') || lower.includes('sin detalle'))) {
+            return {
+                quePaso: 'No se recibió o no quedó registrado el mensaje detallado de rechazo de Hacienda en este intento.',
+                normativa: 'Bitácora de Recepción DTE del Ministerio de Hacienda (SVFE).',
+                solucion: '1. Abra "Solventar / Corregir DTE".\n2. Verifique cliente, montos y documentos relacionados.\n3. Pulse "Guardar y Reintentar Envío" para obtener la respuesta literal completa de Hacienda.',
+                tipoCorreccion: 'DATOS_VENTA'
+            };
+        }
+
+        // 0b. Error de conectividad / timeout con MH o servicio DTE
+        if (lower.includes('econnrefused') || lower.includes('etimedout') || lower.includes('timeout') || lower.includes('socket hang up') || lower.includes('error de conexión')) {
+            return {
+                quePaso: 'Se produjo un fallo temporal de comunicación o tiempo de espera agotado al contactar el servidor de Hacienda o el firmador.',
+                normativa: 'Disponibilidad de Recepción DTE y Servicio de Firma Electrónica SVFE.',
+                solucion: '1. Espere unos segundos y reintente el envío desde "Solventar / Corregir DTE" > "Guardar y Reintentar Envío".\n2. Si el problema persiste, verifique el estado del servicio de firma y credenciales MH.',
+                tipoCorreccion: 'SISTEMA_MH'
+            };
+        }
+
+        // 1. Código 096 con ruta exacta de JSON Schema (#/...)
+        if (codigoMsg === '096' || schemaPath) {
+            if (lower.includes('documentorelacionado') || lower.includes('/numerodocumento')) {
+                const sentNum = dteInfo?.documentoRelacionado?.[0]?.numeroDocumento || '';
+                const isControlInsteadOfUuid = String(sentNum).toUpperCase().startsWith('DTE-');
+                return {
+                    quePaso: `Hacienda rechazó el campo ${schemaPath || '#/documentoRelacionado/0/numeroDocumento'} (Código 096)${isControlInsteadOfUuid ? ` porque se envió el Número de Control "${sentNum}" en lugar del Código de Generación (UUID de 36 caracteres)` : ' por formato inválido del documento relacionado'}.`,
+                    normativa: 'Esquema JSON SVFE (fe-nc-v4 / fe-nd-v4 / fe-cr-v2) - documentoRelacionado[].numeroDocumento (UUID de 36 caracteres para DTE electrónico).',
+                    solucion: '1. Abra "Solventar / Corregir DTE" en la pestaña "Docs. Relacionados".\n2. Busque el DTE original en el buscador o ingrese directamente su Código de Generación (UUID de 36 caracteres: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX), nunca el DTE-XX-...\n3. Verifique que la fecha de emisión y el tipo de generación (1=Electrónico / 2=Físico) coincidan con el original y pulse "Guardar y Reintentar Envío".',
+                    tipoCorreccion: 'DATOS_VENTA'
+                };
+            }
+            if (lower.includes('#/receptor/direccion') || lower.includes('distrito') || lower.includes('municipio') || lower.includes('departamento')) {
+                return {
+                    quePaso: `El campo de ubicación del cliente (${schemaPath || '#/receptor/direccion'}) no cumple el esquema o catálogo oficial de Hacienda (Código 096).`,
+                    normativa: 'Catálogos Oficiales CAT-012 (Departamentos), CAT-013 (Municipios) y CAT-008 (Distritos) del SVFE.',
+                    solucion: '1. Abra "Solventar / Corregir DTE" > pestaña "Cliente / Receptor".\n2. Seleccione Departamento, Municipio y Distrito válidos y verifique la dirección completa.\n3. Pulse "Guardar y Reintentar Envío".',
+                    tipoCorreccion: 'CLIENTE'
+                };
+            }
+            if (lower.includes('#/receptor')) {
+                return {
+                    quePaso: `Un dato de identificación o contacto del receptor (${schemaPath || '#/receptor'}) no cumple el formato del esquema oficial (Código 096).`,
+                    normativa: 'Esquema SVFE de Identificación del Receptor y Catálogos CAT-019 / CAT-022.',
+                    solucion: '1. Abra "Solventar / Corregir DTE" > pestaña "Cliente / Receptor".\n2. Revise NIT, DUI, NRC, Código de Actividad y correo electrónico.\n3. Guarde y pulse "Guardar y Reintentar Envío".',
+                    tipoCorreccion: 'CLIENTE'
+                };
+            }
+            if (lower.includes('#/cuerpodocumento') || lower.includes('#/resumen')) {
+                return {
+                    quePaso: `Un campo numérico o descriptor en ${schemaPath || 'cuerpoDocumento/resumen'} no cumple el esquema de validación MH (Código 096).`,
+                    normativa: 'Esquema Oficial SVFE v2/v4 - Validación de estructura en cuerpoDocumento y resumen.',
+                    solucion: '1. Abra "Solventar / Corregir DTE" > pestaña "Montos / Aproximación".\n2. Pulse "Recalcular y Cuadrar Automáticamente" y revise descripciones/unidades de los ítems.\n3. Guarde y reintente el envío.',
+                    tipoCorreccion: 'DATOS_VENTA'
+                };
+            }
+            if (lower.includes('#/identificacion')) {
+                return {
+                    quePaso: `Un campo de cabecera en ${schemaPath || '#/identificacion'} (fecha, hora, número de control o UUID) no cumple el formato requerido (Código 096).`,
+                    normativa: 'Esquema Oficial SVFE - Sección identificacion del DTE.',
+                    solucion: '1. Abra "Solventar / Corregir DTE" y marque "Actualizar fecha/hora de emisión a hoy".\n2. Si persiste error de identificación, utilice "Guardar y Regenerar (Nuevo Control)".',
+                    tipoCorreccion: 'DATOS_VENTA'
+                };
+            }
+        }
+
+        // 2. Códigos de negocio específicos MH
+        if (codigoMsg === '004' || lower.includes('"codigomsg":"004"') || lower.includes('numerocontrol') || lower.includes('ya existe')) {
             return {
                 quePaso: 'El número de control o código de generación ya fue utilizado o existe previamente en Hacienda.',
                 normativa: 'Normativa SVFE - Identificación única de Documento Tributario Electrónico (codigoMsg 004).',
-                solucion: '1. Haga clic en "Solventar / Corregir Datos DTE".\n2. Use la acción "Guardar y Regenerar (Nuevo Control)" para generar un nuevo UUID y Número de Control correlativo y transmitirlo.',
+                solucion: '1. Haga clic en "Solventar / Corregir DTE".\n2. Use la acción "Guardar y Regenerar (Nuevo Control)" para generar un nuevo UUID y Número de Control correlativo y transmitirlo.',
                 tipoCorreccion: 'DATOS_VENTA'
             };
         }
 
-        if (lower.includes('fecemi') || lower.includes('fecha de envío') || lower.includes('fecha de envio')) {
+        if (['005', '020'].includes(codigoMsg) || lower.includes('fecemi') || lower.includes('fecha de envío') || lower.includes('fecha de envio')) {
             return {
-                quePaso: 'La fecha de emisión (fecEmi) del DTE difiere de la fecha actual de transmisión esperada por Hacienda.',
-                normativa: 'Validaciones de Tiempo y Fecha de Emisión SVFE (codigoMsg 005 / 020).',
-                solucion: '1. Abra "Solventar / Corregir Datos DTE".\n2. Marque la casilla "Actualizar fecha/hora de emisión a hoy".\n3. Pulse "Guardar y Reintentar Envío" (o Regenerar si aplica).',
+                quePaso: 'La fecha u hora de emisión (fecEmi/horEmi) del DTE difiere del rango permitido por Hacienda al momento de transmitir.',
+                normativa: `Validaciones de Tiempo y Fecha de Emisión SVFE (codigoMsg ${codigoMsg || '005 / 020'}).`,
+                solucion: '1. Abra "Solventar / Corregir DTE".\n2. Marque la casilla "Actualizar fecha/hora de emisión a hoy".\n3. Pulse "Guardar y Reintentar Envío".',
                 tipoCorreccion: 'DATOS_VENTA'
             };
         }
 
-        if (lower.includes('documentorelacionado') || lower.includes('cuerpodocumento/0/numerodocumento') || lower.includes('018') || lower.includes('fecha fuera de plazo')) {
+        if (['006', '007', '008', '009'].includes(codigoMsg) || lower.includes('firma') || lower.includes('certificado') || lower.includes('no autorizado')) {
             return {
-                quePaso: 'El documento relacionado (Nota de Crédito, Nota de Débito, Retención o Remisión) tiene un número o fecha que no cumple el formato o plazo de Hacienda.',
-                normativa: 'Esquemas SVFE de Documentos Relacionados (UUID 36 caracteres para DTE electrónico o correlativo válido y período tributario vigente).',
-                solucion: '1. Abra "Solventar / Corregir Datos DTE" en la pestaña "Docs. Relacionados".\n2. Busque y vincule el DTE aceptado (UUID oficial) o corrija el número y la fecha de emisión.\n3. Guarde y reintente la transmisión.',
+                quePaso: `Hacienda rechazó la firma electrónica, el certificado digital o el token de autorización del emisor (Código ${codigoMsg || 'Auth'}).`,
+                normativa: `Validación de Firma JWS y Autenticación API Ministerio de Hacienda (codigoMsg ${codigoMsg || '006-009'}).`,
+                solucion: '1. Verifique en Empresas que el certificado (.crt/.p12), la contraseña del certificado y las credenciales de Hacienda (api_user/api_password) estén vigentes.\n2. Luego reintente la transmisión desde "Solventar / Corregir DTE".',
+                tipoCorreccion: 'EMISOR'
+            };
+        }
+
+        if (codigoMsg === '018' || lower.includes('documentorelacionado') || lower.includes('cuerpodocumento/0/numerodocumento') || lower.includes('fecha fuera de plazo')) {
+            return {
+                quePaso: 'El documento relacionado (Nota de Crédito, Débito, Retención o Remisión) tiene un número, tipo de generación o fecha rechazada por Hacienda.',
+                normativa: 'Esquemas SVFE de Documentos Relacionados (UUID 36 caracteres para DTE electrónico y período tributario vigente).',
+                solucion: '1. Abra "Solventar / Corregir DTE" en la pestaña "Docs. Relacionados".\n2. Verifique que el UUID (36 caracteres), Tipo de Documento (03/07), Tipo de Generación y Fecha de Emisión coincidan exactamente con el documento original.\n3. Guarde y pulse "Guardar y Reintentar Envío".',
                 tipoCorreccion: 'DATOS_VENTA'
             };
         }
@@ -614,51 +712,51 @@ Responde ÚNICAMENTE con un objeto JSON estricto:
             return {
                 quePaso: 'Faltan campos obligatorios de Exportación (FEX-11) o contienen un valor inválido según los catálogos aduaneros.',
                 normativa: 'Esquema fe-fex-v3 y Catálogos CAT-011, CAT-020, CAT-027 y CAT-033 del Ministerio de Hacienda.',
-                solucion: '1. Abra "Solventar / Corregir Datos DTE" en la pestaña "Exportación / Remisión".\n2. Verifique Tipo de Ítem, Recinto Fiscal, Régimen y País de Destino (ISO 2 letras).\n3. Guarde y reintente la transmisión.',
+                solucion: '1. Abra "Solventar / Corregir DTE" en la pestaña "Exportación (FEX)".\n2. Verifique Tipo de Ítem, Recinto Fiscal, Régimen y País de Destino (ISO 2 letras).\n3. Guarde y reintente la transmisión.',
                 tipoCorreccion: 'DATOS_VENTA'
             };
         }
 
-        if ((lower.includes('"codigomsg":"003"') && !lower.includes('receptor')) || lower.includes('cuerpodocumento.item') || lower.includes('resumen.') || lower.includes('aproxim') || lower.includes('totalpagar') || lower.includes('totaliva')) {
+        if ((['003', '019', '021', '022'].includes(codigoMsg) && !lower.includes('receptor')) || lower.includes('cuerpodocumento.item') || lower.includes('resumen.') || lower.includes('aproxim') || lower.includes('totalpagar') || lower.includes('totaliva')) {
             return {
-                quePaso: 'Existe una diferencia de cálculo, aproximación o redondeo entre los ítems, impuestos (IVA/Retención) o pagos y el resumen del DTE.',
-                normativa: 'Reglas de Cuadre Aritmético y Aproximación DTE v2.0 del Ministerio de Hacienda.',
-                solucion: '1. Abra "Solventar / Corregir Datos DTE" en la pestaña "Montos / Aproximación".\n2. Pulse "Recalcular y Cuadrar Automáticamente" para alinear precio, gravado, IVA, retención y pagos al centavo.\n3. Pulse "Guardar y Reintentar Envío".',
+                quePaso: 'Existe una diferencia de cálculo, tributo, aproximación o redondeo entre los ítems, impuestos (IVA/Retención) o pagos y el resumen del DTE.',
+                normativa: `Reglas de Cuadre Aritmético y Aproximación DTE v2.0 del Ministerio de Hacienda (codigoMsg ${codigoMsg || '003'}).`,
+                solucion: '1. Abra "Solventar / Corregir DTE" en la pestaña "Montos / Aproximación".\n2. Pulse "Recalcular y Cuadrar Automáticamente" para alinear precio, gravado, IVA, retención y pagos al centavo.\n3. Pulse "Guardar y Reintentar Envío".',
                 tipoCorreccion: 'DATOS_VENTA'
             };
         }
 
-        if (lower.includes('014') || lower.includes('nit') || lower.includes('nrc') || lower.includes('padron') || lower.includes('padrón')) {
+        if (codigoMsg === '014' || lower.includes('014') || lower.includes('nit') || lower.includes('nrc') || lower.includes('padron') || lower.includes('padrón')) {
             return {
                 quePaso: 'El NIT o NRC del cliente receptor no concuerda con los registros activos en el padrón tributario de Hacienda.',
-                normativa: 'Código Tributario de El Salvador Art. 86 y Guía de Orientación SVFE sobre identificación de contribuyentes.',
-                solucion: '1. Abra "Solventar / Corregir Datos DTE" > pestaña Cliente.\n2. Valide que el NIT (14 o 9 dígitos) y el NRC coincidan con la tarjeta de IVA del cliente.\n3. Guarde los cambios y pulse "Guardar y Reintentar Envío".',
+                normativa: 'Código Tributario de El Salvador Art. 86 y Guía de Orientación SVFE sobre identificación de contribuyentes (codigoMsg 014).',
+                solucion: '1. Abra "Solventar / Corregir DTE" > pestaña "Cliente / Receptor".\n2. Valide que el NIT (14 o 9 dígitos) y el NRC coincidan con la tarjeta de IVA del cliente.\n3. Guarde los cambios y pulse "Guardar y Reintentar Envío".',
                 tipoCorreccion: 'CLIENTE'
             };
         }
 
-        if (lower.includes('016') || lower.includes('actividad') || lower.includes('giro')) {
+        if (codigoMsg === '016' || lower.includes('016') || lower.includes('actividad') || lower.includes('giro')) {
             return {
                 quePaso: 'El código de actividad económica asignado al cliente receptor no es válido según el catálogo oficial de Hacienda.',
-                normativa: 'Catálogo Oficial CAT-019 (Actividades Económicas) del Ministerio de Hacienda.',
-                solucion: '1. Abra "Solventar / Corregir Datos DTE" > pestaña Cliente.\n2. Asigne un código de actividad económica válido del catálogo CAT-019.\n3. Guarde y reintente el envío.',
+                normativa: 'Catálogo Oficial CAT-019 (Actividades Económicas) del Ministerio de Hacienda (codigoMsg 016).',
+                solucion: '1. Abra "Solventar / Corregir DTE" > pestaña "Cliente / Receptor".\n2. Asigne un código de actividad económica válido del catálogo CAT-019.\n3. Guarde y reintente el envío.',
                 tipoCorreccion: 'CLIENTE'
             };
         }
 
-        if (lower.includes('017') || lower.includes('018') || lower.includes('distrito') || lower.includes('direccion') || lower.includes('municipio') || lower.includes('departamento')) {
+        if (codigoMsg === '017' || lower.includes('017') || lower.includes('018') || lower.includes('distrito') || lower.includes('direccion') || lower.includes('municipio') || lower.includes('departamento')) {
             return {
                 quePaso: 'La dirección del cliente está incompleta o la combinación de departamento, municipio y distrito no coincide con el catálogo CAT-008.',
                 normativa: 'Catálogos Oficiales CAT-012 (Departamentos), CAT-013 (Municipios) y CAT-008 (Distritos) del SVFE.',
-                solucion: '1. Abra "Solventar / Corregir Datos DTE" > pestaña Cliente.\n2. Seleccione Departamento, Municipio y Distrito válidos e ingrese una dirección completa.\n3. Guarde y reintente el envío.',
+                solucion: '1. Abra "Solventar / Corregir DTE" > pestaña "Cliente / Receptor".\n2. Seleccione Departamento, Municipio y Distrito válidos e ingrese una dirección completa.\n3. Guarde y reintente el envío.',
                 tipoCorreccion: 'CLIENTE'
             };
         }
 
         return {
-            quePaso: 'El Ministerio de Hacienda rechazó la recepción del documento electrónico según las validaciones de esquema o negocio.',
-            normativa: 'Manual de Especificaciones Técnicas de Transmisión DTE versión 2.0 (Ministerio de Hacienda).',
-            solucion: '1. Pulse "Solventar / Corregir Datos DTE" para revisar Cliente, Montos/Aproximación, Documentos Relacionados o Exportación.\n2. Aplique las correcciones necesarias.\n3. Pulse "Guardar y Reintentar Envío".',
+            quePaso: obj.descripcionMsg || obsList[0] || 'El Ministerio de Hacienda rechazó la recepción del documento electrónico según las validaciones de esquema o negocio.',
+            normativa: `Manual de Especificaciones Técnicas de Transmisión DTE versión 2.0 (${codigoMsg ? `codigoMsg ${codigoMsg}` : 'Ministerio de Hacienda'}).`,
+            solucion: '1. Pulse "Solventar / Corregir DTE" para revisar Cliente, Montos/Aproximación, Documentos Relacionados o Exportación.\n2. Aplique las correcciones necesarias.\n3. Pulse "Guardar y Reintentar Envío".',
             tipoCorreccion: 'DATOS_VENTA'
         };
     }

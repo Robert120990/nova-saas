@@ -267,7 +267,7 @@ export default function CorrectionDocumentosTab({
                                             <p className="text-rose-700">Para generación Electrónica (1), Hacienda exige un UUID de 36 caracteres (o use el buscador superior).</p>
                                         )}
                                         {isDteControl && (
-                                            <p className="text-indigo-700">Al guardar se intentará resolver este N° Control al UUID oficial de Hacienda.</p>
+                                            <p className="text-amber-700">Si este documento fue emitido en SIPE se convertirá automáticamente a su UUID al guardar; si es un DTE externo, ingrese directamente el Código de Generación (UUID de 36 caracteres) impreso en el documento original.</p>
                                         )}
                                         {wrongCrPeriod && (
                                             <p className="text-amber-700">Comprobante de Retención (07): la fecha pertenece a otro mes distinto al período vigente ({currentMonth}).</p>

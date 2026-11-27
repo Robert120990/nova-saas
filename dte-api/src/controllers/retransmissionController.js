@@ -413,14 +413,16 @@ async function retransmit(req, res) {
             success: dbStatus === 'ACCEPTED',
             codigoGeneracion,
             estadoHacienda: txResult.status || 'REJECTED',
-            data: {
-                ...(txResult.data || {}),
-                sello_recepcion: txResult.selloRecepcion,
-                selloRecepcion: txResult.selloRecepcion,
-                fh_procesamiento: formattedDate,
-                fhProcesamiento: formattedDate
-            },
-            error: txResult.error
+            data: dbStatus === 'ACCEPTED'
+                ? {
+                    ...(txResult.data || {}),
+                    sello_recepcion: txResult.selloRecepcion || null,
+                    selloRecepcion: txResult.selloRecepcion || null,
+                    fh_procesamiento: formattedDate,
+                    fhProcesamiento: formattedDate
+                }
+                : null,
+            error: dbStatus === 'ACCEPTED' ? null : haciendaError
         });
 
     } catch (error) {

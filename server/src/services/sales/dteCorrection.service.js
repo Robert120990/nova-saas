@@ -469,8 +469,27 @@ function analyzeDteRejection({
             const currentPeriod = getTodayElSalvador().substring(0, 7);
             linkedDocs.forEach((doc, idx) => {
                 const num = String(doc.doc_number || '').trim().toUpperCase();
+                const docType = String(doc.doc_type || '').trim();
                 const isUUID = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/.test(num);
-                if (Number(doc.generation_type || 1) === 1 && !isUUID) {
+
+                if (['05', '06'].includes(tipoDte) && docType === '01') {
+                    addIssue(
+                        `nc_invalid_f01_${idx}`,
+                        'error',
+                        'documentos',
+                        `Doc. #${idx + 1}: Nota de Crédito/Débito no puede referenciar Factura (01)`,
+                        'Normativa MH: NC (05) y ND (06) solo aplican a Crédito Fiscal (03) o Comprobante de Retención (07).'
+                    );
+                }
+                if (num.startsWith('DTE-')) {
+                    addIssue(
+                        `linked_dte_control_${idx}`,
+                        'error',
+                        'documentos',
+                        `Doc. #${idx + 1} usa N° Control (${num}) en lugar de UUID`,
+                        'Hacienda exige el Código de Generación (UUID de 36 caracteres) para documentos electrónicos relacionados, nunca el número DTE-XX-...'
+                    );
+                } else if (Number(doc.generation_type || 1) === 1 && !isUUID) {
                     addIssue(
                         `bad_linked_uuid_${idx}`,
                         'error',
@@ -493,8 +512,17 @@ function analyzeDteRejection({
         }
     }
 
-    if (lower.includes('documentorelacionado') || lower.includes('cuerpodocumento/0/numerodocumento') || lower.includes('fecha fuera de plazo')) {
-        addIssue('mh_linked_doc', 'error', 'documentos', 'Observación MH en Documento Relacionado', observaciones[0] || descripcionMsg);
+    if (lower.includes('documentorelacionado') || lower.includes('cuerpodocumento/0/numerodocumento') || lower.includes('fecha fuera de plazo') || ['018'].includes(codigoMsg)) {
+        addIssue('mh_linked_doc', 'error', 'documentos', 'Observación MH en Documento Relacionado', observaciones[0] || descripcionMsg || 'Verifique UUID (36 caracteres), tipo de generación y fecha de emisión del documento original.');
+    }
+
+    if (['006', '007', '008', '009'].includes(codigoMsg) || lower.includes('firma') || lower.includes('certificado') || lower.includes('token')) {
+        addIssue('mh_auth_sign', 'error', 'montos', `Error de firma o autenticación MH (${codigoMsg || 'Auth'})`, descripcionMsg || observaciones[0] || 'Verifique certificado digital o credenciales de API Hacienda en la empresa.');
+    }
+
+    const emptyMhDetail = resp && !codigoMsg && !descripcionMsg && observaciones.length === 0;
+    if (emptyMhDetail) {
+        addIssue('mh_empty_detail', 'warning', 'montos', 'Rechazo previo sin mensaje detallado de MH', 'El intento anterior no guardó el detalle completo de Hacienda. Reintente el envío para capturar la observación literal.');
     }
 
     // 3. Exportación FEX (11) y Remisión (04)
@@ -934,6 +962,12 @@ async function applySaleDteCorrection(pool, saleId, companyId, payload = {}, use
                     if (origDte.length > 0 && origDte[0].codigo_generacion) {
                         docNum = origDte[0].codigo_generacion;
                         genType = 1;
+                    } else {
+                        const err = new Error(
+                            `El documento relacionado "${docNum}" no existe en la base de datos local (DTE externo). Para evitar rechazo de Hacienda (Código 096), ingrese directamente su Código de Generación (UUID de 36 caracteres) impreso en el documento original.`
+                        );
+                        err.status = 400;
+                        throw err;
                     }
                 } else if (/^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/.test(docNum)) {
                     genType = 1;

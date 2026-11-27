@@ -290,14 +290,20 @@ class DteService {
                     data: {
                         codigo_generacion: result.codigoGeneracion,
                         estado: result.estadoHacienda,
-                        sello_recepcion: result.data?.selloRecibido || null,
-                        fh_procesamiento: result.data?.fhProcesamiento || null
+                        sello_recepcion: result.data?.sello_recepcion || result.data?.selloRecibido || null,
+                        fh_procesamiento: result.data?.fh_procesamiento || result.data?.fhProcesamiento || null
                     }
                 };
             } else {
+                const rawErr = result.error;
+                const normalizedError = (rawErr && typeof rawErr === 'object' && Object.keys(rawErr).length > 0)
+                    ? rawErr
+                    : (typeof rawErr === 'string' && rawErr.trim())
+                        ? rawErr
+                        : (result.message || result.data || 'Error en retransmisión DTE');
                 return {
                     success: false,
-                    error: result.data || result.message || 'Error en retransmisión DTE',
+                    error: normalizedError,
                     details: result.details || null
                 };
             }
